@@ -37,4 +37,14 @@ Nhập trực tiếp các lệnh sau vào khung chat của game:
 
 Kéo xuống đây và bấm vào liên kết dưới để tải trực tiếp file mod:
 
+### 👉 [Tải Xuống MinClient-1.12.2-1.0.0.jar (Bản Rút Gọn ClickGUI Impact + A* Goto + NoPush + Light)](https://github.com/hanhdevsgu/baritone-1.12.2-custom/releases/download/v1.2.19/MinClient-1.12.2-1.0.0.jar)
+
 ### 👉 [Tải Xuống baritone-standalone-forge-1.2.19.jar (Click để tải)](https://github.com/hanhdevsgu/baritone-1.12.2-custom/releases/download/v1.2.19/baritone-standalone-forge-1.2.19.jar)
+
+### 👉 [Tải Xuống Impact-4.9.1-1.12.2.jar (File Jar Gốc Client Impact)](https://github.com/hanhdevsgu/baritone-1.12.2-custom/releases/download/v1.2.19/Impact-4.9.1-1.12.2.jar)
+
+---
+
+### 📦 Source Code:
+- Nhánh mã nguồn MinClient tinh gọn: [source-miniclient](https://github.com/hanhdevsgu/baritone-1.12.2-custom/tree/source-miniclient)
+

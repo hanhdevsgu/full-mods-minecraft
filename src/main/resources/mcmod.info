@@ -1,0 +1,16 @@
+[
+  {
+    "modid": "minclient",
+    "name": "MinClient",
+    "description": "Minimal Utility Client with NoPush, FastInteract, .look and Baritone A* PathFinding.",
+    "version": "${version}",
+    "mcversion": "${mcversion}",
+    "url": "",
+    "updateUrl": "",
+    "authorList": ["Developer"],
+    "credits": "Baritone team for A* concepts",
+    "logoFile": "",
+    "screenshots": [],
+    "dependencies": []
+  }
+]

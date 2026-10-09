@@ -1,6 +1,9 @@
 package com.minclient.module;
 
-import com.minclient.module.impl.*;
+import com.minclient.module.impl.FastInteractModule;
+import com.minclient.module.impl.LightModule;
+import com.minclient.module.impl.NoPushModule;
+import com.minclient.module.impl.PathRenderModule;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -10,22 +13,19 @@ public class ModuleManager {
     private final List<Module> modules = new ArrayList<>();
     private final NoPushModule noPushModule;
     private final FastInteractModule fastInteractModule;
-    private final PathRenderModule pathRenderModule;
     private final LightModule lightModule;
-    private final BaritoneModule baritoneModule;
+    private final PathRenderModule pathRenderModule;
 
     public ModuleManager() {
         this.noPushModule = new NoPushModule();
         this.fastInteractModule = new FastInteractModule();
-        this.pathRenderModule = new PathRenderModule();
         this.lightModule = new LightModule();
-        this.baritoneModule = new BaritoneModule();
+        this.pathRenderModule = new PathRenderModule();
 
+        // Chỉ đưa duy nhất 3 module này vào bảng điều khiển GUI:
         modules.add(this.noPushModule);
         modules.add(this.fastInteractModule);
-        modules.add(this.pathRenderModule);
         modules.add(this.lightModule);
-        modules.add(this.baritoneModule);
     }
 
     public List<Module> getModules() {
@@ -59,16 +59,12 @@ public class ModuleManager {
         return fastInteractModule;
     }
 
-    public PathRenderModule getPathRenderModule() {
-        return pathRenderModule;
-    }
-
     public LightModule getLightModule() {
         return lightModule;
     }
 
-    public BaritoneModule getBaritoneModule() {
-        return baritoneModule;
+    public PathRenderModule getPathRenderModule() {
+        return pathRenderModule;
     }
 
     public void onTick() {

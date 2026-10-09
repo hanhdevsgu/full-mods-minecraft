@@ -23,17 +23,8 @@ public class ImpactClickGui extends GuiScreen {
     @Override
     public void initGui() {
         if (frames.isEmpty()) {
-            int startX = 30;
-            int startY = 30;
-            int spacing = 110;
-
-            for (Module.Category category : Module.Category.values()) {
-                List<Module> mods = moduleManager.getModulesByCategory(category);
-                if (!mods.isEmpty()) {
-                    frames.add(new Frame(category, mods, startX, startY));
-                    startX += spacing;
-                }
-            }
+            // Gom toàn bộ 3 module (NoPush, FastInteract, Light) vào duy nhất 1 khung MinClient
+            frames.add(new Frame(Module.Category.MODULES, moduleManager.getModules(), 30, 30));
         }
     }
 

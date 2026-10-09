@@ -6,7 +6,7 @@ public class LightModule extends Module {
     private float oldGamma = 1.0F;
 
     public LightModule() {
-        super("Light", "Tăng độ sáng Fullbright 100% nhìn rõ trong bóng tối", Category.RENDER, false);
+        super("Light", "Tăng độ sáng Fullbright 100% nhìn rõ trong bóng tối", Category.MODULES, false);
     }
 
     @Override

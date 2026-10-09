@@ -4,10 +4,7 @@ import net.minecraft.client.Minecraft;
 
 public abstract class Module {
     public enum Category {
-        MOVEMENT("Movement"),
-        RENDER("Render"),
-        PLAYER("Player"),
-        EXPLOIT("Exploit");
+        MODULES("MinClient");
 
         private final String displayName;
 

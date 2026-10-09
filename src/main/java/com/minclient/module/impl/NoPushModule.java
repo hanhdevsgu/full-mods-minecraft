@@ -5,7 +5,7 @@ import com.minclient.module.Module;
 public class NoPushModule extends Module {
 
     public NoPushModule() {
-        super("NoPush", "Chống bị xô đẩy bởi thực thể (player, mob), dòng nước và khối kẹt", Category.MOVEMENT, true);
+        super("NoPush", "Chống bị xô đẩy bởi thực thể (player, mob), dòng nước và khối kẹt", Category.MODULES, true);
     }
 
     @Override

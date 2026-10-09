@@ -9,7 +9,7 @@ public class FastInteractModule extends Module {
     private Field rightClickDelayField;
 
     public FastInteractModule() {
-        super("FastInteract", "Loại bỏ cooldown nhấp chuột phải, hỗ trợ đặt block và dùng đồ nhanh", Category.PLAYER, true);
+        super("FastInteract", "Loại bỏ cooldown nhấp chuột phải, hỗ trợ đặt block và dùng đồ nhanh", Category.MODULES, true);
         initReflection();
     }
 

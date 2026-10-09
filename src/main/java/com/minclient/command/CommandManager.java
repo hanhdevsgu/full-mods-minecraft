@@ -20,7 +20,6 @@ public class CommandManager {
         registerCommand(new StopCommand(motorController));
         registerCommand(new ToggleCommand(moduleManager));
         registerCommand(new LightCommand(moduleManager));
-        registerCommand(new GuiCommand(moduleManager));
         registerCommand(new HelpCommand(this, moduleManager));
     }
 
@@ -91,6 +90,6 @@ public class CommandManager {
             mc.player.sendMessage(new TextComponentString(String.format("§b%s §7[%s§7] - %s",
                     m.getName(), m.isEnabled() ? "§aBẬT" : "§cTẮT", m.getDescription())));
         }
-        mc.player.sendMessage(new TextComponentString("§7(Ấn phím §bRSHIFT§7 hoặc gõ §b.gui§7 để mở bảng điều khiển ClickGUI)"));
+        mc.player.sendMessage(new TextComponentString("§7(Ấn phím §bRSHIFT§7 để mở bảng điều khiển ClickGUI)"));
     }
 }

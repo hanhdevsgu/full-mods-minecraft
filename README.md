@@ -1,7 +1,13 @@
-# Baritone
-<p align="center">
-  <a href="https://github.com/cabaletta/baritone/releases/"><img src="https://img.shields.io/github/downloads/cabaletta/baritone/total.svg" alt="GitHub All Releases"/></a>
-</p>
+# Baritone 1.12.2 Custom (Auto ClearArea Snake & Real Mouse)
+
+> **📥 Download JAR Release (Forge 1.12.2):** [baritone-standalone-forge-1.2.19.jar](https://github.com/hanhdevsgu/baritone-1.12.2-custom/releases/download/v1.2.19/baritone-standalone-forge-1.2.19.jar)
+>
+> **Tính năng tùy chỉnh:**
+> - `#sel ca` đào tuần tự theo hàng zic-zac (snake pattern) từ đầu đến cuối hàng.
+> - Lùi điểm tựa an toàn khi đào trên nước, kết thúc chừa lại đúng 1 block duy nhất dưới chân.
+> - Cơ chế đào bằng chuột thật Windows OS (giữ `keyBindAttack` liên tục, lia chuột mượt mà, chống Anti-Cheat / Anti-Mining Bot).
+
+---
 
 <p align="center">
   <a href="#Baritone"><img src="https://img.shields.io/badge/MC-1.12.2-brightgreen.svg" alt="Minecraft"/></a>

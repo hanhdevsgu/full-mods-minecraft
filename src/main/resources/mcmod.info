@@ -1,0 +1,16 @@
+[
+{
+  "modid": "quickcraft",
+  "name": "Quick Craft",
+  "description": "Nhap ID item, craft toi da trong 1 tick. Phim mac dinh: V.",
+  "version": "${version}",
+  "mcversion": "${mcversion}",
+  "url": "",
+  "updateUrl": "",
+  "authorList": [],
+  "credits": "",
+  "logoFile": "",
+  "screenshots": [],
+  "dependencies": []
+}
+]

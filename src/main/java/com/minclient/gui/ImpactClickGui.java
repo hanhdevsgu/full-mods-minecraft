@@ -33,31 +33,9 @@ public class ImpactClickGui extends GuiScreen {
         // Nền tối mờ nhẹ chuẩn Impact ClickGUI
         Gui.drawRect(0, 0, width, height, 0x44000000);
 
-        String hoveredDescription = null;
-        String hoveredName = null;
-
         // Vẽ từng Frame danh mục
         for (Frame frame : frames) {
             frame.renderFrame(mouseX, mouseY);
-
-            if (frame.isOpen()) {
-                for (ModuleButton btn : frame.getButtons()) {
-                    int bx = frame.getX();
-                    int by = frame.getY() + btn.getOffset();
-                    if (btn.isHovered(mouseX, mouseY, bx, by, frame.getWidth(), 15)) {
-                        hoveredName = btn.getModule().getName();
-                        hoveredDescription = btn.getModule().getDescription();
-                    }
-                }
-            }
-        }
-
-        // Thanh mô tả Tooltip nằm ở góc dưới màn hình (đặc trưng của Impact)
-        if (hoveredDescription != null) {
-            int barY = height - 20;
-            Gui.drawRect(0, barY, width, height, 0xEE141414);
-            Gui.drawRect(0, barY, width, barY + 1, 0xFF2979FF);
-            fontRenderer.drawStringWithShadow("§b" + hoveredName + " §7- " + hoveredDescription, 10, barY + 6, 0xFFFFFFFF);
         }
 
         super.drawScreen(mouseX, mouseY, partialTicks);

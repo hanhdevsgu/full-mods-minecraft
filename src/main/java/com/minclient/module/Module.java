@@ -1,21 +1,10 @@
 package com.minclient.module;
 
-import com.minclient.setting.Setting;
 import net.minecraft.client.Minecraft;
-import org.lwjgl.input.Keyboard;
-
-import java.util.ArrayList;
-import java.util.List;
 
 public abstract class Module {
     public enum Category {
-        COMBAT("Combat"),
-        MOVEMENT("Movement"),
-        RENDER("Render"),
-        PLAYER("Player"),
-        WORLD("World"),
-        MISC("Misc"),
-        EXPLOIT("Exploit");
+        MODULES("MinClient");
 
         private final String displayName;
 
@@ -33,8 +22,6 @@ public abstract class Module {
     private final String description;
     private final Category category;
     private boolean enabled;
-    private int keyBind = Keyboard.KEY_NONE;
-    private final List<Setting<?>> settings = new ArrayList<>();
 
     public Module(String name, String description, Category category, boolean defaultEnabled) {
         this.name = name;
@@ -72,22 +59,6 @@ public abstract class Module {
 
     public void toggle() {
         setEnabled(!this.enabled);
-    }
-
-    public void addSetting(Setting<?> setting) {
-        this.settings.add(setting);
-    }
-
-    public List<Setting<?>> getSettings() {
-        return settings;
-    }
-
-    public int getKeyBind() {
-        return keyBind;
-    }
-
-    public void setKeyBind(int keyBind) {
-        this.keyBind = keyBind;
     }
 
     public void onEnable() {}

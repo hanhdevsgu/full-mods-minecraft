@@ -1,6 +1,9 @@
 package com.minclient.module;
 
-import com.minclient.module.impl.*;
+import com.minclient.module.impl.FastInteractModule;
+import com.minclient.module.impl.LightModule;
+import com.minclient.module.impl.NoPushModule;
+import com.minclient.module.impl.PathRenderModule;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -12,59 +15,17 @@ public class ModuleManager {
     private final FastInteractModule fastInteractModule;
     private final LightModule lightModule;
     private final PathRenderModule pathRenderModule;
-    private final ChatSuffixModule chatSuffixModule;
-    private final VelocityModule velocityModule;
-    private final CriticalsModule criticalsModule;
-    private final EspModule espModule;
-    private final TracersModule tracersModule;
-    private final StorageEspModule storageEspModule;
 
     public ModuleManager() {
-        // Combat
-        modules.add(new KillAuraModule());
-        modules.add(new AutoClickerModule());
-        this.velocityModule = new VelocityModule();
-        modules.add(this.velocityModule);
-        this.criticalsModule = new CriticalsModule();
-        modules.add(this.criticalsModule);
-
-        // Movement
-        modules.add(new SprintModule());
-        modules.add(new StepModule());
-        modules.add(new FlightModule());
-        modules.add(new SafeWalkModule());
-        modules.add(new AutoWalkModule());
-        modules.add(new JesusModule());
-        modules.add(new NoSlowModule());
-
-        // Render
-        this.lightModule = new LightModule();
-        modules.add(this.lightModule);
-        this.pathRenderModule = new PathRenderModule();
-        modules.add(this.pathRenderModule);
-        this.espModule = new EspModule();
-        modules.add(this.espModule);
-        this.tracersModule = new TracersModule();
-        modules.add(this.tracersModule);
-        this.storageEspModule = new StorageEspModule();
-        modules.add(this.storageEspModule);
-
-        // Player
         this.noPushModule = new NoPushModule();
-        modules.add(this.noPushModule);
         this.fastInteractModule = new FastInteractModule();
+        this.lightModule = new LightModule();
+        this.pathRenderModule = new PathRenderModule();
+
+        // Chỉ đưa duy nhất 3 module này vào bảng điều khiển GUI:
+        modules.add(this.noPushModule);
         modules.add(this.fastInteractModule);
-        modules.add(new NoFallModule());
-        modules.add(new AutoEatModule());
-
-        // World
-        modules.add(new TimerModule());
-        modules.add(new FastBreakModule());
-
-        // Misc
-        modules.add(new BaritoneModule());
-        this.chatSuffixModule = new ChatSuffixModule();
-        modules.add(this.chatSuffixModule);
+        modules.add(this.lightModule);
     }
 
     public List<Module> getModules() {
@@ -104,30 +65,6 @@ public class ModuleManager {
 
     public PathRenderModule getPathRenderModule() {
         return pathRenderModule;
-    }
-
-    public ChatSuffixModule getChatSuffixModule() {
-        return chatSuffixModule;
-    }
-
-    public VelocityModule getVelocityModule() {
-        return velocityModule;
-    }
-
-    public CriticalsModule getCriticalsModule() {
-        return criticalsModule;
-    }
-
-    public EspModule getEspModule() {
-        return espModule;
-    }
-
-    public TracersModule getTracersModule() {
-        return tracersModule;
-    }
-
-    public StorageEspModule getStorageEspModule() {
-        return storageEspModule;
     }
 
     public void onTick() {

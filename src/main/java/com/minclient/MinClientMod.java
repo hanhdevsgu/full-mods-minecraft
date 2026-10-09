@@ -22,10 +22,6 @@ public class MinClientMod {
     @Mod.Instance
     public static MinClientMod INSTANCE;
 
-    public static MinClientMod getInstance() {
-        return INSTANCE;
-    }
-
     private ModuleManager moduleManager;
     private CommandManager commandManager;
     private MotorController motorController;

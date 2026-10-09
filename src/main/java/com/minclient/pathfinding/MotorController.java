@@ -2,6 +2,7 @@ package com.minclient.pathfinding;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.settings.KeyBinding;
+import net.minecraft.util.MovementInputFromOptions;
 import net.minecraft.util.text.TextComponentString;
 
 import java.util.Collections;
@@ -14,6 +15,13 @@ public class MotorController {
     private int currentStepIndex = 0;
     private GoalBlock currentGoal = null;
     private boolean running = false;
+
+    private boolean movingForward = false;
+    private boolean movingBack = false;
+    private boolean movingLeft = false;
+    private boolean movingRight = false;
+    private boolean jumping = false;
+    private boolean sneaking = false;
 
     private int stuckTicks = 0;
     private double lastPosX = 0;
@@ -29,6 +37,12 @@ public class MotorController {
         if (mc.player != null) {
             this.lastPosX = mc.player.posX;
             this.lastPosZ = mc.player.posZ;
+            // Áp dụng cơ chế cốt lõi của Baritone:
+            // Thay thế movementInput bằng BaritoneMovementInput để nhân vật vẫn tiếp tục đi
+            // ngay cả khi đang mở Chat, Inventory, GUI hoặc ấn ESC.
+            if (mc.player.movementInput == null || mc.player.movementInput.getClass() != BaritoneMovementInput.class) {
+                mc.player.movementInput = new BaritoneMovementInput(this);
+            }
             sendChat("§a[Baritone A*] Bắt đầu di chuyển tới " + goal.toString() + " (" + path.size() + " bước)...");
         }
     }
@@ -38,13 +52,44 @@ public class MotorController {
             this.running = false;
             this.currentPath = Collections.emptyList();
             this.currentGoal = null;
+            this.movingForward = false;
+            this.movingBack = false;
+            this.movingLeft = false;
+            this.movingRight = false;
+            this.jumping = false;
+            this.sneaking = false;
             releaseControls();
+            restoreVanillaMovementInput();
             sendChat("§c[Baritone A*] Đã dừng di chuyển.");
         }
     }
 
     public boolean isRunning() {
         return running;
+    }
+
+    public boolean isMovingForward() {
+        return movingForward;
+    }
+
+    public boolean isMovingBack() {
+        return movingBack;
+    }
+
+    public boolean isMovingLeft() {
+        return movingLeft;
+    }
+
+    public boolean isMovingRight() {
+        return movingRight;
+    }
+
+    public boolean isJumping() {
+        return jumping;
+    }
+
+    public boolean isSneaking() {
+        return sneaking;
     }
 
     public List<BetterBlockPos> getCurrentPath() {
@@ -57,7 +102,16 @@ public class MotorController {
 
     public void onTick() {
         if (!running || mc.player == null || mc.world == null) {
+            if (!running && mc.player != null && mc.player.movementInput != null 
+                    && mc.player.movementInput.getClass() == BaritoneMovementInput.class) {
+                restoreVanillaMovementInput();
+            }
             return;
+        }
+
+        // Đảm bảo movementInput luôn duy trì BaritoneMovementInput khi đang trong hành trình
+        if (mc.player.movementInput == null || mc.player.movementInput.getClass() != BaritoneMovementInput.class) {
+            mc.player.movementInput = new BaritoneMovementInput(this);
         }
 
         if (currentPath == null || currentStepIndex >= currentPath.size()) {
@@ -89,15 +143,23 @@ public class MotorController {
         float targetYaw = (float) (Math.toDegrees(Math.atan2(dz, dx)) - 90.0F);
         mc.player.rotationYaw = targetYaw;
 
-        // Giữ phím tiến (Forward)
-        KeyBinding.setKeyBindState(mc.gameSettings.keyBindForward.getKeyCode(), true);
+        // Bật cờ tiến (BaritoneMovementInput sẽ đọc cờ này trực tiếp trong updatePlayerMoveState)
+        this.movingForward = true;
+        this.movingBack = false;
+        this.movingLeft = false;
+        this.movingRight = false;
+
+        // Giữ phím tiến vật lý (nếu không mở GUI)
+        if (mc.gameSettings != null) {
+            KeyBinding.setKeyBindState(mc.gameSettings.keyBindForward.getKeyCode(), true);
+        }
 
         // Kiểm tra nhảy (Nhảy lên bậc cao hơn hoặc va chạm vật cản)
         boolean shouldJump = dy > 0.25 || mc.player.collidedHorizontally;
-        if (shouldJump && mc.player.onGround) {
-            KeyBinding.setKeyBindState(mc.gameSettings.keyBindJump.getKeyCode(), true);
-        } else {
-            KeyBinding.setKeyBindState(mc.gameSettings.keyBindJump.getKeyCode(), false);
+        this.jumping = shouldJump && mc.player.onGround;
+
+        if (mc.gameSettings != null) {
+            KeyBinding.setKeyBindState(mc.gameSettings.keyBindJump.getKeyCode(), this.jumping);
         }
 
         // Phát hiện kẹt (Stuck Detection)
@@ -126,8 +188,19 @@ public class MotorController {
     private void onArrived() {
         this.running = false;
         this.currentPath = Collections.emptyList();
+        this.movingForward = false;
+        this.jumping = false;
         releaseControls();
+        restoreVanillaMovementInput();
         sendChat("§a[Baritone A*] ĐÃ ĐẾN ĐÍCH AN TOÀN!");
+    }
+
+    private void restoreVanillaMovementInput() {
+        if (mc.player != null && mc.gameSettings != null) {
+            if (mc.player.movementInput instanceof BaritoneMovementInput) {
+                mc.player.movementInput = new MovementInputFromOptions(mc.gameSettings);
+            }
+        }
     }
 
     private void releaseControls() {

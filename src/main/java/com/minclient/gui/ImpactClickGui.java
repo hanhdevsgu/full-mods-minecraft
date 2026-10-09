@@ -1,7 +1,6 @@
 package com.minclient.gui;
 
 import com.minclient.gui.component.Frame;
-import com.minclient.gui.component.ModuleButton;
 import com.minclient.module.Module;
 import com.minclient.module.ModuleManager;
 import net.minecraft.client.gui.Gui;
@@ -23,8 +22,17 @@ public class ImpactClickGui extends GuiScreen {
     @Override
     public void initGui() {
         if (frames.isEmpty()) {
-            // Gom toàn bộ 3 module (NoPush, FastInteract, Light) vào duy nhất 1 khung MinClient
-            frames.add(new Frame(Module.Category.MODULES, moduleManager.getModules(), 30, 30));
+            int startX = 20;
+            int startY = 25;
+            int spacing = 108;
+
+            for (Module.Category category : Module.Category.values()) {
+                List<Module> categoryModules = moduleManager.getModulesByCategory(category);
+                if (!categoryModules.isEmpty()) {
+                    frames.add(new Frame(category, categoryModules, startX, startY));
+                    startX += spacing;
+                }
+            }
         }
     }
 
@@ -59,6 +67,10 @@ public class ImpactClickGui extends GuiScreen {
 
     @Override
     protected void keyTyped(char typedChar, int keyCode) throws IOException {
+        for (Frame frame : frames) {
+            frame.keyTyped(typedChar, keyCode);
+        }
+
         // Đóng GUI khi bấm phím ESC hoặc phím RSHIFT
         if (keyCode == Keyboard.KEY_ESCAPE || keyCode == Keyboard.KEY_RSHIFT) {
             mc.displayGuiScreen(null);
@@ -70,5 +82,9 @@ public class ImpactClickGui extends GuiScreen {
     @Override
     public boolean doesGuiPauseGame() {
         return false;
+    }
+
+    public static List<Frame> getFrames() {
+        return frames;
     }
 }

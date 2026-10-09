@@ -1,0 +1,223 @@
+/*
+ * This file is part of Baritone.
+ *
+ * Baritone is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Lesser General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * Baritone is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public License
+ * along with Baritone.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
+group 'baritone'
+version '1.2.19'
+
+buildscript {
+    repositories {
+        maven {
+            name = 'forge'
+            url = 'https://files.minecraftforge.net/maven'
+        }
+        maven {
+            name = 'SpongePowered'
+            url = 'https://repo.spongepowered.org/repository/maven-public/'
+        }
+        jcenter()
+    }
+
+    dependencies {
+        classpath 'net.minecraftforge.gradle:ForgeGradle:4.+' // TODO: 5.+. `doHackyStuff` relies on 4.x internals.
+        classpath 'org.spongepowered:mixingradle:0.7-SNAPSHOT'
+    }
+}
+
+import baritone.gradle.task.CreateDistTask
+import baritone.gradle.task.ProguardTask
+
+apply plugin: 'java'
+apply plugin: 'maven-publish'
+apply plugin: 'net.minecraftforge.gradle'
+apply from: 'hacks.gradle'
+ext.doHackyStuff(Class.forName('net.minecraftforge.gradle.mcp.task.GenerateSRG')) // TODO: fg 5.0 - `ext.doHackyStuff(Class.forName('net.minecraftforge.gradle.mcp.tasks.GenerateSRG'))`
+apply plugin: 'org.spongepowered.mixin'
+
+sourceCompatibility = targetCompatibility = '1.8'
+compileJava {
+    sourceCompatibility = targetCompatibility = '1.8'
+    options.encoding = "UTF-8" // allow emoji in comments :^)
+}
+
+sourceSets {
+    api {
+        compileClasspath += main.compileClasspath
+    }
+    main {
+        compileClasspath += api.output
+    }
+    test {
+        compileClasspath += main.compileClasspath + main.runtimeClasspath + main.output
+        runtimeClasspath += main.compileClasspath + main.runtimeClasspath + main.output
+    }
+    launch {
+        compileClasspath += main.compileClasspath + main.runtimeClasspath + main.output
+        runtimeClasspath += main.compileClasspath + main.runtimeClasspath + main.output
+    }
+
+    schematica_api {
+        compileClasspath += main.compileClasspath
+    }
+
+    main {
+        compileClasspath += schematica_api.output
+    }
+}
+
+minecraft {
+    mappings channel: 'stable', version: '39-1.12'
+    runs {
+        def nativesOutput = extractNatives.output // TODO: fg 5.0 - `def nativesOutput = extractNatives.output.get()`
+        println("[Baritoe] Detected natives: ${nativesOutput}")
+        client {
+            workingDirectory project.file('run')
+            source sourceSets.launch
+
+            main 'net.minecraft.launchwrapper.Launch'
+
+            args '--gameDir', '.'
+            args '--version', '1.12.2'
+            args '--assetsDir', downloadAssets.output
+            args '--assetIndex', '{asset_index}'
+            args '--accessToken', 'INVALID'
+
+            args '--tweakClass', 'baritone.launch.BaritoneTweaker'
+            jvmArgs "-Dorg.lwjgl.librarypath=${nativesOutput}"
+        }
+    }
+}
+
+repositories {
+    mavenCentral()
+
+    maven {
+        name = 'spongepowered-repo'
+        url = 'https://repo.spongepowered.org/repository/maven-public/'
+    }
+
+    maven {
+        name = 'impactdevelopment-repo'
+        url = 'https://impactdevelopment.github.io/maven/'
+    }
+
+    maven {
+        name = 'babbaj-repo'
+        url = 'https://babbaj.github.io/maven/'
+    }
+}
+
+// fix forge gradle 4+ bug with 1.12.2
+afterEvaluate {
+    configurations.minecraft {
+        exclude group: 'net.minecraftforge', module: 'mergetool'
+    }
+}
+
+// lwjgl2 hack for running game on arm64 mac os
+afterEvaluate {
+    def os = org.gradle.internal.os.OperatingSystem.current()
+    if (os.isMacOsX()) {
+        def arch = System.getProperty("os.arch").toLowerCase()
+        println("Detected Mac OS X running on ${arch}")
+        if (arch == "aarch64") {
+            println("Configurating aarch64 dependencies.")
+
+            configurations.minecraft {
+                exclude group: 'ca.weblite', module: 'java-objc-bridge'
+            }
+
+            dependencies {
+                // https://github.com/MinecraftMachina/lwjgl/releases/download/2.9.4-20150209-mmachina.2/lwjgl-platform-2.9.4-nightly-20150209-natives-osx.jar
+                minecraft files("libs/lwjgl-platform-2.9.4-nightly-20150209-natives-osx.jar")
+                // TODO: use prism launcher maven
+                // https://github.com/MinecraftMachina/Java-Objective-C-Bridge/releases/download/1.1.0-mmachina.1/java-objc-bridge-1.1.jar
+                minecraft files("libs/java-objc-bridge-1.1.jar") // TODO: use prism launcher maven
+                minecraft(group: 'net.java.dev.jna', name: 'jna') {
+                    version {
+                        strictly '5.12.1'
+                    }
+                }
+            }
+        }
+    }
+}
+
+dependencies {
+    minecraft group: 'net.minecraft', name: 'joined', version: '1.12.2'
+    implementation(group: 'net.minecraft', name: 'launchwrapper', version: '1.12') {
+        transitive = false
+    }
+
+    def asmVersion = '9.5'
+    implementation group: 'org.ow2.asm', name: 'asm', version: asmVersion
+    implementation group: 'org.ow2.asm', name: 'asm-tree', version: asmVersion
+    implementation group: 'org.ow2.asm', name: 'asm-commons', version: asmVersion
+    implementation group: 'org.ow2.asm', name: 'asm-analysis', version: asmVersion
+    implementation group: 'org.ow2.asm', name: 'asm-util', version: asmVersion
+
+    launchImplementation('com.github.ImpactDevelopment:SimpleTweaker:1.2')
+    launchImplementation('org.spongepowered:mixin:0.7.11-SNAPSHOT') {
+        // Mixin includes a lot of dependencies that are too up-to-date
+        transitive = false
+    }
+    launchAnnotationProcessor 'org.spongepowered:mixin:0.8.4-SNAPSHOT:processor'
+    launchImplementation('dev.babbaj:nether-pathfinder:1.3.0')
+    implementation 'dev.babbaj:nether-pathfinder:1.3.0'
+    testImplementation 'junit:junit:4.12'
+}
+
+mixin {
+    add sourceSets.launch, 'mixins.baritone.refmap.json'
+}
+
+javadoc {
+    options.addStringOption('Xwerror', '-quiet') // makes the build fail on travis when there is a javadoc error
+    options.linkSource true
+    options.encoding "UTF-8" // allow emoji in comments :^)
+    source = sourceSets.api.allJava
+    classpath += sourceSets.api.compileClasspath
+}
+
+jar {
+    from sourceSets.launch.output, sourceSets.api.output
+
+    if (!getProject().hasProperty("baritone.forge_build")) {
+        exclude "**/BaritoneForgeModXD.class"
+        exclude "**/mods.toml"
+    }
+
+    preserveFileTimestamps = false
+    reproducibleFileOrder = true
+
+    manifest {
+        attributes(
+                'MixinConfigs': 'mixins.baritone.json',
+                'TweakClass': 'baritone.launch.BaritoneTweaker',
+                'Implementation-Title': 'Baritone',
+                'Implementation-Version': version
+        )
+    }
+}
+
+task proguard(type: ProguardTask) {
+    url 'https://downloads.sourceforge.net/project/proguard/proguard/6.0/proguard6.0.3.zip'
+    extract 'proguard6.0.3/lib/proguard.jar'
+}
+
+task createDist(type: CreateDistTask, dependsOn: proguard)
+
+build.finalizedBy(createDist)

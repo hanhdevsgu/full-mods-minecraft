@@ -1,0 +1,16 @@
+[
+{
+  "modid": "autorefill",
+  "name": "Auto Hotbar Refill",
+  "description": "Tu dong lay block va item tu tui do (inventory) xuong hotbar khi het, ho tro toi da cho Baritone (#set, #sel, #build) va chong block ao (no ghost blocks).",
+  "version": "${version}",
+  "mcversion": "${mcversion}",
+  "url": "",
+  "updateUrl": "",
+  "authorList": ["Antigravity"],
+  "credits": "",
+  "logoFile": "",
+  "screenshots": [],
+  "dependencies": []
+}
+]

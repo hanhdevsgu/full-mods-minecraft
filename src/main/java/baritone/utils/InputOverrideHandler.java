@@ -81,7 +81,6 @@ public final class InputOverrideHandler extends Behavior implements IInputOverri
     public final void clearAllKeys() {
         this.inputForceStateMap.clear();
         this.blockPlaceHelper.release();
-        WindowsMouse.releaseAll();
     }
 
     @Override

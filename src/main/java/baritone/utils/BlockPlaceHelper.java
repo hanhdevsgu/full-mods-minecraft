@@ -105,11 +105,6 @@ public class BlockPlaceHelper {
         int speed = Baritone.settings().rightClickSpeed.value;
         rightClickTimer = Math.max(speed, 4); // Clamp to at least 4 ticks to prevent server anticheat FastPlace kicks
 
-        // Execute genuine Windows hardware right click via RealMouseHelper
-        if (baritone.RealMouseHelper.callRealMouse()) {
-            return;
-        }
-
         // Execute genuine vanilla Minecraft rightClickMouse() logic
         boolean invokedVanilla = false;
         if (rightClickMouseMethod != null) {

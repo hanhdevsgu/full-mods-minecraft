@@ -42,7 +42,6 @@ import baritone.utils.schematic.MapArtSchematic;
 import baritone.utils.schematic.SchematicSystem;
 import baritone.utils.schematic.SelectionSchematic;
 import baritone.utils.schematic.format.defaults.LitematicaSchematic;
-import baritone.utils.WindowsMouse;
 import baritone.utils.schematic.litematica.LitematicaHelper;
 import baritone.utils.schematic.schematica.SchematicaHelper;
 import com.google.common.collect.ImmutableMap;
@@ -362,9 +361,9 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
 
     private Optional<Placement> searchForPlaceables(BuilderCalculationContext bcc, List<IBlockState> desirableOnHotbar) {
         BetterBlockPos center = ctx.playerFeet();
-        for (int dy = -3; dy <= 3; dy++) {
-            for (int dx = -4; dx <= 4; dx++) {
-                for (int dz = -4; dz <= 4; dz++) {
+        for (int dx = -5; dx <= 5; dx++) {
+            for (int dy = -5; dy <= 1; dy++) {
+                for (int dz = -5; dz <= 5; dz++) {
                     int x = center.x + dx;
                     int y = center.y + dy;
                     int z = center.z + dz;
@@ -374,6 +373,9 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
                     }
                     IBlockState curr = bcc.bsi.get0(x, y, z);
                     if (MovementHelper.isReplaceable(x, y, z, curr, bcc.bsi) && !valid(curr, desired, false)) {
+                        if (dy == 1 && bcc.bsi.get0(x, y + 1, z).getBlock() == Blocks.AIR) {
+                            continue;
+                        }
                         desirableOnHotbar.add(desired);
                         Optional<Placement> opt = possibleToPlace(desired, x, y, z, bcc.bsi);
                         if (opt.isPresent()) {
@@ -387,28 +389,27 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
     }
 
     private Optional<Placement> possibleToPlace(IBlockState toPlace, int x, int y, int z, BlockStateInterface bsi) {
-        BetterBlockPos targetPos = new BetterBlockPos(x, y, z);
         for (EnumFacing against : EnumFacing.values()) {
-            BetterBlockPos placeAgainstPos = targetPos.offset(against);
+            BetterBlockPos placeAgainstPos = new BetterBlockPos(x, y, z).offset(against);
             IBlockState placeAgainstState = bsi.get0(placeAgainstPos);
             if (MovementHelper.isReplaceable(placeAgainstPos.x, placeAgainstPos.y, placeAgainstPos.z, placeAgainstState, bsi)) {
                 continue;
             }
-            EnumFacing sideToClick = against.getOpposite();
-            if (!ctx.world().mayPlace(toPlace.getBlock(), targetPos, false, sideToClick, null)) {
+            if (!ctx.world().mayPlace(toPlace.getBlock(), new BetterBlockPos(x, y, z), false, against, null)) {
                 continue;
             }
             AxisAlignedBB aabb = placeAgainstState.getBoundingBox(ctx.world(), placeAgainstPos);
-            for (Vec3d placementMultiplier : aabbSideMultipliers(sideToClick)) {
+            for (Vec3d placementMultiplier : aabbSideMultipliers(against)) {
                 double placeX = placeAgainstPos.x + aabb.minX * placementMultiplier.x + aabb.maxX * (1 - placementMultiplier.x);
                 double placeY = placeAgainstPos.y + aabb.minY * placementMultiplier.y + aabb.maxY * (1 - placementMultiplier.y);
                 double placeZ = placeAgainstPos.z + aabb.minZ * placementMultiplier.z + aabb.maxZ * (1 - placementMultiplier.z);
                 Rotation rot = RotationUtils.calcRotationFromVec3d(RayTraceUtils.inferSneakingEyePosition(ctx.player()), new Vec3d(placeX, placeY, placeZ), ctx.playerRotations());
-                RayTraceResult result = RayTraceUtils.rayTraceTowards(ctx.player(), rot, ctx.playerController().getBlockReachDistance(), true);
-                if (result != null && result.typeOfHit == RayTraceResult.Type.BLOCK && result.getBlockPos().equals(placeAgainstPos) && result.sideHit == sideToClick) {
-                    OptionalInt hotbar = hasAnyItemThatWouldPlace(toPlace, result, rot);
+                Rotation actualRot = baritone.getLookBehavior().getAimProcessor().peekRotation(rot);
+                RayTraceResult result = RayTraceUtils.rayTraceTowards(ctx.player(), actualRot, ctx.playerController().getBlockReachDistance(), true);
+                if (result != null && result.typeOfHit == RayTraceResult.Type.BLOCK && result.getBlockPos().equals(placeAgainstPos) && result.sideHit == against.getOpposite()) {
+                    OptionalInt hotbar = hasAnyItemThatWouldPlace(toPlace, result, actualRot);
                     if (hotbar.isPresent()) {
-                        return Optional.of(new Placement(hotbar.getAsInt(), placeAgainstPos, sideToClick, rot));
+                        return Optional.of(new Placement(hotbar.getAsInt(), placeAgainstPos, against.getOpposite(), rot));
                     }
                 }
             }
@@ -589,35 +590,23 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
             // Natural human crosshair check: only trigger real mouse left click when crosshair is on target
             RayTraceResult trace = ctx.objectMouseOver();
             boolean isAimingAtTarget = ctx.isLookingAt(pos)
+                    || ctx.playerRotations().isReallyCloseTo(rot)
                     || (trace != null && trace.typeOfHit == RayTraceResult.Type.BLOCK && trace.getBlockPos().equals(pos));
 
             if (isAimingAtTarget) {
-                WindowsMouse.pressLeft();
                 baritone.getInputOverrideHandler().setInputForceState(Input.CLICK_LEFT, true);
-            } else {
-                WindowsMouse.releaseLeft();
             }
             return new PathingCommand(null, PathingCommandType.CANCEL_AND_SET_GOAL);
         }
-        WindowsMouse.releaseLeft();
         List<IBlockState> desirableOnHotbar = new ArrayList<>();
         Optional<Placement> toPlace = searchForPlaceables(bcc, desirableOnHotbar);
-        if (toPlace.isPresent() && isSafeToCancel && (ctx.player().onGround || hasFoothold) && ticks <= 0) {
+        if (toPlace.isPresent() && isSafeToCancel && ctx.player().onGround && ticks <= 0) {
             Rotation rot = toPlace.get().rot;
             baritone.getLookBehavior().updateTarget(rot, true);
             ctx.player().inventory.currentItem = toPlace.get().hotbarSelection;
             baritone.getInputOverrideHandler().setInputForceState(Input.SNEAK, true);
-
-            RayTraceResult trace = ctx.objectMouseOver();
-            boolean isAimingAtTarget = trace != null && trace.typeOfHit == RayTraceResult.Type.BLOCK
-                    && trace.getBlockPos().equals(toPlace.get().placeAgainst)
-                    && trace.sideHit == toPlace.get().side;
-
-            if (isAimingAtTarget) {
-                // Click genuine Windows hardware mouse right button!
-                WindowsMouse.clickRight();
+            if ((ctx.isLookingAt(toPlace.get().placeAgainst) && ctx.objectMouseOver().sideHit.equals(toPlace.get().side)) || ctx.playerRotations().isReallyCloseTo(rot)) {
                 baritone.getInputOverrideHandler().setInputForceState(Input.CLICK_RIGHT, true);
-                ticks = 4;
             }
             return new PathingCommand(null, PathingCommandType.CANCEL_AND_SET_GOAL);
         }
@@ -851,23 +840,8 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
             final int fMinX = this.areaMinX, fMaxX = this.areaMaxX;
             final int fMinZ = this.areaMinZ, fMaxZ = this.areaMaxZ;
 
-            // Find highest Y in breakable so we only sort the top active layer (prevents freezing on huge areas)
-            int maxY = Integer.MIN_VALUE;
-            for (BetterBlockPos p : breakable) {
-                if (p.y > maxY) {
-                    maxY = p.y;
-                }
-            }
-            final int fMaxY = maxY;
-            List<BetterBlockPos> topLayerBreakable = new ArrayList<>();
-            for (BetterBlockPos p : breakable) {
-                if (p.y >= fMaxY - 1) { // Current top 2 layers
-                    topLayerBreakable.add(p);
-                }
-            }
-
-            // Sort top layer in snake pattern (row-by-row, alternating left-to-right and right-to-left)
-            topLayerBreakable.sort((a, b) -> {
+            // Sort breakable in snake pattern (row-by-row, alternating left-to-right and right-to-left)
+            breakable.sort((a, b) -> {
                 if (a.y != b.y) {
                     return Integer.compare(b.y, a.y); // Dig higher layers first
                 }
@@ -894,11 +868,11 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
                 return Integer.compare(colA, colB);
             });
 
-            BetterBlockPos first = topLayerBreakable.get(0);
+            BetterBlockPos first = breakable.get(0);
             int activeCoord = fRowAxisIsZ ? first.z : first.x;
             int activeY = first.y;
             List<BetterBlockPos> currentActiveRow = new ArrayList<>();
-            for (BetterBlockPos p : topLayerBreakable) {
+            for (BetterBlockPos p : breakable) {
                 int pCoord = fRowAxisIsZ ? p.z : p.x;
                 if (pCoord == activeCoord && p.y == activeY) {
                     currentActiveRow.add(p);
@@ -918,41 +892,11 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
             toBreak.add(breakGoal(breakable.get(0), bcc));
         }
         List<Goal> toPlace = new ArrayList<>();
-        if (!placeable.isEmpty()) {
-            Set<BetterBlockPos> placeableSet = new HashSet<>(placeable);
-            double pX = ctx.player().posX;
-            double pY = ctx.player().posY;
-            double pZ = ctx.player().posZ;
-
-            // Sort: lowest Y first, then closest distance to player
-            placeable.sort((a, b) -> {
-                if (a.y != b.y) {
-                    return Integer.compare(a.y, b.y);
-                }
-                return Double.compare(a.distanceSqToCenter(pX, pY, pZ), b.distanceSqToCenter(pX, pY, pZ));
-            });
-
-            // Filter supported blocks (cannot place floating in air if 1 or 2 blocks below is also air to be placed)
-            List<BetterBlockPos> validPlaceables = new ArrayList<>();
-            for (BetterBlockPos pos : placeable) {
-                if (!placeableSet.contains(pos.down()) && !placeableSet.contains(pos.down(2))) {
-                    validPlaceables.add(pos);
-                    if (validPlaceables.size() >= 5) {
-                        break;
-                    }
-                }
-            }
-
-            if (validPlaceables.isEmpty()) {
-                for (int i = 0; i < Math.min(placeable.size(), 3); i++) {
-                    validPlaceables.add(placeable.get(i));
-                }
-            }
-
-            for (BetterBlockPos pos : validPlaceables) {
+        placeable.forEach(pos -> {
+            if (!placeable.contains(pos.down()) && !placeable.contains(pos.down(2))) {
                 toPlace.add(placementGoal(pos, bcc));
             }
-        }
+        });
         sourceLiquids.forEach(pos -> toPlace.add(new GoalBlock(pos.up())));
 
         if (!toBreak.isEmpty()) {
@@ -1084,13 +1028,9 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         }
         boolean allowSameLevel = ctx.world().getBlockState(pos.up()).getBlock() != Blocks.AIR;
         IBlockState current = ctx.world().getBlockState(pos);
-        IBlockState desired = bcc.getSchematic(pos.getX(), pos.getY(), pos.getZ(), current);
-        if (desired == null) {
-            return new GoalPlace(pos);
-        }
         for (EnumFacing facing : Movement.HORIZONTALS_BUT_ALSO_DOWN_____SO_EVERY_DIRECTION_EXCEPT_UP) {
             //noinspection ConstantConditions
-            if (MovementHelper.canPlaceAgainst(ctx, pos.offset(facing)) && ctx.world().mayPlace(desired.getBlock(), pos, false, facing.getOpposite(), null)) {
+            if (MovementHelper.canPlaceAgainst(ctx, pos.offset(facing)) && ctx.world().mayPlace(bcc.getSchematic(pos.getX(), pos.getY(), pos.getZ(), current).getBlock(), pos, false, facing, null)) {
                 return new GoalAdjacent(pos, pos.offset(facing), allowSameLevel);
             }
         }
@@ -1121,13 +1061,31 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
             if (dx == 0 && dz == 0 && dy == 1 && breakableCount > 1) {
                 return false;
             }
+            // Cannot stand in lava
+            IBlockState feet = ctx.world().getBlockState(new BlockPos(x, y, z));
+            if (feet.getMaterial() == Material.LAVA) {
+                return false;
+            }
+            IBlockState head = ctx.world().getBlockState(new BlockPos(x, y + 1, z));
+            if (head.getMaterial() == Material.LAVA) {
+                return false;
+            }
+            // Cannot suffocate inside a solid block
+            if (feet.getMaterial().isSolid() && !(feet.getBlock() instanceof BlockLiquid)) {
+                return false;
+            }
             return true;
         }
 
         @Override
         public double heuristic(int x, int y, int z) {
             double h = super.heuristic(x, y, z);
-            // Pure math bias for stepping back to next row (row > targetRow) without touching world locks
+            // Strong preference for standing on solid foothold under feet ("có block lót dưới chân")
+            IBlockState under = ctx.world().getBlockState(new BlockPos(x, y - 1, z));
+            if (!under.getMaterial().isSolid() || under.getBlock() instanceof BlockLiquid || under.getBlock() == Blocks.AIR) {
+                h += 100.0;
+            }
+            // Strong preference for stepping back to the next row (row > targetRow)
             if (lastRowIndex > targetRow && isInSelectionBounds(x, z)) {
                 int standingRow = getRowIndex(x, z);
                 if (standingRow <= targetRow) {

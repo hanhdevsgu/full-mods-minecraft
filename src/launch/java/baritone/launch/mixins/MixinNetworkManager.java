@@ -51,21 +51,9 @@ public class MixinNetworkManager {
 
     @Inject(
             method = "dispatchPacket",
-            at = @At("HEAD"),
-            cancellable = true
+            at = @At("HEAD")
     )
     private void preDispatchPacket(Packet<?> inPacket, final GenericFutureListener<? extends Future<? super Void>>[] futureListeners, CallbackInfo ci) {
-        if (inPacket instanceof net.minecraft.network.play.client.CPacketChatMessage) {
-            String msg = ((net.minecraft.network.play.client.CPacketChatMessage) inPacket).getMessage();
-            if (msg != null) {
-                String trimmed = msg.trim();
-                if (trimmed.startsWith("#") || trimmed.startsWith(".") || trimmed.startsWith(",") || trimmed.startsWith("<<")) {
-                    ci.cancel();
-                    return;
-                }
-            }
-        }
-
         if (this.direction != EnumPacketDirection.CLIENTBOUND) {
             return;
         }

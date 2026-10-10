@@ -262,6 +262,42 @@ class BotInstance {
         }
     }
 
+    showManualRestartHint(reason) {
+        if (!this.running || this.joined_server) return;
+        this.log(`⚠️ ${reason} Kẹt tiến trình/compass → Kill node.exe để khởi động lại sạch sẽ...`, "#ff4d6d");
+        this.stopKillWatchdog();
+        try {
+            if (this.bot) {
+                try { if (this.bot.pathfinder) this.bot.pathfinder.setGoal(null); } catch (e) {}
+                try { this.bot.quit(); } catch (e) {}
+            }
+        } catch (e) {}
+        this.running = false;
+        setTimeout(() => process.exit(1), 150);
+    }
+
+    armGuiOpenTimeout(ms = 8000) {
+        this.clearGuiOpenTimeout();
+        this._gui_open_timer = setTimeout(() => {
+            this._gui_open_timer = null;
+            if (!this.running || this.joined_server) return;
+            if ((this._compass_open_attempts || 0) < 2) {
+                this.log(`⚠️ Bấm compass nhưng ${Math.round(ms / 1000)}s chưa thấy GUI, thử bấm lại (lần ${(this._compass_open_attempts || 0) + 1}/2)...`, "#f5c842");
+                this._compass_opened = false;
+                this.waitForCompassAndOpen();
+                return;
+            }
+            this.showManualRestartHint("Đã bấm compass 2 lần nhưng GUI không mở.");
+        }, ms);
+    }
+
+    clearGuiOpenTimeout() {
+        if (this._gui_open_timer) {
+            clearTimeout(this._gui_open_timer);
+            this._gui_open_timer = null;
+        }
+    }
+
     log(msg, color = '#8b949e') {
         process.stdout.write(JSON.stringify({ type: 'log', msg, color }) + '\n');
     }
@@ -2703,18 +2739,9 @@ class BotInstance {
 
                     if (isAlreadyPlaying) {
                         this.alreadyPlayingKickCount++;
-                        // ⭐ FIX 'ĐANG CHƠI TRONG SERVER' KẸT VÔ HẠN: trước đây delay bị giới
-                        // hạn cứng ở 60s (20000 * count, cap 60000). Nếu server giữ session cũ
-                        // lâu hơn 60s (thường gặp khi rớt mạng qua proxy bằng ECONNRESET, server
-                        // chưa kịp timeout kết nối cũ), bot cứ thử lại mỗi 60s và bị kick lặp lại
-                        // vô hạn - y hệt vì sao chỉ có "dừng rồi bấm chạy lại" (đợi tay lâu hơn)
-                        // mới vào được. Giờ tăng mạnh hơn theo cấp số nhân và nâng trần lên 5 phút.
-                        const delay = Math.min(20000 * Math.pow(1.6, this.alreadyPlayingKickCount - 1), 300000);
-                        this.log(`⏳ Tài khoản đang bị 'kẹt' session cũ, đợi ${(delay / 1000).toFixed(0)}s trước khi thử lại (lần ${this.alreadyPlayingKickCount})...`, '#f5c842');
-                        // ⭐ FIX: truyền isAlreadyPlayingRetry=true để KHÔNG cộng dồn vào
-                        // reconnect_count/hardReset chung - tránh bị hardReset cắt ngang
-                        // delay dài đã tính riêng cho trường hợp này (xem giải thích ở reconnect()).
-                        this.reconnect(delay, true);
+                        this.log(`⚠️ Bị kick vì kẹt session ("${reasonStr}") → Tự kill node.exe để khởi động lại...`, '#ff4d6d');
+                        this.showManualRestartHint('Kẹt session trên server');
+                        return;
                     } else {
                         this.alreadyPlayingKickCount = 0;
                         // ⭐ Dùng reconnect() với backoff/hard-reset thay vì setTimeout cố định 1s,
@@ -2797,16 +2824,13 @@ class BotInstance {
             this.bot.on('windowOpen', (window) => {
                 if (!window || this.joined_server) return;
                 this.gui_opened = true;
+                this.clearGuiOpenTimeout();
                 this.log(`📂 GUI MỞ: "${window.title || '?'}"`, '#4a9eff');
                 this.debugDumpWindow(window, 'GUI vừa mở');
 
-                if (!this._dn_sent) {
-                    this.closeBookWindowIfAny('windowOpen trước khi gửi /dn');
-                    return;
-                }
-
-                if (!this._compass_opened) {
-                    this.closeBookWindowIfAny('windowOpen không phải do compass mở');
+                const title = (window.title || '').toLowerCase();
+                if (title.includes('book') || title.includes('sách')) {
+                    this.closeBookWindowIfAny('GUI sách');
                     return;
                 }
 

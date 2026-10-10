@@ -4,9 +4,11 @@ import com.minclient.command.impl.*;
 import com.minclient.module.Module;
 import com.minclient.module.ModuleManager;
 import com.minclient.pathfinding.MotorController;
+import com.minclient.util.BaritoneBridge;
 import net.minecraft.client.Minecraft;
 import net.minecraft.util.text.TextComponentString;
 
+import java.lang.reflect.Method;
 import java.util.*;
 
 public class CommandManager {
@@ -66,7 +68,30 @@ public class CommandManager {
         if (command != null) {
             command.execute(args);
         } else {
-            // Khi gõ nhầm lệnh (ví dụ .lookk, .loook, #gotoo...), liệt kê danh sách lệnh vào chat nội bộ
+            // Nếu là lệnh không thuộc MinClient (ví dụ các lệnh #sel, #mine, #follow...), thử chuyển tiếp sang Baritone API
+            if (BaritoneBridge.isAvailable()) {
+                try {
+                    Class<?> apiClass = Class.forName("baritone.api.BaritoneAPI");
+                    Method getProviderMethod = apiClass.getMethod("getProvider");
+                    Object provider = getProviderMethod.invoke(null);
+
+                    Method getPrimaryBaritoneMethod = provider.getClass().getMethod("getPrimaryBaritone");
+                    Object baritone = getPrimaryBaritoneMethod.invoke(provider);
+
+                    if (baritone != null) {
+                        Method getCommandManagerMethod = baritone.getClass().getMethod("getCommandManager");
+                        Object baritoneCmdManager = getCommandManagerMethod.invoke(baritone);
+
+                        Method executeMethod = baritoneCmdManager.getClass().getMethod("execute", String.class);
+                        boolean executed = (boolean) executeMethod.invoke(baritoneCmdManager, content);
+                        if (executed) {
+                            return true;
+                        }
+                    }
+                } catch (Throwable ignored) {}
+            }
+
+            // Khi gõ nhầm lệnh (ví dụ .lookk, .loook...), liệt kê danh sách lệnh vào chat nội bộ
             Minecraft mc = Minecraft.getMinecraft();
             if (mc.player != null) {
                 mc.player.sendMessage(new TextComponentString("§c[MinClient] Lệnh không hợp lệ: §f" + rawMessage));

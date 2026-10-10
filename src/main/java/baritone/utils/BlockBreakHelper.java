@@ -70,7 +70,7 @@ public final class BlockBreakHelper {
     }
 
     public void stopBreakingBlock() {
-        WindowsMouse.releaseLeft();
+        baritone.RealMouseHelper.releaseRealMouseLeft();
         if (!isHoldingKeyAttack) {
             return;
         }
@@ -114,7 +114,7 @@ public final class BlockBreakHelper {
         }
 
         // Genuine Windows hardware left click
-        WindowsMouse.pressLeft();
+        baritone.RealMouseHelper.callRealMouseLeft();
 
         KeyBinding key = (ctx.minecraft() != null && ctx.minecraft().gameSettings != null)
                 ? ctx.minecraft().gameSettings.keyBindAttack

@@ -16,8 +16,6 @@ public class CommandManager {
     public CommandManager(ModuleManager moduleManager) {
         this.moduleManager = moduleManager;
         registerCommand(new LookCommand());
-        registerCommand(new GotoCommand());
-        registerCommand(new StopCommand());
         registerCommand(new ToggleCommand(moduleManager));
         registerCommand(new LightCommand(moduleManager));
         registerCommand(new HelpCommand(this, moduleManager));
@@ -60,22 +58,27 @@ public class CommandManager {
             cmdName = "toggle";
         }
 
+        // Ưu tiên xử lý lệnh riêng của MinClient (.look, .toggle, .light, .help)
         Command command = commands.get(cmdName);
         if (command != null) {
             command.execute(args);
             return true;
         }
 
-        // Nếu là lệnh không thuộc MinClient (ví dụ các lệnh #sel, #mine, #follow, #build, #clear...),
-        // chuyển tiếp trực tiếp sang Baritone API gốc 100%
+        // Toàn bộ các lệnh còn lại (goto, stop, mine, sel, follow, path, tunnel, farm...)
+        // được chuyển tiếp TRỰC TIẾP sang bộ máy Baritone 100% nguyên bản
         try {
-            Object cmdManager = BaritoneAPI.getProvider().getPrimaryBaritone().getCommandManager();
-            java.lang.reflect.Method execMethod = cmdManager.getClass().getMethod("execute", String.class);
-            boolean executed = (boolean) execMethod.invoke(cmdManager, content);
+            boolean executed = BaritoneAPI.getProvider().getPrimaryBaritone().getCommandManager().execute(content);
             if (executed) {
                 return true;
             }
-        } catch (Throwable ignored) {}
+        } catch (Throwable t) {
+            Minecraft mc = Minecraft.getMinecraft();
+            if (mc.player != null) {
+                mc.player.sendMessage(new TextComponentString("§c[Baritone] Lỗi khi thực thi lệnh: " + t.getMessage()));
+            }
+            return true;
+        }
 
         // Khi gõ nhầm lệnh
         Minecraft mc = Minecraft.getMinecraft();
@@ -91,10 +94,15 @@ public class CommandManager {
         Minecraft mc = Minecraft.getMinecraft();
         if (mc.player == null) return;
 
-        mc.player.sendMessage(new TextComponentString("§6=== Danh Sách Lệnh (MinClient & Baritone) ==="));
+        mc.player.sendMessage(new TextComponentString("§6=== MinClient Commands ==="));
         for (Command cmd : commands.values()) {
             mc.player.sendMessage(new TextComponentString(String.format("§e%s §7- %s", cmd.getSyntax(), cmd.getDescription())));
         }
+        mc.player.sendMessage(new TextComponentString("§6=== Lệnh Baritone Gốc 100% (. hoặc #) ==="));
+        mc.player.sendMessage(new TextComponentString("§e#goto <x> <y> <z> §7- Tự tìm đường đi đến tọa độ (hỗ trợ ~)"));
+        mc.player.sendMessage(new TextComponentString("§e#stop §7- Dừng ngay mọi hoạt động của bot"));
+        mc.player.sendMessage(new TextComponentString("§e#mine <block> §7- Tự tìm đường và đào khoáng sản"));
+        mc.player.sendMessage(new TextComponentString("§e#sel 1 / #sel 2 / #sel ca §7- Chọn vùng và đào sạch"));
         mc.player.sendMessage(new TextComponentString("§6=== Trạng Thái Modules ==="));
         for (Module m : moduleManager.getModules()) {
             mc.player.sendMessage(new TextComponentString(String.format("§b%s §7[%s§7] - %s",

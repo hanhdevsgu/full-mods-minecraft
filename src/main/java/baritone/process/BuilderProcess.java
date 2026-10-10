@@ -42,6 +42,7 @@ import baritone.utils.schematic.MapArtSchematic;
 import baritone.utils.schematic.SchematicSystem;
 import baritone.utils.schematic.SelectionSchematic;
 import baritone.utils.schematic.format.defaults.LitematicaSchematic;
+import baritone.utils.WindowsMouse;
 import baritone.utils.schematic.litematica.LitematicaHelper;
 import baritone.utils.schematic.schematica.SchematicaHelper;
 import com.google.common.collect.ImmutableMap;
@@ -588,14 +589,17 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
             // Natural human crosshair check: only trigger real mouse left click when crosshair is on target
             RayTraceResult trace = ctx.objectMouseOver();
             boolean isAimingAtTarget = ctx.isLookingAt(pos)
-                    || ctx.playerRotations().isReallyCloseTo(rot)
                     || (trace != null && trace.typeOfHit == RayTraceResult.Type.BLOCK && trace.getBlockPos().equals(pos));
 
             if (isAimingAtTarget) {
+                WindowsMouse.pressLeft();
                 baritone.getInputOverrideHandler().setInputForceState(Input.CLICK_LEFT, true);
+            } else {
+                WindowsMouse.releaseLeft();
             }
             return new PathingCommand(null, PathingCommandType.CANCEL_AND_SET_GOAL);
         }
+        WindowsMouse.releaseLeft();
         List<IBlockState> desirableOnHotbar = new ArrayList<>();
         Optional<Placement> toPlace = searchForPlaceables(bcc, desirableOnHotbar);
         if (toPlace.isPresent() && isSafeToCancel && (ctx.player().onGround || hasFoothold) && ticks <= 0) {
@@ -605,14 +609,15 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
             baritone.getInputOverrideHandler().setInputForceState(Input.SNEAK, true);
 
             RayTraceResult trace = ctx.objectMouseOver();
-            boolean isAimingAtTarget = (trace != null && trace.typeOfHit == RayTraceResult.Type.BLOCK
+            boolean isAimingAtTarget = trace != null && trace.typeOfHit == RayTraceResult.Type.BLOCK
                     && trace.getBlockPos().equals(toPlace.get().placeAgainst)
-                    && trace.sideHit == toPlace.get().side)
-                    || ctx.playerRotations().isReallyCloseTo(rot);
+                    && trace.sideHit == toPlace.get().side;
 
             if (isAimingAtTarget) {
+                // Click genuine Windows hardware mouse right button!
+                WindowsMouse.clickRight();
                 baritone.getInputOverrideHandler().setInputForceState(Input.CLICK_RIGHT, true);
-                ticks = 3;
+                ticks = 4;
             }
             return new PathingCommand(null, PathingCommandType.CANCEL_AND_SET_GOAL);
         }
@@ -846,8 +851,23 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
             final int fMinX = this.areaMinX, fMaxX = this.areaMaxX;
             final int fMinZ = this.areaMinZ, fMaxZ = this.areaMaxZ;
 
-            // Sort breakable in snake pattern (row-by-row, alternating left-to-right and right-to-left)
-            breakable.sort((a, b) -> {
+            // Find highest Y in breakable so we only sort the top active layer (prevents freezing on huge areas)
+            int maxY = Integer.MIN_VALUE;
+            for (BetterBlockPos p : breakable) {
+                if (p.y > maxY) {
+                    maxY = p.y;
+                }
+            }
+            final int fMaxY = maxY;
+            List<BetterBlockPos> topLayerBreakable = new ArrayList<>();
+            for (BetterBlockPos p : breakable) {
+                if (p.y >= fMaxY - 1) { // Current top 2 layers
+                    topLayerBreakable.add(p);
+                }
+            }
+
+            // Sort top layer in snake pattern (row-by-row, alternating left-to-right and right-to-left)
+            topLayerBreakable.sort((a, b) -> {
                 if (a.y != b.y) {
                     return Integer.compare(b.y, a.y); // Dig higher layers first
                 }
@@ -874,11 +894,11 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
                 return Integer.compare(colA, colB);
             });
 
-            BetterBlockPos first = breakable.get(0);
+            BetterBlockPos first = topLayerBreakable.get(0);
             int activeCoord = fRowAxisIsZ ? first.z : first.x;
             int activeY = first.y;
             List<BetterBlockPos> currentActiveRow = new ArrayList<>();
-            for (BetterBlockPos p : breakable) {
+            for (BetterBlockPos p : topLayerBreakable) {
                 int pCoord = fRowAxisIsZ ? p.z : p.x;
                 if (pCoord == activeCoord && p.y == activeY) {
                     currentActiveRow.add(p);
@@ -1101,31 +1121,13 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
             if (dx == 0 && dz == 0 && dy == 1 && breakableCount > 1) {
                 return false;
             }
-            // Cannot stand in lava
-            IBlockState feet = ctx.world().getBlockState(new BlockPos(x, y, z));
-            if (feet.getMaterial() == Material.LAVA) {
-                return false;
-            }
-            IBlockState head = ctx.world().getBlockState(new BlockPos(x, y + 1, z));
-            if (head.getMaterial() == Material.LAVA) {
-                return false;
-            }
-            // Cannot suffocate inside a solid block
-            if (feet.getMaterial().isSolid() && !(feet.getBlock() instanceof BlockLiquid)) {
-                return false;
-            }
             return true;
         }
 
         @Override
         public double heuristic(int x, int y, int z) {
             double h = super.heuristic(x, y, z);
-            // Strong preference for standing on solid foothold under feet ("có block lót dưới chân")
-            IBlockState under = ctx.world().getBlockState(new BlockPos(x, y - 1, z));
-            if (!under.getMaterial().isSolid() || under.getBlock() instanceof BlockLiquid || under.getBlock() == Blocks.AIR) {
-                h += 100.0;
-            }
-            // Strong preference for stepping back to the next row (row > targetRow)
+            // Pure math bias for stepping back to next row (row > targetRow) without touching world locks
             if (lastRowIndex > targetRow && isInSelectionBounds(x, z)) {
                 int standingRow = getRowIndex(x, z);
                 if (standingRow <= targetRow) {

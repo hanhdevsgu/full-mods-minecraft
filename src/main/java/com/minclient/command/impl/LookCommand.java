@@ -14,8 +14,8 @@ public class LookCommand extends Command {
 
     @Override
     public void execute(String[] args) {
-        if (args.length < 2) {
-            sendMessage("§c[MinClient] Sai cú pháp! Sử dụng: .look <yaw> <pitch>");
+        if (args.length != 2) {
+            sendMessage("§c[MinClient] Sai cú pháp! Chỉ nhập đúng 2 tham số: .look <yaw> <pitch>");
             return;
         }
 

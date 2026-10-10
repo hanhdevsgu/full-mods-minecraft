@@ -15,11 +15,7 @@ public class CommandManager {
 
     public CommandManager(ModuleManager moduleManager) {
         this.moduleManager = moduleManager;
-        LookCommand lookCommand = new LookCommand();
-        registerCommand(lookCommand);
-        commands.put("rotate", lookCommand);
-        commands.put("aim", lookCommand);
-        commands.put("r", lookCommand);
+        registerCommand(new LookCommand());
         registerCommand(new ToggleCommand(moduleManager));
         registerCommand(new LightCommand(moduleManager));
         registerCommand(new HelpCommand(this, moduleManager));

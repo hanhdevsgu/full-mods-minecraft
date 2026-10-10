@@ -1,6 +1,5 @@
 package com.minclient.module;
 
-import com.minclient.module.impl.AimbotModule;
 import com.minclient.module.impl.FastInteractModule;
 import com.minclient.module.impl.LightModule;
 import com.minclient.module.impl.NoPushModule;
@@ -15,18 +14,15 @@ public class ModuleManager {
     private final NoPushModule noPushModule;
     private final FastInteractModule fastInteractModule;
     private final LightModule lightModule;
-    private final AimbotModule aimbotModule;
 
     public ModuleManager() {
         this.noPushModule = new NoPushModule();
         this.fastInteractModule = new FastInteractModule();
         this.lightModule = new LightModule();
-        this.aimbotModule = new AimbotModule();
 
         modules.add(this.noPushModule);
         modules.add(this.fastInteractModule);
         modules.add(this.lightModule);
-        modules.add(this.aimbotModule);
     }
 
     public List<Module> getModules() {
@@ -52,10 +48,6 @@ public class ModuleManager {
 
     public LightModule getLightModule() {
         return lightModule;
-    }
-
-    public AimbotModule getAimbotModule() {
-        return aimbotModule;
     }
 
     public void onTick() {

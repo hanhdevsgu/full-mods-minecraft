@@ -26,7 +26,7 @@ Bản mod tiện ích tinh gọn dành cho **Minecraft Forge 1.12.2**, tích h�
 Bấm vào các liên kết bên dưới để tải trực tiếp các file mod phiên bản mới nhất:
 
 ### 1️⃣ 👉 [Tải Xuống MinClient-1.12.2-1.0.0.jar (Click để tải)](https://github.com/hanhdevsgu/full-mods-minecraft/releases/download/v1.2.19/MinClient-1.12.2-1.0.0.jar)
-> *Bao gồm Impact ClickGUI, Aimbot, NoPush, Light Fullbright, FastInteract, chống rò rỉ chat 100% và tích hợp sẵn Baritone API.*
+> *Bao gồm Impact ClickGUI (RSHIFT), NoPush, Light Fullbright, FastInteract, chống rò rỉ chat 100% và tích hợp sẵn Baritone API.*
 
 ### 2️⃣ 👉 [Tải Xuống baritone-api-forge-1.2.19.jar (Click để tải)](https://github.com/hanhdevsgu/full-mods-minecraft/releases/download/v1.2.19/baritone-api-forge-1.2.19.jar)
 > *Bộ máy tìm đường tự động Baritone 100% gốc cho Forge (đầy đủ API, hỗ trợ đào bới xuyên khối, parkour nhảy cao, bắc cầu, leo thang, vượt mọi địa hình).*
@@ -37,8 +37,7 @@ Bấm vào các liên kết bên dưới để tải trực tiếp các file mod
 
 ### 1. Phím tắt mở giao diện điều khiển
 - Nhấn phím **`RSHIFT` (Shift Phải)** để bật/tắt bảng **Impact ClickGUI**.
-- Tại bảng điều khiển, bạn có thể nhấp chuột để bật/tắt nhanh các chức năng:
-  - **Aimbot**: Tự động khóa tâm ngắm camera vào mục tiêu gần nhất.
+- Tại bảng điều khiển, bạn có thể nhấp chuột để bật/tắt nhanh 3 chức năng chính:
   - **Light (Fullbright)**: Tăng sáng tối đa ban đêm và trong hang tối không cần đuốc.
   - **NoPush**: Chống bị xô đẩy bởi mob, người chơi khác, dòng nước và khối kẹt.
   - **FastInteract**: Đặt khối và sử dụng đồ tức thì không có độ trễ chuột phải.

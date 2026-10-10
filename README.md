@@ -40,13 +40,3 @@ Kéo xuống đây và bấm vào liên kết dưới để tải trực tiếp 
 ### 👉 [Tải Xuống baritone-standalone-forge-1.2.19.jar (Click để tải)](https://github.com/hanhdevsgu/full-mods-minecraft/releases/download/v1.2.19/baritone-standalone-forge-1.2.19.jar)
 
 *(File mod Baritone độc lập chạy trên Forge 1.12.2)*
-
----
-
-### 📦 Các bản mod & mã nguồn liên quan khác trong kho lưu trữ:
-- **MinClient 1.12.2** (Client rút gọn ClickGUI + A* Goto): [Tải MinClient-1.12.2-1.0.0.jar](https://github.com/hanhdevsgu/full-mods-minecraft/releases/download/v1.2.19/MinClient-1.12.2-1.0.0.jar) | Nhánh mã nguồn: [source-miniclient](https://github.com/hanhdevsgu/full-mods-minecraft/tree/source-miniclient)
-- **Impact Client 4.9.1 (1.12.2)**: [Tải Impact-4.9.1-1.12.2.jar](https://github.com/hanhdevsgu/full-mods-minecraft/releases/download/v1.2.19/Impact-4.9.1-1.12.2.jar)
-- **Auto Hotbar Refill**: [Tải AutoHotbarRefill-1.12.2-1.0.jar](https://github.com/hanhdevsgu/full-mods-minecraft/releases/download/v1.2.19/AutoHotbarRefill-1.12.2-1.0.jar) | Nhánh mã nguồn: [source-build](https://github.com/hanhdevsgu/full-mods-minecraft/tree/source-build)
-- **Quick Craft**: [Tải quickcraft-1.0.jar](https://github.com/hanhdevsgu/full-mods-minecraft/releases/download/v1.2.19/quickcraft-1.0.jar) | Nhánh mã nguồn: [source-quickcraft](https://github.com/hanhdevsgu/full-mods-minecraft/tree/source-quickcraft)
-
-

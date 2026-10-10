@@ -362,7 +362,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
     private Optional<Placement> searchForPlaceables(BuilderCalculationContext bcc, List<IBlockState> desirableOnHotbar) {
         BetterBlockPos center = ctx.playerFeet();
         for (int dx = -5; dx <= 5; dx++) {
-            for (int dy = -5; dy <= 1; dy++) {
+            for (int dy = -5; dy <= 3; dy++) {
                 for (int dz = -5; dz <= 5; dz++) {
                     int x = center.x + dx;
                     int y = center.y + dy;
@@ -373,9 +373,6 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
                     }
                     IBlockState curr = bcc.bsi.get0(x, y, z);
                     if (MovementHelper.isReplaceable(x, y, z, curr, bcc.bsi) && !valid(curr, desired, false)) {
-                        if (dy == 1 && bcc.bsi.get0(x, y + 1, z).getBlock() == Blocks.AIR) {
-                            continue;
-                        }
                         desirableOnHotbar.add(desired);
                         Optional<Placement> opt = possibleToPlace(desired, x, y, z, bcc.bsi);
                         if (opt.isPresent()) {
@@ -389,27 +386,28 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
     }
 
     private Optional<Placement> possibleToPlace(IBlockState toPlace, int x, int y, int z, BlockStateInterface bsi) {
+        BetterBlockPos targetPos = new BetterBlockPos(x, y, z);
         for (EnumFacing against : EnumFacing.values()) {
-            BetterBlockPos placeAgainstPos = new BetterBlockPos(x, y, z).offset(against);
+            BetterBlockPos placeAgainstPos = targetPos.offset(against);
             IBlockState placeAgainstState = bsi.get0(placeAgainstPos);
             if (MovementHelper.isReplaceable(placeAgainstPos.x, placeAgainstPos.y, placeAgainstPos.z, placeAgainstState, bsi)) {
                 continue;
             }
-            if (!ctx.world().mayPlace(toPlace.getBlock(), new BetterBlockPos(x, y, z), false, against, null)) {
+            EnumFacing sideToClick = against.getOpposite();
+            if (!ctx.world().mayPlace(toPlace.getBlock(), targetPos, false, sideToClick, null)) {
                 continue;
             }
             AxisAlignedBB aabb = placeAgainstState.getBoundingBox(ctx.world(), placeAgainstPos);
-            for (Vec3d placementMultiplier : aabbSideMultipliers(against)) {
+            for (Vec3d placementMultiplier : aabbSideMultipliers(sideToClick)) {
                 double placeX = placeAgainstPos.x + aabb.minX * placementMultiplier.x + aabb.maxX * (1 - placementMultiplier.x);
                 double placeY = placeAgainstPos.y + aabb.minY * placementMultiplier.y + aabb.maxY * (1 - placementMultiplier.y);
                 double placeZ = placeAgainstPos.z + aabb.minZ * placementMultiplier.z + aabb.maxZ * (1 - placementMultiplier.z);
                 Rotation rot = RotationUtils.calcRotationFromVec3d(RayTraceUtils.inferSneakingEyePosition(ctx.player()), new Vec3d(placeX, placeY, placeZ), ctx.playerRotations());
-                Rotation actualRot = baritone.getLookBehavior().getAimProcessor().peekRotation(rot);
-                RayTraceResult result = RayTraceUtils.rayTraceTowards(ctx.player(), actualRot, ctx.playerController().getBlockReachDistance(), true);
-                if (result != null && result.typeOfHit == RayTraceResult.Type.BLOCK && result.getBlockPos().equals(placeAgainstPos) && result.sideHit == against.getOpposite()) {
-                    OptionalInt hotbar = hasAnyItemThatWouldPlace(toPlace, result, actualRot);
+                RayTraceResult result = RayTraceUtils.rayTraceTowards(ctx.player(), rot, ctx.playerController().getBlockReachDistance(), true);
+                if (result != null && result.typeOfHit == RayTraceResult.Type.BLOCK && result.getBlockPos().equals(placeAgainstPos) && result.sideHit == sideToClick) {
+                    OptionalInt hotbar = hasAnyItemThatWouldPlace(toPlace, result, rot);
                     if (hotbar.isPresent()) {
-                        return Optional.of(new Placement(hotbar.getAsInt(), placeAgainstPos, against.getOpposite(), rot));
+                        return Optional.of(new Placement(hotbar.getAsInt(), placeAgainstPos, sideToClick, rot));
                     }
                 }
             }
@@ -600,12 +598,19 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         }
         List<IBlockState> desirableOnHotbar = new ArrayList<>();
         Optional<Placement> toPlace = searchForPlaceables(bcc, desirableOnHotbar);
-        if (toPlace.isPresent() && isSafeToCancel && ctx.player().onGround && ticks <= 0) {
+        if (toPlace.isPresent() && isSafeToCancel && (ctx.player().onGround || hasFoothold) && ticks <= 0) {
             Rotation rot = toPlace.get().rot;
             baritone.getLookBehavior().updateTarget(rot, true);
             ctx.player().inventory.currentItem = toPlace.get().hotbarSelection;
             baritone.getInputOverrideHandler().setInputForceState(Input.SNEAK, true);
-            if ((ctx.isLookingAt(toPlace.get().placeAgainst) && ctx.objectMouseOver().sideHit.equals(toPlace.get().side)) || ctx.playerRotations().isReallyCloseTo(rot)) {
+
+            RayTraceResult trace = ctx.objectMouseOver();
+            boolean isAimingAtTarget = (trace != null && trace.typeOfHit == RayTraceResult.Type.BLOCK
+                    && trace.getBlockPos().equals(toPlace.get().placeAgainst)
+                    && trace.sideHit == toPlace.get().side)
+                    || ctx.playerRotations().isReallyCloseTo(rot);
+
+            if (isAimingAtTarget) {
                 baritone.getInputOverrideHandler().setInputForceState(Input.CLICK_RIGHT, true);
             }
             return new PathingCommand(null, PathingCommandType.CANCEL_AND_SET_GOAL);
@@ -1030,7 +1035,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         IBlockState current = ctx.world().getBlockState(pos);
         for (EnumFacing facing : Movement.HORIZONTALS_BUT_ALSO_DOWN_____SO_EVERY_DIRECTION_EXCEPT_UP) {
             //noinspection ConstantConditions
-            if (MovementHelper.canPlaceAgainst(ctx, pos.offset(facing)) && ctx.world().mayPlace(bcc.getSchematic(pos.getX(), pos.getY(), pos.getZ(), current).getBlock(), pos, false, facing, null)) {
+            if (MovementHelper.canPlaceAgainst(ctx, pos.offset(facing)) && ctx.world().mayPlace(bcc.getSchematic(pos.getX(), pos.getY(), pos.getZ(), current).getBlock(), pos, false, facing.getOpposite(), null)) {
                 return new GoalAdjacent(pos, pos.offset(facing), allowSameLevel);
             }
         }

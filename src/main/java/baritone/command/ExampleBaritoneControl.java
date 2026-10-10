@@ -42,10 +42,14 @@ import net.minecraft.util.text.TextFormatting;
 import net.minecraft.util.text.event.ClickEvent;
 import net.minecraft.util.text.event.HoverEvent;
 
+import baritone.api.event.events.TickEvent;
+import baritone.api.event.events.WorldEvent;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.List;
 import java.util.Locale;
+import java.util.Queue;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.stream.Stream;
 
 import static baritone.api.command.IBaritoneChatControl.FORCE_COMMAND_PREFIX;
@@ -55,24 +59,135 @@ public class ExampleBaritoneControl extends Behavior implements Helper {
     private static final Settings settings = BaritoneAPI.getSettings();
     private final ICommandManager manager;
 
+    private static long worldJoinTime = System.currentTimeMillis();
+    private static long lastServerCommandTime = 0;
+    private static final Queue<String> queuedServerCommands = new ConcurrentLinkedQueue<>();
+    private static boolean isDispatchingThrottledCommand = false;
+
     public ExampleBaritoneControl(Baritone baritone) {
         super(baritone);
         this.manager = baritone.getCommandManager();
     }
 
     @Override
+    public void onWorldEvent(WorldEvent event) {
+        worldJoinTime = System.currentTimeMillis();
+        queuedServerCommands.clear();
+        lastServerCommandTime = 0;
+    }
+
+    @Override
+    public void onTick(TickEvent event) {
+        if (event.getType() != TickEvent.Type.IN) {
+            return;
+        }
+        if (ctx.player() == null || ctx.world() == null) {
+            return;
+        }
+        if (ctx.minecraft().isSingleplayer()) {
+            return;
+        }
+
+        if (!queuedServerCommands.isEmpty()) {
+            long now = System.currentTimeMillis();
+            if (now - worldJoinTime < 3500) {
+                return;
+            }
+            if (now - lastServerCommandTime < 1500) {
+                return;
+            }
+
+            String nextCmd = queuedServerCommands.poll();
+            if (nextCmd != null) {
+                isDispatchingThrottledCommand = true;
+                try {
+                    lastServerCommandTime = now;
+                    ctx.player().sendChatMessage(nextCmd);
+                } finally {
+                    isDispatchingThrottledCommand = false;
+                }
+            }
+        }
+    }
+
+    @Override
     public void onSendChatMessage(ChatEvent event) {
+        if (isDispatchingThrottledCommand) {
+            return;
+        }
+
         String msg = event.getMessage();
+        if (msg == null) {
+            return;
+        }
+        String trimmed = msg.trim();
+        if (trimmed.isEmpty()) {
+            return;
+        }
+
         String prefix = settings.prefix.value;
-        boolean forceRun = msg.startsWith(FORCE_COMMAND_PREFIX);
-        if ((settings.prefixControl.value && msg.startsWith(prefix)) || forceRun) {
+        boolean forceRun = trimmed.startsWith(FORCE_COMMAND_PREFIX);
+
+        // 1. Check prefixes: FORCE_COMMAND_PREFIX, settings.prefix, '.', ',', '#'
+        String matchedPrefix = null;
+        if (forceRun) {
+            matchedPrefix = FORCE_COMMAND_PREFIX;
+        } else if (settings.prefixControl.value && trimmed.startsWith(prefix)) {
+            matchedPrefix = prefix;
+        } else if (trimmed.startsWith(".")) {
+            matchedPrefix = ".";
+        } else if (trimmed.startsWith(",")) {
+            matchedPrefix = ",";
+        } else if (trimmed.startsWith("#")) {
+            matchedPrefix = "#";
+        }
+
+        if (matchedPrefix != null) {
             event.cancel();
-            String commandStr = msg.substring(forceRun ? FORCE_COMMAND_PREFIX.length() : prefix.length());
-            if (!runCommand(commandStr) && !commandStr.trim().isEmpty()) {
+            String commandStr = trimmed.substring(matchedPrefix.length()).trim();
+            if (!runCommand(commandStr) && !commandStr.isEmpty()) {
                 new CommandNotFoundException(CommandManager.expand(commandStr).getFirst()).handle(null, null);
             }
-        } else if ((settings.chatControl.value || settings.chatControlAnyway.value) && runCommand(msg)) {
+            return;
+        }
+
+        // 2. Check if user typed "/#...", "/....", or "/b ...", "/baritone ..."
+        if (trimmed.startsWith("/#") || trimmed.startsWith("/.")) {
             event.cancel();
+            String commandStr = trimmed.substring(2).trim();
+            runCommand(commandStr);
+            return;
+        }
+        if (trimmed.toLowerCase(Locale.US).startsWith("/b ") || trimmed.toLowerCase(Locale.US).startsWith("/baritone ")) {
+            event.cancel();
+            String commandStr = trimmed.substring(trimmed.indexOf(' ') + 1).trim();
+            runCommand(commandStr);
+            return;
+        }
+
+        // 3. Check if user typed a Baritone command directly without prefix (e.g. "sel 1", "sel 2", "sel fill dirt", "sel ca", "stop")
+        Tuple<String, List<ICommandArgument>> pair = CommandManager.expand(trimmed);
+        String firstWord = pair.getFirst().toLowerCase(Locale.US);
+        if (this.manager.getCommand(firstWord) != null || settings.byLowerName.containsKey(firstWord)) {
+            event.cancel();
+            runCommand(trimmed);
+            return;
+        }
+
+        // 4. Rate-limit real server commands starting with '/' to prevent "You used a command too fast!"
+        if (trimmed.startsWith("/") && !ctx.minecraft().isSingleplayer()) {
+            long now = System.currentTimeMillis();
+            boolean tooSoonAfterJoin = (now - worldJoinTime < 3500);
+            boolean tooFastAfterLastCmd = (now - lastServerCommandTime < 1500);
+
+            if (tooSoonAfterJoin || tooFastAfterLastCmd) {
+                event.cancel();
+                queuedServerCommands.offer(trimmed);
+                long waitMs = tooSoonAfterJoin ? (3500 - (now - worldJoinTime)) : (1500 - (now - lastServerCommandTime));
+                logDirect(String.format("§e[AntiKick] §7Đã hoãn lệnh §f%s §7(%d ms) để chống kick 'You used a command too fast'!", trimmed, waitMs));
+                return;
+            }
+            lastServerCommandTime = now;
         }
     }
 

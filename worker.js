@@ -288,14 +288,13 @@ class BotInstance {
         this.DN_RETRY_DELAY_MS = settings.dn_retry_ms !== undefined ? Math.max(1000, Number(settings.dn_retry_ms) || 1000) : 1000;
         this.DN_MAX_ATTEMPTS = settings.dn_max_attempts !== undefined ? Math.max(1, Number(settings.dn_max_attempts) || 8) : 8;
         this._spawn_at = 0;
+        this._already_logged_in = false;
+        this._in_lobby_state = false;
 
-        // Chuẩn bị mở GUI compass: đợi 2 phút rồi mới mở GUI + click Diamond Axe.
-        // Chưa vào được server thì cứ 2 phút retry 1 lần cho tới khi thành công.
-        this.COMPASS_OPEN_DELAY_MS = settings.compass_open_delay_ms !== undefined ? settings.compass_open_delay_ms : 2 * 60 * 1000;
-        this.AXE_RETRY_MS = settings.axe_retry_ms !== undefined ? settings.axe_retry_ms : 2 * 60 * 1000;
+        // Chuẩn bị mở GUI compass: mở ngay sau 1-1.5s và retry mỗi 5s
+        this.COMPASS_OPEN_DELAY_MS = Number.isFinite(Number(settings.compass_open_delay_ms)) ? Number(settings.compass_open_delay_ms) : 1000;
+        this.AXE_RETRY_MS = Number.isFinite(Number(settings.axe_retry_ms)) ? Number(settings.axe_retry_ms) : 5000;
         this._verify_token = 0;
-        // Lần bấm Start đầu tiên: vào liền (không đợi COMPASS_OPEN_DELAY_MS). Các lần sau
-        // (reconnect, bị đưa về lobby...) mới đợi 2 phút.
         this._initial_join_pending = false;
 
         // ⭐ FIX CHỈ GỬI /dn ĐÚNG 2 TRƯỜNG HỢP: (1) lần bấm Chạy đầu tiên (login đầu),
@@ -480,6 +479,7 @@ class BotInstance {
 
     sendDn(reason = '', minGapMs = 2500) {
         if (!this.bot || !this.running) return false;
+        if (this._already_logged_in) return false;
         const now = Date.now();
         if (now - this._last_dn_at < minGapMs) return false;
         this._last_dn_at = now;
@@ -588,6 +588,10 @@ class BotInstance {
     _handleCompassDetected(reason = 'compass') {
         if (!this.running || !this.bot) return;
 
+        // Tránh trigger lặp liên tục mỗi giây nếu đang ở trạng thái lobby
+        if (this._in_lobby_state) return;
+        this._in_lobby_state = true;
+
         this._had_compass_state = true;
         this.joined_server = false;
         this.gui_opened = false;
@@ -606,9 +610,13 @@ class BotInstance {
         if (this.anti_afk_running) this.stopAntiAfk();
         if (this.auto_farm_running) this.stopAutoFarm();
 
-        // Gửi /dn đăng nhập
-        this.sendDn(`lobby có compass: ${reason}`);
-        this.startDnLoop(`lobby có compass: ${reason}`);
+        // Chỉ gửi /dn nếu CHƯA đăng nhập
+        if (!this._already_logged_in) {
+            this.sendDn(`lobby có compass: ${reason}`);
+            this.startDnLoop(`lobby có compass: ${reason}`);
+        } else {
+            this.log(`🔑 Đã đăng nhập trước đó → Không gửi lại /dn, mở ngay GUI compass...`, '#2ecc71');
+        }
 
         // Chạy quy trình mở compass & click axe (chỉ chạy 1 instance)
         if (!this._verify_join_running) {
@@ -649,6 +657,8 @@ class BotInstance {
         this.auto_storage_running = false;
         this._storage_active_clear_config = null;
         this.joined_server = false;
+        this._in_lobby_state = false;
+        this._already_logged_in = false;
         this._goto_in_progress = false;
         this._storage_cycle_in_progress = false;
         this._toss_non_target_in_progress = false;
@@ -4909,7 +4919,7 @@ class BotInstance {
         check();
     }
 
-    verifyJoinViaAxe(maxRetries = Infinity, retryDelay = this.AXE_RETRY_MS, firstDelay = this._initial_join_pending ? 1000 : this.COMPASS_OPEN_DELAY_MS) {
+    verifyJoinViaAxe(maxRetries = Infinity, retryDelay = this.AXE_RETRY_MS, firstDelay = 1000) {
         if (this._verify_join_running || this.joined_server) return;
         const myEpoch = this._conn_epoch;
         const myToken = ++this._verify_token;
@@ -5201,6 +5211,7 @@ class BotInstance {
     markJoinedServer() {
         if (this.joined_server) return;
         this.joined_server = true;
+        this._in_lobby_state = false;
         this._stopDnLoop();
         this._stableConnAt = Date.now();
         this._verify_join_running = false;
@@ -5555,8 +5566,13 @@ class BotInstance {
 
                 try {
                     const plain = msg.toString();
-                    if (/\/dn\b|\/login\b|đăng nhập|dang nhap|bạn phải đăng nhập|vui lòng gõ lệnh|mật-khẩu/i.test(plain)) {
-                        this.sendDn('server yêu cầu đăng nhập trong chat', 2500);
+                    if (/đã đăng nhập|da dang nhap|đăng nhập thành công/i.test(plain)) {
+                        this._already_logged_in = true;
+                        this._stopDnLoop();
+                    } else if (/\/dn\b|\/login\b|chưa đăng nhập|bạn phải đăng nhập|vui lòng gõ lệnh|mật-khẩu/i.test(plain)) {
+                        if (!this._already_logged_in) {
+                            this.sendDn('server yêu cầu đăng nhập trong chat', 2500);
+                        }
                     }
                 } catch (e) {}
 

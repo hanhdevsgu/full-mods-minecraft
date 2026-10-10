@@ -57,6 +57,12 @@ processResources {
 }
 
 jar {
+    from {
+        fileTree(dir: 'libs', include: ['*.jar']).collect { zipTree(it) }
+    } {
+        exclude 'META-INF/*.RSA', 'META-INF/*.SF', 'META-INF/*.DSA'
+    }
+
     manifest {
         attributes([
             "Specification-Title": "MinClient",

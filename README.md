@@ -10,13 +10,13 @@ Bản mod tiện ích tinh gọn dành cho **Minecraft Forge 1.12.2**, tích h�
 
 1. **Tải xuống 2 file mod** ở mục **[📥 Tải Xuống (Download)](#-tải-xuống-download)** ở dưới:
    - `MinClient-1.12.2-1.0.0.jar`
-   - `baritone-standalone-forge-1.2.19.jar`
+   - `baritone-api-forge-1.2.19.jar`
 2. Nhấn tổ hợp phím **`Windows + R`** trên bàn phím, nhập:
    ```text
    %appdata%\.minecraft\mods
    ```
    rồi nhấn **Enter** (hoặc mở thư mục `mods` trong thư mục cài đặt game của bạn).
-3. **Sao chép cả 2 file `.jar`** vừa tải vào thư mục `mods`.
+3. **Sao chép cả 2 file `.jar`** vừa tải vào thư mục `mods` (nếu có bản `baritone-standalone-forge` cũ hãy xóa đi).
 4. Mở Minecraft Launcher và khởi chạy với phiên bản **Forge 1.12.2**.
 
 ---
@@ -26,10 +26,10 @@ Bản mod tiện ích tinh gọn dành cho **Minecraft Forge 1.12.2**, tích h�
 Bấm vào các liên kết bên dưới để tải trực tiếp các file mod phiên bản mới nhất:
 
 ### 1️⃣ 👉 [Tải Xuống MinClient-1.12.2-1.0.0.jar (Click để tải)](https://github.com/hanhdevsgu/full-mods-minecraft/releases/download/v1.2.19/MinClient-1.12.2-1.0.0.jar)
-> *Bao gồm Impact ClickGUI, Aimbot, NoPush, Light Fullbright, FastInteract, chống rò rỉ chat 100% và cầu nối API Baritone.*
+> *Bao gồm Impact ClickGUI, Aimbot, NoPush, Light Fullbright, FastInteract, chống rò rỉ chat 100% và tích hợp sẵn Baritone API.*
 
-### 2️⃣ 👉 [Tải Xuống baritone-standalone-forge-1.2.19.jar (Click để tải)](https://github.com/hanhdevsgu/full-mods-minecraft/releases/download/v1.2.19/baritone-standalone-forge-1.2.19.jar)
-> *Bộ máy tìm đường tự động Baritone 100% gốc (hỗ trợ đào bới xuyên khối, parkour nhảy cao, bắc cầu, leo thang, vượt mọi địa hình).*
+### 2️⃣ 👉 [Tải Xuống baritone-api-forge-1.2.19.jar (Click để tải)](https://github.com/hanhdevsgu/full-mods-minecraft/releases/download/v1.2.19/baritone-api-forge-1.2.19.jar)
+> *Bộ máy tìm đường tự động Baritone 100% gốc cho Forge (đầy đủ API, hỗ trợ đào bới xuyên khối, parkour nhảy cao, bắc cầu, leo thang, vượt mọi địa hình).*
 
 ---
 

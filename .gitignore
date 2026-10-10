@@ -1,7 +1,0 @@
-*.mp4
-*.jpg
-*.png
-*.zip
-__pycache__/
-node_modules/
-botfarm/

@@ -3,7 +3,6 @@ package com.minclient.command.impl;
 import baritone.api.BaritoneAPI;
 import baritone.api.utils.Rotation;
 import com.minclient.command.Command;
-import com.minclient.util.CameraLockManager;
 import net.minecraft.network.play.client.CPacketPlayer;
 import net.minecraft.util.math.MathHelper;
 
@@ -16,21 +15,11 @@ public class LookCommand extends Command {
     @Override
     public void execute(String[] args) {
         if (args.length < 1) {
-            sendMessage("§c[MinClient] Sai cú pháp! Sử dụng: .look <yaw> <pitch> hoặc .look <x> <y> <z> (Dùng .unlock để mở khóa chuột)");
+            sendMessage("§c[MinClient] Sai cú pháp! Sử dụng: .look <yaw> <pitch> hoặc .look <x> <y> <z>");
             return;
         }
 
         if (mc.player == null) {
-            return;
-        }
-
-        // Mở khóa nếu người dùng nhập .look unlock / off / free / reset
-        if (args[0].equalsIgnoreCase("unlock") || args[0].equalsIgnoreCase("off") || args[0].equalsIgnoreCase("free") || args[0].equalsIgnoreCase("reset")) {
-            if (CameraLockManager.isLocked()) {
-                CameraLockManager.unlock("Lệnh .look unlock");
-            } else {
-                sendMessage("§e[MinClient] Chuột và góc nhìn hiện không bị khóa.");
-            }
             return;
         }
 
@@ -53,11 +42,29 @@ public class LookCommand extends Command {
                 pitch = (float) -Math.toDegrees(Math.atan2(diffY, horizontalDistance));
 
             } else if (args.length == 2) {
-                // Chuẩn 100% Impact 4.9.1: .look <yaw> <pitch>
-                yaw = parseAngle(args[0], mc.player.rotationYaw);
-                pitch = parseAngle(args[1], mc.player.rotationPitch);
+                // Hỗ trợ flag như Impact: .look yaw <val> hoặc .look pitch <val>
+                if (args[0].equalsIgnoreCase("pitch") || args[0].equalsIgnoreCase("p")) {
+                    pitch = parseAngle(args[1], mc.player.rotationPitch);
+                    yaw = mc.player.rotationYaw;
+                } else if (args[0].equalsIgnoreCase("yaw") || args[0].equalsIgnoreCase("y")) {
+                    yaw = parseAngle(args[1], mc.player.rotationYaw);
+                    pitch = mc.player.rotationPitch;
+                } else {
+                    // Chuẩn Impact 4.9.1: .look <yaw> <pitch>
+                    float val0 = parseAngle(args[0], mc.player.rotationYaw);
+                    float val1 = parseAngle(args[1], mc.player.rotationPitch);
+
+                    // Tự động nhận diện nếu người dùng gõ góc pitch trước yaw (> 90 chỉ có thể là yaw)
+                    if (Math.abs(val1) > 90.0F && Math.abs(val0) <= 90.0F) {
+                        pitch = val0;
+                        yaw = val1;
+                    } else {
+                        yaw = val0;
+                        pitch = val1;
+                    }
+                }
             } else {
-                // 1 tham số (chuẩn Impact 4.9.1): đặt yaw, giữ nguyên pitch hiện tại
+                // 1 tham số (chuẩn Impact 4.9.1): đặt yaw, giữ nguyên pitch
                 yaw = parseAngle(args[0], mc.player.rotationYaw);
                 pitch = mc.player.rotationPitch;
             }
@@ -94,11 +101,7 @@ public class LookCommand extends Command {
                 }
             } catch (Throwable ignored) {}
 
-            // Khóa cứng góc nhìn và vô hiệu hóa chuột chống vô tình đụng chuột
-            CameraLockManager.lock(yaw, pitch);
-
-            sendMessage(String.format("§a[MinClient] Đã xoay chuẩn Impact: Yaw = %.2f°, Pitch = %.2f° §e[ĐÃ KHÓA CHUỘT]", yaw, pitch));
-            sendMessage("§7(Chuột sẽ tự mở khóa khi bạn về nhà /home hoặc gõ .unlock)");
+            sendMessage(String.format("§a[MinClient] Yaw: %.2f°, Pitch: %.2f°", yaw, pitch));
         } catch (NumberFormatException e) {
             sendMessage("§c[MinClient] Giá trị góc quay không hợp lệ: " + e.getMessage());
         }

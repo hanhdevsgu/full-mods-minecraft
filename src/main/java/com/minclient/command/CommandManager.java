@@ -20,7 +20,6 @@ public class CommandManager {
         commands.put("rotate", lookCommand);
         commands.put("aim", lookCommand);
         commands.put("r", lookCommand);
-        registerCommand(new UnlockCommand());
         registerCommand(new ToggleCommand(moduleManager));
         registerCommand(new LightCommand(moduleManager));
         registerCommand(new HelpCommand(this, moduleManager));

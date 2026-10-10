@@ -15,7 +15,14 @@ public class StopCommand extends Command {
             BaritoneAPI.getProvider().getPrimaryBaritone().getPathingBehavior().cancelEverything();
             sendMessage("§a[Baritone] Đã dừng toàn bộ hành động di chuyển.");
         } catch (Throwable t) {
-            sendMessage("§c[Baritone] Lỗi khi dừng: " + t.getMessage());
+            try {
+                Object cmdManager = BaritoneAPI.getProvider().getPrimaryBaritone().getCommandManager();
+                java.lang.reflect.Method execMethod = cmdManager.getClass().getMethod("execute", String.class);
+                execMethod.invoke(cmdManager, "stop");
+                sendMessage("§a[Baritone] Đã dừng toàn bộ hành động di chuyển.");
+            } catch (Throwable t2) {
+                sendMessage("§c[Baritone] Lỗi khi dừng: " + t.getMessage());
+            }
         }
     }
 }

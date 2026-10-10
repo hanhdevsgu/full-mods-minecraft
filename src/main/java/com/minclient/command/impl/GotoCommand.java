@@ -43,7 +43,17 @@ public class GotoCommand extends Command {
             sendMessage(String.format("§a[Baritone] Đang tìm đường và di chuyển tới [%d, %d, %d]...", targetX, targetY, targetZ));
 
             // Kích hoạt Baritone A* 100% nguyên bản
-            BaritoneAPI.getProvider().getPrimaryBaritone().getCustomGoalProcess().setGoalAndPath(new GoalBlock(targetX, targetY, targetZ));
+            try {
+                BaritoneAPI.getProvider().getPrimaryBaritone().getCustomGoalProcess().setGoalAndPath(new GoalBlock(targetX, targetY, targetZ));
+            } catch (Throwable t1) {
+                try {
+                    Object cmdManager = BaritoneAPI.getProvider().getPrimaryBaritone().getCommandManager();
+                    java.lang.reflect.Method execMethod = cmdManager.getClass().getMethod("execute", String.class);
+                    execMethod.invoke(cmdManager, String.format("goto %d %d %d", targetX, targetY, targetZ));
+                } catch (Throwable t2) {
+                    throw t1;
+                }
+            }
 
         } catch (NumberFormatException e) {
             sendMessage("§c[MinClient] Tọa độ x, y, z phải là số nguyên hoặc ký hiệu ~ hợp lệ!");

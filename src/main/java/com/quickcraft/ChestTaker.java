@@ -159,7 +159,7 @@ public class ChestTaker {
             double bestVal = Double.MAX_VALUE;
             for (Need n : needs) {
                 if (n.simSpace <= 0 && simE <= 0) continue;
-                double v = (double) (n.have + n.simTaken) / Math.max(1, n.perCraft);
+                double v = (double) (n.have + n.simTaken) / Math.max(0.0001, n.perCraftDouble);
                 if (v < bestVal) { bestVal = v; best = n; }
             }
             if (best == null) break;
@@ -314,11 +314,12 @@ public class ChestTaker {
     private static List<Need> buildNeeds(IRecipe r, List<Slot> mine, List<Slot> chest) {
         Ingredient[] grid = ClientCrafter.layoutFor(r, 3);
         if (grid == null) return null;
+        int recipeOutCount = Math.max(1, r.getRecipeOutput().getCount());
 
         List<RawReq> allRaw = new ArrayList<RawReq>();
         for (Ingredient ing : grid) {
             if (ing == null) continue;
-            List<RawReq> resolved = resolveIngredientToRaw(ing, 1.0, mine, chest, 0);
+            List<RawReq> resolved = resolveIngredientToRaw(ing, 1.0 / (double) recipeOutCount, mine, chest, 0);
             if (resolved == null || resolved.isEmpty()) return null;
             allRaw.addAll(resolved);
         }

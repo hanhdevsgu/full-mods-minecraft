@@ -273,7 +273,21 @@ public class ClientCrafter {
                     }
                     return;
                 }
-                currentRecipe = rc;
+                if (currentRecipe != null && currentRecipe != rc) {
+                    if (gridDirty(p, c)) {
+                        startClean(c, false);
+                        return;
+                    }
+                    currentRecipe = rc;
+                    lastCount = count(p, rc.getRecipeOutput());
+                    stall = 0;
+                    useBook = true;
+                } else if (currentRecipe == null) {
+                    currentRecipe = rc;
+                    lastCount = count(p, rc.getRecipeOutput());
+                    stall = 0;
+                    useBook = true;
+                }
                 int r;
                 if (useBook) {
                     int pairs = burstPairs(p, c, rc);
@@ -360,10 +374,7 @@ public class ClientCrafter {
                     return;
                 }
                 rounds++;
-                int now = count(p, target);
-                if (currentRecipe != null && currentRecipe.getRecipeOutput().getItem() != target.item) {
-                    now = count(p, currentRecipe.getRecipeOutput());
-                }
+                int now = count(p, (currentRecipe != null) ? currentRecipe.getRecipeOutput() : target.toStack());
                 if (now <= lastCount && useBook) {
                     // ban lien tiep khong ra gi (cong thuc chua unlock...) -> thu cach tu xep tung buoc
                     QuickCraftMod.logger.info("[QuickCraft] ban lien tiep khong ra item -> chuyen sang tu xep nguyen lieu");

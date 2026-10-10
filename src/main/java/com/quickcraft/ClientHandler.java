@@ -150,8 +150,15 @@ public class ClientHandler {
         if (event.getGui() instanceof GuiChest || event.getGui() instanceof GuiShulkerBox) {
             int guiWidth = event.getGui().width;
             int guiHeight = event.getGui().height;
+            int ySize = 166;
+            Minecraft mc = Minecraft.getMinecraft();
+            if (mc.player != null && mc.player.openContainer instanceof net.minecraft.inventory.ContainerChest) {
+                int slots = ((net.minecraft.inventory.ContainerChest) mc.player.openContainer).getLowerChestInventory().getSizeInventory();
+                int rows = slots / 9;
+                ySize = 114 + rows * 18;
+            }
             int btnX = (guiWidth + 176) / 2 + 4;
-            int btnY = (guiHeight - 166) / 2 + 6;
+            int btnY = (guiHeight - ySize) / 2 + 4;
             event.getButtonList().add(new GuiButton(STORE_BUTTON_ID, btnX, btnY, 44, 20, "\u00a7eStore"));
         }
     }

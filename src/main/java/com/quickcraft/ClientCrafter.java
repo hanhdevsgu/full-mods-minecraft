@@ -764,28 +764,31 @@ public class ClientCrafter {
     /**
      * Tim cong thuc tiep theo can craft:
      * 1. Uu tien cong thuc truc tiep cua target neu da co du nguyen lieu trong tui.
-     * 2. Neu thieu nguyen lieu, tim cong thuc tao ra nguyen lieu trung gian con thieu
+     * 2. Neu chua the craft truc tiep (do thieu nguyen lieu hoac chua du so luong),
+     *    tim cong thuc tao ra nguyen lieu trung gian ma tui do dang co san nguyen lieu thô
      *    (vi du: Mia -> Giay truoc khi ghep Giay + Da bo -> Sach, hoac Hat vang -> Phoi vang -> Khoi vang).
      */
     public static IRecipe getNextRecipeToCraft(EntityPlayerSP p, Container c, ItemResolver.Target target, int gridW) {
         if (target == null || candidates == null) return null;
 
-        // 1. Kiem tra cong thuc truc tiep cua target
+        // 1. Kiem tra cong thuc truc tiep cua target xem co craft duoc ngay khong
         for (IRecipe dr : candidates) {
             if (canCraft(p, c, dr, gridW)) {
                 return dr;
             }
         }
 
-        // 2. Neu chua the craft truc tiep, tim nguyen lieu trung gian con thieu
+        // 2. Neu chua the craft truc tiep, tim nguyen lieu trung gian co the che tao them
+        List<Item> visited = new ArrayList<Item>();
+        visited.add(target.item);
+
         for (IRecipe dr : candidates) {
             Ingredient[] grid = layoutFor(dr, 3);
             if (grid == null) continue;
             for (Ingredient ing : grid) {
                 if (ing == null) continue;
-                if (hasIngredientInInventory(p, ing)) continue;
 
-                IRecipe sub = findCraftableIntermediate(p, c, ing, gridW, 0);
+                IRecipe sub = findCraftableIntermediate(p, c, ing, gridW, 0, visited);
                 if (sub != null) {
                     return sub;
                 }
@@ -795,11 +798,12 @@ public class ClientCrafter {
         return null;
     }
 
-    private static IRecipe findCraftableIntermediate(EntityPlayerSP p, Container c, Ingredient missingIng, int gridW, int depth) {
+    private static IRecipe findCraftableIntermediate(EntityPlayerSP p, Container c, Ingredient missingIng, int gridW, int depth, List<Item> visited) {
         if (depth > 3) return null;
         for (IRecipe subR : ForgeRegistries.RECIPES.getValuesCollection()) {
             ItemStack out = subR.getRecipeOutput();
             if (out.isEmpty() || !missingIng.apply(out)) continue;
+            if (visited.contains(out.getItem())) continue;
             if (layoutFor(subR, 3) == null) continue;
             if (!subR.canFit(gridW, gridW)) continue;
 
@@ -809,14 +813,15 @@ public class ClientCrafter {
 
             Ingredient[] subGrid = layoutFor(subR, 3);
             if (subGrid != null) {
+                visited.add(out.getItem());
                 for (Ingredient subIng : subGrid) {
                     if (subIng == null) continue;
-                    if (hasIngredientInInventory(p, subIng)) continue;
-                    IRecipe nested = findCraftableIntermediate(p, c, subIng, gridW, depth + 1);
+                    IRecipe nested = findCraftableIntermediate(p, c, subIng, gridW, depth + 1, visited);
                     if (nested != null) {
                         return nested;
                     }
                 }
+                visited.remove(out.getItem());
             }
         }
         return null;
@@ -826,13 +831,5 @@ public class ClientCrafter {
         if (!r.canFit(gridW, gridW)) return false;
         if (burstPairs(p, c, r) > 0) return true;
         return plan(p, c, r) != null;
-    }
-
-    private static boolean hasIngredientInInventory(EntityPlayerSP p, Ingredient ing) {
-        for (int i = 0; i < 36; i++) {
-            ItemStack st = p.inventory.getStackInSlot(i);
-            if (!st.isEmpty() && ing.apply(st)) return true;
-        }
-        return false;
     }
 }

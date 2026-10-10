@@ -50,13 +50,14 @@ Nhập trực tiếp các lệnh sau vào khung chat trong game:
 
 | Lệnh | Công dụng | Ví dụ |
 | :--- | :--- | :--- |
-| **`.look <pitch> <yaw>`** | Đặt góc nhìn xoay camera theo góc ngẩng (`pitch`) và góc la bàn (`yaw`) | `.look -25 -97` hoặc `.look 0 90` |
-| **`.look <x> <y> <z>`** | Tự động chĩa thẳng tâm ngắm vào một tọa độ khối 3D chỉ định | `.look 100 64 200` hoặc `.look ~ ~1 ~` |
+| **`.look <yaw> <pitch>`** | Chuẩn 100% Impact 4.9.1: Đặt góc quay ngang (`yaw`) và góc ngẩng/cúi (`pitch`). **Tự động khóa cứng chuột** chống vô tình đụng chuột khi macro | `.look -90 90` (nhìn thẳng xuống chân), `.look -140 -25`, `.look 172 -41` |
+| **`.look <x> <y> <z>`** | Tự động chĩa thẳng tâm ngắm vào một tọa độ khối 3D chỉ định và khóa chuột | `.look 100 64 200` hoặc `.look ~ ~1 ~` |
+| **`.unlock`** / **`.look unlock`** | Mở khóa chuột thủ công (Ngoài ra chuột sẽ **tự động mở khóa ngay khi gõ `/home`** hoặc dịch chuyển về nhà) | `.unlock` |
 | **`.goto <x> <y> <z>`** | Kích hoạt Baritone tìm đường tới tọa độ chính xác X Y Z (hỗ trợ cả `~`) | `.goto 100 64 250` hoặc `#goto ~ ~ ~` |
 | **`.goto <x> <z>`** | Tự động dò độ cao mặt đất tại (X, Z) và di chuyển tới | `.goto 150 -30` |
 | **`.stop`** hoặc **`#stop`** | Hủy bỏ ngay lập tức tiến trình di chuyển của Baritone | `.stop` |
 | **`.light`** | Bật/tắt nhanh tính năng sáng nhìn đêm Fullbright | `.light` |
-| **`.t <module>`** | Bật/tắt nhanh một module | `.t Aimbot`, `.t NoPush` |
+| **`.t <module>`** | Bật/tắt nhanh một module | `.t NoPush`, `.t FastInteract` |
 | **`.help`** | Xem danh sách toàn bộ lệnh và trạng thái các module | `.help` |
 
 ---

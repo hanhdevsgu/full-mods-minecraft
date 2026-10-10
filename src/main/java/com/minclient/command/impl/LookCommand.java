@@ -3,19 +3,20 @@ package com.minclient.command.impl;
 import baritone.api.BaritoneAPI;
 import baritone.api.utils.Rotation;
 import com.minclient.command.Command;
+import com.minclient.util.CameraLockManager;
 import net.minecraft.network.play.client.CPacketPlayer;
 import net.minecraft.util.math.MathHelper;
 
 public class LookCommand extends Command {
 
     public LookCommand() {
-        super("look", "Đặt góc quay nhìn của nhân vật (.look <pitch> <yaw> hoặc .look <x> <y> <z>)", ".look <pitch> <yaw>");
+        super("look", "Đặt góc quay nhìn của nhân vật chuẩn Impact (.look <yaw> <pitch> hoặc .look <x> <y> <z>)", ".look <yaw> <pitch>");
     }
 
     @Override
     public void execute(String[] args) {
         if (args.length < 1) {
-            sendMessage("§c[MinClient] Sai cú pháp! Sử dụng: .look <pitch> <yaw> hoặc .look <x> <y> <z>");
+            sendMessage("§c[MinClient] Sai cú pháp! Sử dụng: .look <yaw> <pitch> hoặc .look <x> <y> <z> (Dùng .unlock để mở khóa chuột)");
             return;
         }
 
@@ -23,12 +24,22 @@ public class LookCommand extends Command {
             return;
         }
 
+        // Mở khóa nếu người dùng nhập .look unlock / off / free / reset
+        if (args[0].equalsIgnoreCase("unlock") || args[0].equalsIgnoreCase("off") || args[0].equalsIgnoreCase("free") || args[0].equalsIgnoreCase("reset")) {
+            if (CameraLockManager.isLocked()) {
+                CameraLockManager.unlock("Lệnh .look unlock");
+            } else {
+                sendMessage("§e[MinClient] Chuột và góc nhìn hiện không bị khóa.");
+            }
+            return;
+        }
+
         try {
-            float pitch;
             float yaw;
+            float pitch;
 
             if (args.length >= 3) {
-                // Nhìn thẳng vào tọa độ đích 3D x y z
+                // Nhìn thẳng vào tọa độ đích 3D x y z (chuẩn Impact)
                 double targetX = parseCoordinate(args[0], mc.player.posX);
                 double targetY = parseCoordinate(args[1], mc.player.posY);
                 double targetZ = parseCoordinate(args[2], mc.player.posZ);
@@ -42,37 +53,22 @@ public class LookCommand extends Command {
                 pitch = (float) -Math.toDegrees(Math.atan2(diffY, horizontalDistance));
 
             } else if (args.length == 2) {
-                // Thứ tự theo yêu cầu của bạn: .look <pitch> <yaw>
-                float val0 = parseAngle(args[0], mc.player.rotationPitch);
-                float val1 = parseAngle(args[1], mc.player.rotationYaw);
-
-                // Tự động nhận diện thông minh nếu người dùng gõ nhầm góc yaw > 90 độ vào tham số đầu
-                if (Math.abs(val0) > 90.0F && Math.abs(val1) <= 90.0F) {
-                    yaw = val0;
-                    pitch = val1;
-                } else {
-                    pitch = val0;
-                    yaw = val1;
-                }
+                // Chuẩn 100% Impact 4.9.1: .look <yaw> <pitch>
+                yaw = parseAngle(args[0], mc.player.rotationYaw);
+                pitch = parseAngle(args[1], mc.player.rotationPitch);
             } else {
-                // 1 tham số: nếu <= 90 thì đặt pitch, nếu > 90 thì đặt yaw
-                float val = parseAngle(args[0], mc.player.rotationPitch);
-                if (Math.abs(val) > 90.0F) {
-                    yaw = val;
-                    pitch = mc.player.rotationPitch;
-                } else {
-                    pitch = val;
-                    yaw = mc.player.rotationYaw;
-                }
+                // 1 tham số (chuẩn Impact 4.9.1): đặt yaw, giữ nguyên pitch hiện tại
+                yaw = parseAngle(args[0], mc.player.rotationYaw);
+                pitch = mc.player.rotationPitch;
             }
 
-            // Chuẩn hóa góc pitch trong [-90, 90]
+            // Chuẩn hóa góc pitch trong [-90, 90] (chuẩn Impact)
             pitch = MathHelper.clamp(pitch, -90.0F, 90.0F);
 
-            // Chuẩn hóa góc yaw trong [-180, 180]
+            // Chuẩn hóa góc yaw trong [-180, 180] (chuẩn Impact)
             yaw = MathHelper.wrapDegrees(yaw);
 
-            // Cập nhật toàn bộ các biến góc quay của EntityPlayerSP để camera xoay ngay lập tức
+            // Cập nhật toàn bộ các biến góc quay của EntityPlayerSP để camera xoay ngay lập tức (100% Impact)
             mc.player.rotationPitch = pitch;
             mc.player.prevRotationPitch = pitch;
             mc.player.rotationYaw = yaw;
@@ -93,36 +89,38 @@ public class LookCommand extends Command {
 
             // Đồng bộ sang Baritone LookBehavior để Baritone không ghi đè lại góc nhìn
             try {
-                BaritoneAPI.getProvider().getPrimaryBaritone().getLookBehavior().updateTarget(new Rotation(yaw, pitch), true);
+                if (BaritoneAPI.getProvider() != null && BaritoneAPI.getProvider().getPrimaryBaritone() != null) {
+                    BaritoneAPI.getProvider().getPrimaryBaritone().getLookBehavior().updateTarget(new Rotation(yaw, pitch), true);
+                }
             } catch (Throwable ignored) {}
 
-            sendMessage(String.format("§a[MinClient] Đã hướng góc nhìn tới: Pitch = %.2f°, Yaw = %.2f°", pitch, yaw));
+            // Khóa cứng góc nhìn và vô hiệu hóa chuột chống vô tình đụng chuột
+            CameraLockManager.lock(yaw, pitch);
+
+            sendMessage(String.format("§a[MinClient] Đã xoay chuẩn Impact: Yaw = %.2f°, Pitch = %.2f° §e[ĐÃ KHÓA CHUỘT]", yaw, pitch));
+            sendMessage("§7(Chuột sẽ tự mở khóa khi bạn về nhà /home hoặc gõ .unlock)");
         } catch (NumberFormatException e) {
-            sendMessage("§c[MinClient] Giá trị pitch, yaw hoặc tọa độ phải là số hợp lệ!");
+            sendMessage("§c[MinClient] Giá trị góc quay không hợp lệ: " + e.getMessage());
         }
     }
 
-    private float parseAngle(String arg, float currentAngle) throws NumberFormatException {
-        arg = arg.trim();
-        if (arg.equals("~")) {
-            return currentAngle;
+    private float parseAngle(String input, float current) throws NumberFormatException {
+        if (input.startsWith("~")) {
+            if (input.length() == 1) {
+                return current;
+            }
+            return current + Float.parseFloat(input.substring(1));
         }
-        if (arg.startsWith("~")) {
-            float offset = Float.parseFloat(arg.substring(1));
-            return currentAngle + offset;
-        }
-        return Float.parseFloat(arg);
+        return Float.parseFloat(input);
     }
 
-    private double parseCoordinate(String arg, double currentCoord) throws NumberFormatException {
-        arg = arg.trim();
-        if (arg.equals("~")) {
-            return currentCoord;
+    private double parseCoordinate(String input, double current) throws NumberFormatException {
+        if (input.startsWith("~")) {
+            if (input.length() == 1) {
+                return current;
+            }
+            return current + Double.parseDouble(input.substring(1));
         }
-        if (arg.startsWith("~")) {
-            double offset = Double.parseDouble(arg.substring(1));
-            return currentCoord + offset;
-        }
-        return Double.parseDouble(arg);
+        return Double.parseDouble(input);
     }
 }

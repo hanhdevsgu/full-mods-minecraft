@@ -20,7 +20,7 @@ public class ToggleCommand extends Command {
         }
 
         String modName = args[0];
-        Module module = moduleManager.getModule(modName);
+        Module module = moduleManager.getModuleByName(modName);
         if (module == null) {
             sendMessage("§c[MinClient] Không tìm thấy module: " + modName);
             return;

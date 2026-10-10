@@ -4,6 +4,7 @@ run/
 out/
 bin/
 *.jar
+!libs/*.jar
 *.class
 *.log
 

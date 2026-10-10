@@ -1,22 +1,21 @@
 package com.minclient.command.impl;
 
+import baritone.api.BaritoneAPI;
+import baritone.api.utils.Rotation;
 import com.minclient.command.Command;
-import com.minclient.util.BaritoneBridge;
 import net.minecraft.network.play.client.CPacketPlayer;
-
-import java.lang.reflect.Constructor;
-import java.lang.reflect.Method;
+import net.minecraft.util.math.MathHelper;
 
 public class LookCommand extends Command {
 
     public LookCommand() {
-        super("look", "Đặt góc quay nhìn của nhân vật (.look <yaw> <pitch> hoặc hỗ trợ ~)", ".look <yaw> <pitch>");
+        super("look", "Đặt góc quay nhìn của nhân vật (.look <pitch> <yaw> hoặc .look <x> <y> <z>)", ".look <pitch> <yaw>");
     }
 
     @Override
     public void execute(String[] args) {
         if (args.length < 1) {
-            sendMessage("§c[MinClient] Sai cú pháp! Sử dụng: " + getSyntax());
+            sendMessage("§c[MinClient] Sai cú pháp! Sử dụng: .look <pitch> <yaw> hoặc .look <x> <y> <z>");
             return;
         }
 
@@ -25,29 +24,63 @@ public class LookCommand extends Command {
         }
 
         try {
-            float yaw;
             float pitch;
+            float yaw;
 
-            if (args.length == 1) {
-                // Chỉ truyền 1 tham số -> đặt yaw, giữ nguyên pitch
-                yaw = parseAngle(args[0], mc.player.rotationYaw);
-                pitch = mc.player.rotationPitch;
+            if (args.length >= 3) {
+                // Nhìn thẳng vào tọa độ đích 3D x y z
+                double targetX = parseCoordinate(args[0], mc.player.posX);
+                double targetY = parseCoordinate(args[1], mc.player.posY);
+                double targetZ = parseCoordinate(args[2], mc.player.posZ);
+
+                double diffX = targetX - mc.player.posX;
+                double diffY = targetY - (mc.player.posY + mc.player.getEyeHeight());
+                double diffZ = targetZ - mc.player.posZ;
+                double horizontalDistance = MathHelper.sqrt(diffX * diffX + diffZ * diffZ);
+
+                yaw = (float) Math.toDegrees(Math.atan2(diffZ, diffX)) - 90.0F;
+                pitch = (float) -Math.toDegrees(Math.atan2(diffY, horizontalDistance));
+
+            } else if (args.length == 2) {
+                // Thứ tự theo yêu cầu của bạn: .look <pitch> <yaw>
+                float val0 = parseAngle(args[0], mc.player.rotationPitch);
+                float val1 = parseAngle(args[1], mc.player.rotationYaw);
+
+                // Tự động nhận diện thông minh nếu người dùng gõ nhầm góc yaw > 90 độ vào tham số đầu
+                if (Math.abs(val0) > 90.0F && Math.abs(val1) <= 90.0F) {
+                    yaw = val0;
+                    pitch = val1;
+                } else {
+                    pitch = val0;
+                    yaw = val1;
+                }
             } else {
-                // Thường người chơi gõ: .look <yaw> <pitch>
-                yaw = parseAngle(args[0], mc.player.rotationYaw);
-                pitch = parseAngle(args[1], mc.player.rotationPitch);
+                // 1 tham số: nếu <= 90 thì đặt pitch, nếu > 90 thì đặt yaw
+                float val = parseAngle(args[0], mc.player.rotationPitch);
+                if (Math.abs(val) > 90.0F) {
+                    yaw = val;
+                    pitch = mc.player.rotationPitch;
+                } else {
+                    pitch = val;
+                    yaw = mc.player.rotationYaw;
+                }
             }
 
-            // Chuẩn hóa góc pitch trong khoảng [-90, 90]
-            if (pitch > 90.0F) pitch = 90.0F;
-            if (pitch < -90.0F) pitch = -90.0F;
+            // Chuẩn hóa góc pitch trong [-90, 90]
+            pitch = MathHelper.clamp(pitch, -90.0F, 90.0F);
 
-            // Chuẩn hóa góc yaw trong khoảng [-180, 180]
-            yaw = ((yaw % 360.0F) + 540.0F) % 360.0F - 180.0F;
+            // Chuẩn hóa góc yaw trong [-180, 180]
+            yaw = MathHelper.wrapDegrees(yaw);
 
-            // Đặt góc nhìn cho client camera
-            mc.player.rotationYaw = yaw;
+            // Cập nhật toàn bộ các biến góc quay của EntityPlayerSP để camera xoay ngay lập tức
             mc.player.rotationPitch = pitch;
+            mc.player.prevRotationPitch = pitch;
+            mc.player.rotationYaw = yaw;
+            mc.player.prevRotationYaw = yaw;
+            mc.player.rotationYawHead = yaw;
+            mc.player.prevRotationYawHead = yaw;
+            mc.player.renderYawOffset = yaw;
+            mc.player.prevRenderYawOffset = yaw;
 
             // Đồng bộ ngay lập tức gói tin góc quay lên Server
             if (mc.getConnection() != null) {
@@ -58,14 +91,14 @@ public class LookCommand extends Command {
                 ));
             }
 
-            // Nếu Baritone có mặt, đồng bộ sang Baritone LookBehavior
-            if (BaritoneBridge.isAvailable()) {
-                updateBaritoneLook(yaw, pitch);
-            }
+            // Đồng bộ sang Baritone LookBehavior để Baritone không ghi đè lại góc nhìn
+            try {
+                BaritoneAPI.getProvider().getPrimaryBaritone().getLookBehavior().updateTarget(new Rotation(yaw, pitch), true);
+            } catch (Throwable ignored) {}
 
-            sendMessage(String.format("§a[MinClient] Đã quay góc nhìn: Yaw = %.2f°, Pitch = %.2f°", yaw, pitch));
+            sendMessage(String.format("§a[MinClient] Đã hướng góc nhìn tới: Pitch = %.2f°, Yaw = %.2f°", pitch, yaw));
         } catch (NumberFormatException e) {
-            sendMessage("§c[MinClient] Giá trị yaw và pitch phải là số hoặc ký hiệu ~ hợp lệ!");
+            sendMessage("§c[MinClient] Giá trị pitch, yaw hoặc tọa độ phải là số hợp lệ!");
         }
     }
 
@@ -81,28 +114,15 @@ public class LookCommand extends Command {
         return Float.parseFloat(arg);
     }
 
-    private void updateBaritoneLook(float yaw, float pitch) {
-        try {
-            Class<?> apiClass = Class.forName("baritone.api.BaritoneAPI");
-            Method getProviderMethod = apiClass.getMethod("getProvider");
-            Object provider = getProviderMethod.invoke(null);
-
-            Method getPrimaryBaritoneMethod = provider.getClass().getMethod("getPrimaryBaritone");
-            Object baritone = getPrimaryBaritoneMethod.invoke(provider);
-
-            if (baritone != null) {
-                Method getLookBehaviorMethod = baritone.getClass().getMethod("getLookBehavior");
-                Object lookBehavior = getLookBehaviorMethod.invoke(baritone);
-
-                Class<?> rotationClass = Class.forName("baritone.api.utils.Rotation");
-                Constructor<?> rotationConstructor = rotationClass.getConstructor(float.class, float.class);
-                Object rotation = rotationConstructor.newInstance(yaw, pitch);
-
-                Method updateTargetMethod = lookBehavior.getClass().getMethod("updateTarget", rotationClass, boolean.class);
-                updateTargetMethod.invoke(lookBehavior, rotation, true);
-            }
-        } catch (Throwable ignored) {
-            // Không làm gián đoạn nếu Baritone không hỗ trợ LookBehavior
+    private double parseCoordinate(String arg, double currentCoord) throws NumberFormatException {
+        arg = arg.trim();
+        if (arg.equals("~")) {
+            return currentCoord;
         }
+        if (arg.startsWith("~")) {
+            double offset = Double.parseDouble(arg.substring(1));
+            return currentCoord + offset;
+        }
+        return Double.parseDouble(arg);
     }
 }

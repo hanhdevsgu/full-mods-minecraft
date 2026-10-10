@@ -3,7 +3,6 @@ package com.minclient;
 import com.minclient.command.CommandManager;
 import com.minclient.event.ClientEventHandler;
 import com.minclient.module.ModuleManager;
-import com.minclient.pathfinding.MotorController;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.common.event.FMLInitializationEvent;
@@ -24,24 +23,22 @@ public class MinClientMod {
 
     private ModuleManager moduleManager;
     private CommandManager commandManager;
-    private MotorController motorController;
 
     @Mod.EventHandler
     public void preInit(FMLPreInitializationEvent event) {
         INSTANCE = this;
-        LOGGER.info("[MinClient] Đang khởi tạo Minimal Client (NoPush, FastInteract, .look, Baritone A*)...");
+        LOGGER.info("[MinClient] Đang khởi tạo MinClient tích hợp Baritone 1.12.2 gốc 100%...");
     }
 
     @Mod.EventHandler
     public void init(FMLInitializationEvent event) {
-        this.motorController = new MotorController();
         this.moduleManager = new ModuleManager();
-        this.commandManager = new CommandManager(this.moduleManager, this.motorController);
+        this.commandManager = new CommandManager(this.moduleManager);
 
-        ClientEventHandler eventHandler = new ClientEventHandler(this.moduleManager, this.commandManager, this.motorController);
+        ClientEventHandler eventHandler = new ClientEventHandler(this.moduleManager, this.commandManager);
         MinecraftForge.EVENT_BUS.register(eventHandler);
 
-        LOGGER.info("[MinClient] Khởi tạo thành công! Gõ .help trong chat để xem danh sách lệnh.");
+        LOGGER.info("[MinClient] Khởi tạo thành công MinClient + Baritone 100%!");
     }
 
     public ModuleManager getModuleManager() {
@@ -50,9 +47,5 @@ public class MinClientMod {
 
     public CommandManager getCommandManager() {
         return commandManager;
-    }
-
-    public MotorController getMotorController() {
-        return motorController;
     }
 }

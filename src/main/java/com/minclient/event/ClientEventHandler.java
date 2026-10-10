@@ -4,8 +4,6 @@ import com.minclient.MinClientMod;
 import com.minclient.command.CommandManager;
 import com.minclient.gui.ImpactClickGui;
 import com.minclient.module.ModuleManager;
-import com.minclient.pathfinding.MotorController;
-import com.minclient.pathfinding.PathRenderer;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelDuplexHandler;
 import io.netty.channel.ChannelHandlerContext;
@@ -14,7 +12,6 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.network.play.client.CPacketChatMessage;
 import net.minecraftforge.client.event.ClientChatEvent;
 import net.minecraftforge.client.event.PlayerSPPushOutOfBlocksEvent;
-import net.minecraftforge.client.event.RenderWorldLastEvent;
 import net.minecraftforge.fml.common.eventhandler.EventPriority;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.common.gameevent.InputEvent;
@@ -25,19 +22,16 @@ import org.lwjgl.input.Keyboard;
 public class ClientEventHandler {
     private final ModuleManager moduleManager;
     private final CommandManager commandManager;
-    private final MotorController motorController;
 
-    public ClientEventHandler(ModuleManager moduleManager, CommandManager commandManager, MotorController motorController) {
+    public ClientEventHandler(ModuleManager moduleManager, CommandManager commandManager) {
         this.moduleManager = moduleManager;
         this.commandManager = commandManager;
-        this.motorController = motorController;
     }
 
     @SubscribeEvent
     public void onClientTick(TickEvent.ClientTickEvent event) {
         if (event.phase == TickEvent.Phase.END) {
             moduleManager.onTick();
-            motorController.onTick();
         }
     }
 
@@ -61,14 +55,13 @@ public class ClientEventHandler {
         // TUYỆT ĐỐI HỦY GỬI LÊN SERVER nếu tin nhắn bắt đầu bằng '.' hoặc '#'
         if (msg != null && (msg.startsWith(".") || msg.startsWith("#"))) {
             event.setCanceled(true);
-            event.setMessage(""); // Xóa rỗng để ngay cả khi có mod khác can thiệp cũng không gửi được
+            event.setMessage("");
             commandManager.handleChat(msg);
         }
     }
 
     /**
      * Tầng 2: Chặn triệt để tại tầng Netty Pipeline Socket (Zero Packet Leak)
-     * Bất kỳ gói tin CPacketChatMessage nào gửi bằng '.' hoặc '#' đều bị vứt bỏ trước khi chạm vào dây mạng
      */
     @SubscribeEvent
     public void onClientConnected(FMLNetworkEvent.ClientConnectedToServerEvent event) {
@@ -82,7 +75,6 @@ public class ClientEventHandler {
                             if (msg instanceof CPacketChatMessage) {
                                 String content = ((CPacketChatMessage) msg).getMessage();
                                 if (content != null && (content.startsWith(".") || content.startsWith("#"))) {
-                                    // Chặn hoàn toàn ở mức Socket Netty, không bao giờ gửi ra Server
                                     Minecraft.getMinecraft().addScheduledTask(() -> commandManager.handleChat(content));
                                     return;
                                 }
@@ -90,7 +82,7 @@ public class ClientEventHandler {
                             super.write(ctx, msg, promise);
                         }
                     });
-                    MinClientMod.LOGGER.info("[MinClient] Đã cài đặt Netty Packet Filter (Chống rò rỉ lệnh chat lên Server 100%).");
+                    MinClientMod.LOGGER.info("[MinClient] Đã kích hoạt bộ lọc Netty chống rò rỉ chat.");
                 }
             }
         } catch (Throwable t) {
@@ -102,13 +94,6 @@ public class ClientEventHandler {
     public void onPushOutOfBlocks(PlayerSPPushOutOfBlocksEvent event) {
         if (moduleManager.getNoPushModule().isEnabled()) {
             event.setCanceled(true);
-        }
-    }
-
-    @SubscribeEvent
-    public void onRenderWorldLast(RenderWorldLastEvent event) {
-        if (moduleManager.getPathRenderModule().isEnabled()) {
-            PathRenderer.render(event, motorController);
         }
     }
 }

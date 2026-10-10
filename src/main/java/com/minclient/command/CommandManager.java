@@ -1,25 +1,23 @@
 package com.minclient.command;
 
+import baritone.api.BaritoneAPI;
 import com.minclient.command.impl.*;
 import com.minclient.module.Module;
 import com.minclient.module.ModuleManager;
-import com.minclient.pathfinding.MotorController;
-import com.minclient.util.BaritoneBridge;
 import net.minecraft.client.Minecraft;
 import net.minecraft.util.text.TextComponentString;
 
-import java.lang.reflect.Method;
 import java.util.*;
 
 public class CommandManager {
     private final Map<String, Command> commands = new HashMap<>();
     private final ModuleManager moduleManager;
 
-    public CommandManager(ModuleManager moduleManager, MotorController motorController) {
+    public CommandManager(ModuleManager moduleManager) {
         this.moduleManager = moduleManager;
         registerCommand(new LookCommand());
-        registerCommand(new GotoCommand(motorController));
-        registerCommand(new StopCommand(motorController));
+        registerCommand(new GotoCommand());
+        registerCommand(new StopCommand());
         registerCommand(new ToggleCommand(moduleManager));
         registerCommand(new LightCommand(moduleManager));
         registerCommand(new HelpCommand(this, moduleManager));
@@ -36,7 +34,6 @@ public class CommandManager {
     /**
      * Xử lý chuỗi chat nhập vào từ client.
      * TUYỆT ĐỐI KHÔNG để lọt bất kỳ tin nhắn nào bắt đầu bằng '.' hoặc '#' lên Server.
-     * @return true nếu tin nhắn bắt đầu bằng '.' hoặc '#' (luôn hủy gửi lên server), false nếu là chat bình thường.
      */
     public boolean handleChat(String rawMessage) {
         if (rawMessage == null || rawMessage.isEmpty()) {
@@ -48,7 +45,6 @@ public class CommandManager {
             return false;
         }
 
-        // Bất kỳ tin nhắn nào có dấu . hoặc # đều bị chặn 100% không gửi lên Server
         String content = rawMessage.substring(1).trim();
 
         if (content.isEmpty()) {
@@ -67,37 +63,26 @@ public class CommandManager {
         Command command = commands.get(cmdName);
         if (command != null) {
             command.execute(args);
-        } else {
-            // Nếu là lệnh không thuộc MinClient (ví dụ các lệnh #sel, #mine, #follow...), thử chuyển tiếp sang Baritone API
-            if (BaritoneBridge.isAvailable()) {
-                try {
-                    Class<?> apiClass = Class.forName("baritone.api.BaritoneAPI");
-                    Method getProviderMethod = apiClass.getMethod("getProvider");
-                    Object provider = getProviderMethod.invoke(null);
-
-                    Method getPrimaryBaritoneMethod = provider.getClass().getMethod("getPrimaryBaritone");
-                    Object baritone = getPrimaryBaritoneMethod.invoke(provider);
-
-                    if (baritone != null) {
-                        Method getCommandManagerMethod = baritone.getClass().getMethod("getCommandManager");
-                        Object baritoneCmdManager = getCommandManagerMethod.invoke(baritone);
-
-                        Method executeMethod = baritoneCmdManager.getClass().getMethod("execute", String.class);
-                        boolean executed = (boolean) executeMethod.invoke(baritoneCmdManager, content);
-                        if (executed) {
-                            return true;
-                        }
-                    }
-                } catch (Throwable ignored) {}
-            }
-
-            // Khi gõ nhầm lệnh (ví dụ .lookk, .loook...), liệt kê danh sách lệnh vào chat nội bộ
-            Minecraft mc = Minecraft.getMinecraft();
-            if (mc.player != null) {
-                mc.player.sendMessage(new TextComponentString("§c[MinClient] Lệnh không hợp lệ: §f" + rawMessage));
-            }
-            showHelpList();
+            return true;
         }
+
+        // Nếu là lệnh không thuộc MinClient (ví dụ các lệnh #sel, #mine, #follow, #build, #clear...),
+        // chuyển tiếp trực tiếp sang Baritone API gốc 100%
+        try {
+            Object cmdManager = BaritoneAPI.getProvider().getPrimaryBaritone().getCommandManager();
+            java.lang.reflect.Method execMethod = cmdManager.getClass().getMethod("execute", String.class);
+            boolean executed = (boolean) execMethod.invoke(cmdManager, content);
+            if (executed) {
+                return true;
+            }
+        } catch (Throwable ignored) {}
+
+        // Khi gõ nhầm lệnh
+        Minecraft mc = Minecraft.getMinecraft();
+        if (mc.player != null) {
+            mc.player.sendMessage(new TextComponentString("§c[MinClient] Lệnh không hợp lệ: §f" + rawMessage));
+        }
+        showHelpList();
 
         return true;
     }
@@ -106,7 +91,7 @@ public class CommandManager {
         Minecraft mc = Minecraft.getMinecraft();
         if (mc.player == null) return;
 
-        mc.player.sendMessage(new TextComponentString("§6=== Danh Sách Lệnh (MinClient) ==="));
+        mc.player.sendMessage(new TextComponentString("§6=== Danh Sách Lệnh (MinClient & Baritone) ==="));
         for (Command cmd : commands.values()) {
             mc.player.sendMessage(new TextComponentString(String.format("§e%s §7- %s", cmd.getSyntax(), cmd.getDescription())));
         }

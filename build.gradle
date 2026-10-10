@@ -39,7 +39,7 @@ repositories {
 }
 
 dependencies {
-    // Thư viện bổ sung nếu cần
+    compile fileTree(dir: 'libs', include: ['*.jar'])
 }
 
 processResources {

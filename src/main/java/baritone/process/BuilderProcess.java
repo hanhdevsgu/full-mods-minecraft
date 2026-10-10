@@ -361,9 +361,9 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
 
     private Optional<Placement> searchForPlaceables(BuilderCalculationContext bcc, List<IBlockState> desirableOnHotbar) {
         BetterBlockPos center = ctx.playerFeet();
-        for (int dx = -5; dx <= 5; dx++) {
-            for (int dy = -5; dy <= 3; dy++) {
-                for (int dz = -5; dz <= 5; dz++) {
+        for (int dy = -3; dy <= 3; dy++) {
+            for (int dx = -4; dx <= 4; dx++) {
+                for (int dz = -4; dz <= 4; dz++) {
                     int x = center.x + dx;
                     int y = center.y + dy;
                     int z = center.z + dz;
@@ -612,6 +612,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
 
             if (isAimingAtTarget) {
                 baritone.getInputOverrideHandler().setInputForceState(Input.CLICK_RIGHT, true);
+                ticks = 3;
             }
             return new PathingCommand(null, PathingCommandType.CANCEL_AND_SET_GOAL);
         }
@@ -897,11 +898,41 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
             toBreak.add(breakGoal(breakable.get(0), bcc));
         }
         List<Goal> toPlace = new ArrayList<>();
-        placeable.forEach(pos -> {
-            if (!placeable.contains(pos.down()) && !placeable.contains(pos.down(2))) {
+        if (!placeable.isEmpty()) {
+            Set<BetterBlockPos> placeableSet = new HashSet<>(placeable);
+            double pX = ctx.player().posX;
+            double pY = ctx.player().posY;
+            double pZ = ctx.player().posZ;
+
+            // Sort: lowest Y first, then closest distance to player
+            placeable.sort((a, b) -> {
+                if (a.y != b.y) {
+                    return Integer.compare(a.y, b.y);
+                }
+                return Double.compare(a.distanceSqToCenter(pX, pY, pZ), b.distanceSqToCenter(pX, pY, pZ));
+            });
+
+            // Filter supported blocks (cannot place floating in air if 1 or 2 blocks below is also air to be placed)
+            List<BetterBlockPos> validPlaceables = new ArrayList<>();
+            for (BetterBlockPos pos : placeable) {
+                if (!placeableSet.contains(pos.down()) && !placeableSet.contains(pos.down(2))) {
+                    validPlaceables.add(pos);
+                    if (validPlaceables.size() >= 5) {
+                        break;
+                    }
+                }
+            }
+
+            if (validPlaceables.isEmpty()) {
+                for (int i = 0; i < Math.min(placeable.size(), 3); i++) {
+                    validPlaceables.add(placeable.get(i));
+                }
+            }
+
+            for (BetterBlockPos pos : validPlaceables) {
                 toPlace.add(placementGoal(pos, bcc));
             }
-        });
+        }
         sourceLiquids.forEach(pos -> toPlace.add(new GoalBlock(pos.up())));
 
         if (!toBreak.isEmpty()) {
@@ -1033,9 +1064,13 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         }
         boolean allowSameLevel = ctx.world().getBlockState(pos.up()).getBlock() != Blocks.AIR;
         IBlockState current = ctx.world().getBlockState(pos);
+        IBlockState desired = bcc.getSchematic(pos.getX(), pos.getY(), pos.getZ(), current);
+        if (desired == null) {
+            return new GoalPlace(pos);
+        }
         for (EnumFacing facing : Movement.HORIZONTALS_BUT_ALSO_DOWN_____SO_EVERY_DIRECTION_EXCEPT_UP) {
             //noinspection ConstantConditions
-            if (MovementHelper.canPlaceAgainst(ctx, pos.offset(facing)) && ctx.world().mayPlace(bcc.getSchematic(pos.getX(), pos.getY(), pos.getZ(), current).getBlock(), pos, false, facing.getOpposite(), null)) {
+            if (MovementHelper.canPlaceAgainst(ctx, pos.offset(facing)) && ctx.world().mayPlace(desired.getBlock(), pos, false, facing.getOpposite(), null)) {
                 return new GoalAdjacent(pos, pos.offset(facing), allowSameLevel);
             }
         }

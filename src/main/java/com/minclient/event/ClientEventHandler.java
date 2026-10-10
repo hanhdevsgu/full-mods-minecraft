@@ -19,9 +19,12 @@ import net.minecraftforge.fml.common.gameevent.TickEvent;
 import net.minecraftforge.fml.common.network.FMLNetworkEvent;
 import org.lwjgl.input.Keyboard;
 
+import com.minclient.util.ChatHistoryManager;
+
 public class ClientEventHandler {
     private final ModuleManager moduleManager;
     private final CommandManager commandManager;
+    private boolean historyLoaded = false;
 
     public ClientEventHandler(ModuleManager moduleManager, CommandManager commandManager) {
         this.moduleManager = moduleManager;
@@ -32,6 +35,10 @@ public class ClientEventHandler {
     public void onClientTick(TickEvent.ClientTickEvent event) {
         if (event.phase == TickEvent.Phase.END) {
             moduleManager.onTick();
+            if (!historyLoaded && Minecraft.getMinecraft().world != null && Minecraft.getMinecraft().ingameGUI != null) {
+                historyLoaded = true;
+                ChatHistoryManager.init();
+            }
         }
     }
 
@@ -52,11 +59,16 @@ public class ClientEventHandler {
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     public void onClientChat(ClientChatEvent event) {
         String msg = event.getMessage();
-        // TUYỆT ĐỐI HỦY GỬI LÊN SERVER nếu tin nhắn bắt đầu bằng '.' hoặc '#'
-        if (msg != null && (msg.startsWith(".") || msg.startsWith("#"))) {
-            event.setCanceled(true);
-            event.setMessage("");
-            commandManager.handleChat(msg);
+        if (msg != null) {
+            // Luôn lưu vào lịch sử để khi ấn T + Mũi tên lên có thể xem lại
+            ChatHistoryManager.record(msg);
+
+            // TUYỆT ĐỐI HỦY GỬI LÊN SERVER nếu tin nhắn bắt đầu bằng '.' hoặc '#'
+            if (msg.startsWith(".") || msg.startsWith("#")) {
+                event.setCanceled(true);
+                event.setMessage("");
+                commandManager.handleChat(msg);
+            }
         }
     }
 
@@ -65,6 +77,8 @@ public class ClientEventHandler {
      */
     @SubscribeEvent
     public void onClientConnected(FMLNetworkEvent.ClientConnectedToServerEvent event) {
+        historyLoaded = false;
+        Minecraft.getMinecraft().addScheduledTask(ChatHistoryManager::init);
         try {
             Channel channel = event.getManager().channel();
             if (channel != null && channel.pipeline() != null) {
@@ -74,9 +88,12 @@ public class ClientEventHandler {
                         public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) throws Exception {
                             if (msg instanceof CPacketChatMessage) {
                                 String content = ((CPacketChatMessage) msg).getMessage();
-                                if (content != null && (content.startsWith(".") || content.startsWith("#"))) {
-                                    Minecraft.getMinecraft().addScheduledTask(() -> commandManager.handleChat(content));
-                                    return;
+                                if (content != null) {
+                                    ChatHistoryManager.record(content);
+                                    if (content.startsWith(".") || content.startsWith("#")) {
+                                        Minecraft.getMinecraft().addScheduledTask(() -> commandManager.handleChat(content));
+                                        return;
+                                    }
                                 }
                             }
                             super.write(ctx, msg, promise);

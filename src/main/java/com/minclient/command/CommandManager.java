@@ -68,9 +68,14 @@ public class CommandManager {
         // Toàn bộ các lệnh còn lại (goto, stop, mine, sel, follow, path, tunnel, farm...)
         // được chuyển tiếp TRỰC TIẾP sang bộ máy Baritone 100% nguyên bản
         try {
-            boolean executed = BaritoneAPI.getProvider().getPrimaryBaritone().getCommandManager().execute(content);
-            if (executed) {
-                return true;
+            Object baritone = BaritoneAPI.getProvider().getPrimaryBaritone();
+            if (baritone != null) {
+                Object cmdManager = baritone.getClass().getMethod("getCommandManager").invoke(baritone);
+                java.lang.reflect.Method execMethod = cmdManager.getClass().getMethod("execute", String.class);
+                boolean executed = (boolean) execMethod.invoke(cmdManager, content);
+                if (executed) {
+                    return true;
+                }
             }
         } catch (Throwable t) {
             Minecraft mc = Minecraft.getMinecraft();

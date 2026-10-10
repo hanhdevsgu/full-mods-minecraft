@@ -11,6 +11,7 @@ Mod tự động bổ sung khối và vật phẩm lên thanh Hotbar cho Minecra
 2. Nhấn tổ hợp phím `Windows + R`, nhập `%appdata%\.minecraft\mods` rồi nhấn **Enter**.
 3. Sao chép file **`AutoHotbarRefill-1.12.2-1.0.jar`** vào thư mục `mods`.
 4. Khởi động Minecraft với phiên bản **Forge 1.12.2**.
+5. Sử dụng lệnh #set buildInLayers true để set mặc đình xây wall, còn #set buildInLayers false để xây sàn nước
 
 ---
 

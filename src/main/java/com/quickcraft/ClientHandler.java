@@ -1,6 +1,7 @@
 package com.quickcraft;
 
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.GuiButton;
 import net.minecraft.client.gui.inventory.GuiChest;
 import net.minecraft.client.gui.inventory.GuiCrafting;
 import net.minecraft.client.gui.inventory.GuiShulkerBox;
@@ -17,6 +18,7 @@ import net.minecraftforge.fml.common.gameevent.InputEvent;
 import org.lwjgl.input.Keyboard;
 
 public class ClientHandler {
+    public static final int STORE_BUTTON_ID = 19882;
     public static KeyBinding OPEN_KEY;
 
     /** Item se tu craft khi mo ban che tao */
@@ -139,5 +141,27 @@ public class ClientHandler {
         if (lastStatus.isEmpty() || System.currentTimeMillis() - statusTime > 6000) return;
         FontRenderer fr = Minecraft.getMinecraft().fontRenderer;
         fr.drawStringWithShadow("[QuickCraft] " + lastStatus, 6, 6, 0xFFFFFF);
+    }
+
+    /** Them nut Store ben canh GUI ruong / shulker box */
+    @SubscribeEvent
+    public void onInitGui(GuiScreenEvent.InitGuiEvent.Post event) {
+        if (!enabled) return;
+        if (event.getGui() instanceof GuiChest || event.getGui() instanceof GuiShulkerBox) {
+            int guiWidth = event.getGui().width;
+            int guiHeight = event.getGui().height;
+            int btnX = (guiWidth + 176) / 2 + 4;
+            int btnY = (guiHeight - 166) / 2 + 6;
+            event.getButtonList().add(new GuiButton(STORE_BUTTON_ID, btnX, btnY, 44, 20, "\u00a7eStore"));
+        }
+    }
+
+    /** Xu ly khi click nut Store */
+    @SubscribeEvent
+    public void onActionPerformed(GuiScreenEvent.ActionPerformedEvent.Post event) {
+        if (!enabled) return;
+        if (event.getButton().id == STORE_BUTTON_ID) {
+            ChestTaker.storeItems(Minecraft.getMinecraft());
+        }
     }
 }

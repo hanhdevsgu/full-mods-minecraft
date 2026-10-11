@@ -527,7 +527,7 @@ class BotInstance {
 
     sendDn(reason = '', minGapMs = 2000) {
         if (!this.bot || !this.running) return false;
-        if (this._already_logged_in && this.isJoinedServer()) return false;
+        if (this.isJoinedServer()) return false;
         const now = Date.now();
         if (now - this._last_dn_at < minGapMs) return false;
         this._last_dn_at = now;
@@ -655,6 +655,8 @@ class BotInstance {
         this.clicked_axe = false;
         this._compass_opened = false;
         this._compass_open_attempts = 0;
+        this._verify_join_running = false;
+        this._verify_token++;
 
         // Đóng window / clear cache GUI cũ nếu có để tránh lag/kẹt
         try {
@@ -679,10 +681,8 @@ class BotInstance {
         this.sendDn(`phát hiện lobby: ${reason}`);
         this.startDnLoop(`phát hiện lobby: ${reason}`);
 
-        // Chạy quy trình mở compass & click diamond/axe (chỉ chạy 1 instance)
-        if (!this._verify_join_running) {
-            this.waitForCompassAndOpen(15000, 300);
-        }
+        // Chạy quy trình mở compass & click diamond/axe
+        this.waitForCompassAndOpen(15000, 300);
     }
 
     hotbarTick(reason = 'hotbar') {

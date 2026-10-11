@@ -5231,41 +5231,97 @@ class BotInstance {
         return false;
     }
 
-    async ensureAtDepositHouse(reason = '') {
-        if (!this.running || !this.bot) return false;
-        const clearY = Number(this.storage_clear_lock_y);
-        const depY = Number(this.storage_deposit_lock_y);
-        if (!Number.isFinite(depY) || depY === 0) return true;
+    hasStorageConfig() {
+        return true;
+    }
 
-        const pos = this.bot.entity ? this.bot.entity.position : null;
-        if (!pos) return false;
-        const curY = Number(pos.y);
+    async checkLocationAndAutoStartStorage(reason = 'vào server') {
+        if (!this.running || !this.bot) return;
+        if (this._location_check_in_progress) return;
+        this._location_check_in_progress = true;
 
-        // Nếu Y dọn và Y nhà trùng nhau thì không cần chuyển
-        if (Number.isFinite(clearY) && clearY > 0 && Math.floor(clearY) === Math.floor(depY)) return true;
+        try {
+            // Chờ bot và entity đồng bộ vị trí sau khi vào server (tối đa 6s)
+            let waitCount = 0;
+            while (this.running && (!this.bot || !this.bot.entity || !this.bot.entity.position) && waitCount < 20) {
+                await this.sleep(300);
+                waitCount++;
+            }
 
-        const isAtDeposit = this.isNearDepositY(1.5);
+            if (!this.bot || !this.bot.entity || !this.bot.entity.position) {
+                this.log(`⚠️ [KIỂM TRA VỊ TRÍ] (${reason}): Chưa nhận được tọa độ bot từ server.`, '#f5c842');
+                return;
+            }
 
-        // Nếu chưa ở Nhà Rương (cho dù đang ở Dọn Rương hay ở bất kỳ đâu)
-        if (!isAtDeposit) {
+            // Chờ thêm 600ms để tọa độ và world ổn định sau khi chuyển server
+            await this.sleep(600);
+            if (!this.running || !this.bot || !this.bot.entity || !this.bot.entity.position) return;
+
+            const curY = Number(this.bot.entity.position.y);
+            const clearY = Number(this.storage_clear_lock_y);
+            const depY = Number(this.storage_deposit_lock_y);
+
+            // Nếu vẫn còn ở sảnh lobby (Y ≈ 28 hoặc có compass) thì không chạy home hay chuỗi rương
+            if (this.isAtSpawn() || (Number.isFinite(curY) && Math.abs(curY - 28.06) <= 2.5)) {
+                this.log(`⚠️ [KIỂM TRA VỊ TRÍ] (${reason}): Bot vẫn đang ở sảnh lobby (Y=${curY.toFixed(2)}), chưa thể chạy Chuỗi Rương.`, '#f5c842');
+                return;
+            }
+
+            this.log(`📍 [KIỂM TRA VỊ TRÍ] (${reason}): Y hiện tại=${curY.toFixed(3)} | Y Khóa Dọn=${Number.isFinite(clearY) && clearY > 0 ? clearY.toFixed(3) : '(chưa đặt)'} | Y Khóa Nhà=${Number.isFinite(depY) && depY > 0 ? depY.toFixed(3) : '(chưa đặt)'}`, '#4a9eff');
+
+            const hasDepLock = Number.isFinite(depY) && depY > 0;
+            const isAtDep = hasDepLock ? (Math.abs(curY - depY) <= 1.5) : false;
             const homeCmd = String(this.storage_reconnect_home_command || this.storage_deposit_command || '/home 1 delay 8000').trim();
-            this.log(`🏠 [VỀ NHÀ RƯƠNG] (${reason}): Y hiện tại=${curY.toFixed(3)} chưa ở Nhà Rương (Y khóa=${depY.toFixed(3)}) → Chạy "${homeCmd}" để về Nhà Rương...`, '#4a9eff');
-            const cmds = this.parseStorageCommands(homeCmd);
-            if (cmds.length) {
-                await this.runCommandSequence(cmds);
-                // Đợi bot teleport và Y cập nhật về Nhà Rương
-                const waitStart = Date.now();
-                while (this.running && this.bot && Date.now() - waitStart < 15000) {
-                    await this.sleep(300);
-                    if (this.isNearDepositY(1.5)) {
-                        const newY = this.bot.entity ? Number(this.bot.entity.position.y) : NaN;
-                        this.log(`✅ [VỀ NHÀ RƯƠNG] Đã về tới Nhà Rương an toàn (Y=${newY.toFixed(3)}).`, '#2ecc71');
-                        return true;
+
+            if (hasDepLock && !isAtDep) {
+                this.log(`🏠 [VỀ NHÀ RƯƠNG] Y hiện tại=${curY.toFixed(3)} khác Y Nhà Rương (${depY.toFixed(3)}) → Chạy "${homeCmd}" để về Nhà Rương...`, '#4a9eff');
+                const cmds = this.parseStorageCommands(homeCmd);
+                if (cmds.length) {
+                    await this.runCommandSequence(cmds);
+                    // Đợi bot teleport và Y cập nhật về Nhà Rương
+                    const waitStart = Date.now();
+                    while (this.running && this.bot && Date.now() - waitStart < 15000) {
+                        await this.sleep(300);
+                        if (this.isNearDepositY(1.5)) {
+                            const newY = this.bot.entity ? Number(this.bot.entity.position.y) : NaN;
+                            this.log(`✅ [VỀ NHÀ RƯƠNG] Đã về tới Nhà Rương an toàn (Y=${newY.toFixed(3)}).`, '#2ecc71');
+                            break;
+                        }
                     }
                 }
+            } else if (hasDepLock && isAtDep) {
+                this.log(`✅ [VỀ NHÀ RƯƠNG] Bot đã đang ở Nhà Rương an toàn (Y=${curY.toFixed(3)}).`, '#2ecc71');
+            } else {
+                // Trường hợp chưa khóa Y Nhà Rương
+                const hasClearLock = Number.isFinite(clearY) && clearY > 0;
+                const isAtClear = hasClearLock ? (Math.abs(curY - clearY) <= 1.5) : false;
+                if (isAtClear && homeCmd) {
+                    this.log(`🏠 [VỀ NHÀ RƯƠNG] Y hiện tại=${curY.toFixed(3)} đang ở Dọn Rương → Chạy "${homeCmd}" để về Nhà Rương...`, '#4a9eff');
+                    const cmds = this.parseStorageCommands(homeCmd);
+                    if (cmds.length) {
+                        await this.runCommandSequence(cmds);
+                    }
+                } else {
+                    this.log(`ℹ️ [VỀ NHÀ RƯƠNG] Đang ở Y=${curY.toFixed(3)}, sẵn sàng chạy Chuỗi Rương.`, '#4a9eff');
+                }
             }
+
+            // Tự động BẬT và chạy Chuỗi Rương
+            if (!this.auto_storage_running && this.running && this.joined_server) {
+                this._resume_storage_after_rejoin = false;
+                this.storage_persist = true;
+                this.log(`▶️ [CHUỖI RƯƠNG] Tự động BẬT và bắt đầu chạy Chuỗi Rương...`, '#2ecc71');
+                this.startAutoStorage();
+            }
+        } catch (e) {
+            this.log(`⚠️ [KIỂM TRA VỊ TRÍ] Lỗi: ${e && e.message ? e.message : e}`, '#f5c842');
+        } finally {
+            this._location_check_in_progress = false;
         }
-        return true;
+    }
+
+    async ensureAtDepositHouse(reason = '') {
+        return this.checkLocationAndAutoStartStorage(reason);
     }
 
     async _handlePostReconnectPlacement() {
@@ -5279,7 +5335,7 @@ class BotInstance {
             return;
         }
 
-        await this.ensureAtDepositHouse('vào lại game');
+        await this.checkLocationAndAutoStartStorage('vào lại game');
     }
 
     markJoinedServer() {
@@ -5295,24 +5351,9 @@ class BotInstance {
         this.alreadyPlayingKickCount = 0;
         this.log("✅ Đã vào server!", '#2ecc71');
 
-        // Kiểm tra vị trí sau khi reconnect: nếu Y đang ở DỌN RƯƠNG thì chạy lệnh về NHÀ RƯƠNG trước
-        (async () => {
-            await this.sleep(1000);
-            await this.ensureAtDepositHouse('vào lại game');
-
-            // ⭐ KHI ĐÃ VỀ NHÀ RƯƠNG: TỰ ĐỘNG CHẠY LUÔN CHUỖI RƯƠNG KHÔNG CẦN BẬT TAY!
-            const hasStorageConfig = (Number.isFinite(Number(this.storage_clear_lock_y)) && Number(this.storage_clear_lock_y) > 0)
-                || (Number.isFinite(Number(this.storage_deposit_lock_y)) && Number(this.storage_deposit_lock_y) > 0)
-                || this.storage_persist
-                || this._resume_storage_after_rejoin;
-
-            if (hasStorageConfig && !this.auto_storage_running && this.running && this.joined_server) {
-                this._resume_storage_after_rejoin = false;
-                this.storage_persist = true;
-                this.log(`▶️ [CHUỖI RƯƠNG] Đã về Nhà Rương an toàn → Tự động BẬT và chạy Chuỗi Rương...`, '#2ecc71');
-                this.startAutoStorage();
-            }
-        })().catch((e) => this.log(`⚠️ Lỗi kiểm tra vị trí khi vào server: ${e}`, '#f5c842'));
+        setTimeout(() => {
+            this.checkLocationAndAutoStartStorage('vào server');
+        }, 1000);
 
         if (this.afk_persist && !this.anti_afk_running) {
             setTimeout(() => this.startAntiAfk(), 1000);

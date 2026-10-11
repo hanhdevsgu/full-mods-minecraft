@@ -1,6 +1,8 @@
 const mineflayer = require('mineflayer');
 const Vec3 = require('vec3').Vec3;
 const { pathfinder, Movements, goals } = require('mineflayer-pathfinder');
+const fs = require('fs');
+const path = require('path');
 
 let botInstance = null;
 
@@ -223,6 +225,8 @@ class BotInstance {
         this._chest_recover_streak = 0;       // số lần recover LIÊN TIẾP vì không mở được rương (reset khi mở được)
         this._expect_streak_last_at = 0;      // mốc thời gian lần đọc EXPECT đã đếm (chống đếm trùng 1 lần đọc)
         this._expect_pos_streak = 0;          // số lần đọc EXPECT > 0 liên tiếp
+        this._last_deposit_waypoint = null;   // waypoint XYZ cất đồ cuối cùng tại Nhà Rương
+        this._saved_resume_hops = 0;          // số hop/rương đã cất dở trước khi diss
 
         this.move_delta_x = settings.move_delta_x !== undefined ? settings.move_delta_x : 0;
         this.move_delta_y = settings.move_delta_y !== undefined ? settings.move_delta_y : 0;
@@ -1590,8 +1594,8 @@ class BotInstance {
         const movements = new Movements(this.bot);
         movements.canDig = false;
         movements.allow1by1towers = false;
-        movements.allowParkour = true;
-        movements.allowSprinting = false;
+        movements.allowParkour = false;
+        movements.allowSprinting = true;
         return movements;
     }
 
@@ -2362,6 +2366,101 @@ class BotInstance {
         }
     }
 
+    _getWaypointFilePath() {
+        const username = this.username || 'default';
+        return path.join(__dirname, `_waypoint_${username}.json`);
+    }
+
+    _saveDepositWaypoint(x, y, z, hops = 0) {
+        try {
+            const data = {
+                x: Number(Number(x).toFixed(2)),
+                y: Number(Number(y).toFixed(2)),
+                z: Number(Number(z).toFixed(2)),
+                hops: Number(hops) || 0,
+                updatedAt: Date.now()
+            };
+            this._last_deposit_waypoint = data;
+            const filePath = this._getWaypointFilePath();
+            fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf-8');
+            this.log(`💾 [WAYPOINT] Đã lưu waypoint Nhà Rương: (${data.x}, ${data.y}, ${data.z}) [rương #${data.hops + 1}]`, '#4a9eff');
+        } catch (e) {}
+    }
+
+    _loadDepositWaypoint() {
+        try {
+            if (this._last_deposit_waypoint && Number.isFinite(this._last_deposit_waypoint.x)) {
+                return this._last_deposit_waypoint;
+            }
+            const filePath = this._getWaypointFilePath();
+            if (fs.existsSync(filePath)) {
+                const raw = fs.readFileSync(filePath, 'utf-8');
+                const data = JSON.parse(raw);
+                if (data && Number.isFinite(data.x) && Number.isFinite(data.y) && Number.isFinite(data.z)) {
+                    this._last_deposit_waypoint = data;
+                    return data;
+                }
+            }
+        } catch (e) {}
+        return null;
+    }
+
+    _clearDepositWaypoint(reason = '') {
+        try {
+            this._last_deposit_waypoint = null;
+            this._saved_resume_hops = 0;
+            const filePath = this._getWaypointFilePath();
+            if (fs.existsSync(filePath)) {
+                fs.unlinkSync(filePath);
+            }
+            if (reason) {
+                this.log(`🗑️ [WAYPOINT] Đã reset waypoint vị trí rương (${reason})`, '#8b949e');
+            }
+        } catch (e) {}
+    }
+
+    async _resumeDepositWaypointIfAny(reason = '') {
+        if (!this.running || !this.bot || !this.bot.entity) return false;
+        const wp = this._loadDepositWaypoint();
+        if (!wp) return false;
+
+        const cur = this.bot.entity.position;
+        const depY = Number(this.storage_deposit_lock_y);
+
+        // Chỉ resume nếu waypoint có Y khớp với Y Nhà Rương
+        if (Number.isFinite(depY) && depY > 0 && Math.abs(wp.y - depY) > 2.0) {
+            return false;
+        }
+
+        const dist = Math.hypot(wp.x - cur.x, wp.z - cur.z);
+        // Nếu khoảng cách > 1.8 blocks (tức là vị trí cất đồ trước đó ở xa điểm /home hiện tại)
+        if (dist > 1.8) {
+            this.log(`📍 [WAYPOINT RESUME] (${reason}) Đang ở đầu dãy Nhà Rương. Phát hiện vị trí cất dở trước đó tại (${wp.x}, ${wp.y}, ${wp.z}) (rương #${wp.hops + 1}) → GOTO thẳng tới vị trí này...`, '#4a9eff');
+
+            const targetBlockX = Math.floor(wp.x);
+            const targetBlockY = Math.floor(wp.y);
+            const targetBlockZ = Math.floor(wp.z);
+
+            const reached = await this._pathfinderGotoExactXYZ(targetBlockX, targetBlockY, targetBlockZ, '📍 [WAYPOINT RESUME]', () => !this.running || !this.bot || this.findCompassSlot() !== -1);
+            if (reached) {
+                this.log(`✅ [WAYPOINT RESUME] Đã tới đúng vị trí rương cất đồ dở dang! Bắt đầu cất đồ từ đây.`, '#2ecc71');
+                this._goto_anchor = { x: targetBlockX, y: targetBlockY, z: targetBlockZ };
+                this._saved_resume_hops = wp.hops;
+
+                // Khóa lại Pitch/Yaw của Nhà Rương
+                this.lock_pitch = this._safeStoragePitch(this.storage_deposit_pitch);
+                this.lock_yaw = this._safeStorageYaw(this.storage_deposit_yaw);
+                this.lock_pitch_yaw = true;
+                this.applyChestPitchYaw();
+                this.startPitchYawLockLoop();
+                return true;
+            } else {
+                this.log(`⚠️ [WAYPOINT RESUME] Không thể tới waypoint (${wp.x}, ${wp.z}) → sẽ cất đồ từ vị trí hiện tại.`, '#f5c842');
+            }
+        }
+        return false;
+    }
+
     _getAfterGotoXYZ() {
         const raw = [this.storage_after_goto_x, this.storage_after_goto_y, this.storage_after_goto_z]
             .map(v => String(v ?? '').trim());
@@ -2390,14 +2489,12 @@ class BotInstance {
             this.log(`🧭 [Pathfinder] ${TAG} GOTO XYZ tuyệt đối -> (${X}, ${Y}, ${Z})`, '#4a9eff');
             const goal = new goals.GoalBlock(X, Y, Z);
             const gotoPromise = this.bot.pathfinder.goto(goal);
-            const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('goto XYZ timeout (60s)')), 60000));
+            const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('goto XYZ timeout (30s)')), 30000));
             await Promise.race([gotoPromise, timeoutPromise]);
             if (aborted()) return false;
-            let centered = await this.alignToCenter(X + 0.5, Z + 0.5);
-            if (!centered && !aborted() && (this._last_align_err || 0) > 0.30) centered = await this.alignToCenter(X + 0.5, Z + 0.5);
-            // Không cho flow mở rương tiếp nếu Pathfinder vừa trả về nhưng bot
-            // thực tế chưa đứng tại XYZ đích. Đây là điểm quan trọng để tránh
-            // ray vào không khí/rương cũ sau khi chuyển Hộp.
+            let centered = await this.alignToCenter(X + 0.5, Z + 0.5, 500);
+            if (!centered && !aborted() && (this._last_align_err || 0) > 0.40) centered = await this.alignToCenter(X + 0.5, Z + 0.5, 500);
+            // Kiểm tra bot thực tế đã đứng gần XYZ đích
             let reached = false;
             for (let i = 0; i < 20 && !aborted(); i++) {
                 const pos = this.bot?.entity?.position;
@@ -2405,7 +2502,7 @@ class BotInstance {
                     const dx = Math.abs(Number(pos.x) - (X + 0.5));
                     const dy = Math.abs(Number(pos.y) - Y);
                     const dz = Math.abs(Number(pos.z) - (Z + 0.5));
-                    if (dx <= 0.30 && dy <= 1.20 && dz <= 0.30) { reached = true; break; }
+                    if (dx <= 0.65 && dy <= 1.50 && dz <= 0.65) { reached = true; break; }
                 }
                 await this.sleep(100);
             }
@@ -2603,93 +2700,34 @@ class BotInstance {
         return true;
     }
 
-    // #goto tới Ô (bx,by,bz) theo kiểu Baritone: nếu đã ở trong ô thì không đi; đi bộ thẳng từng ô (Traverse) khi được,
-    // không thì rơi về pathfinder. Trả true nếu Ô chân == đích khi xong.
-    async _baritoneGotoBlock(bx, by, bz, aborted, pathfinderTimeoutMs = 30000) {
+    // #goto tới Ô (bx,by,bz) chuẩn Baritone: dùng pathfinder dẫn đường mượt mà, không giật lùi/giật tiến
+    async _baritoneGotoBlock(bx, by, bz, aborted, pathfinderTimeoutMs = 20000) {
         if (!this.bot || !this.bot.entity) return false;
         let f = this._baritoneFeet();
-        if (f.x === bx && f.y === by && f.z === bz) return true;   // GoalBlock.isInGoal → không làm gì
-        // Đích cách >1 ô cùng hàng/cột, cùng Y: đi lần lượt từng ô như Baritone (mỗi ô 1 Traverse).
-        if (f.y === by && (f.x === bx || f.z === bz)) {
-            const sx = Math.sign(bx - f.x), sz = Math.sign(bz - f.z);
-            const steps = Math.abs(bx - f.x) + Math.abs(bz - f.z);
-            let allOk = steps <= 6;
-            for (let i = 1; allOk && i <= steps; i++) {
-                if (!this._baritoneCanStand(f.x + sx * i, by, f.z + sz * i)) allOk = false;
-            }
-            if (allOk) {
-                for (let i = 1; i <= steps; i++) {
-                    if (aborted && aborted()) return false;
-                    const r = await this._baritoneTraverse(f.x + sx * i, by, f.z + sz * i, aborted);
-                    if (r !== true) { allOk = false; break; }
-                }
-                if (allOk) {
-                    f = this._baritoneFeet();
-                    if (f.x === bx && f.y === by && f.z === bz) return true;
-                }
-            }
-        }
-        // Fallback: pathfinder (địa hình phức tạp / chéo / khác Y).
+        if (f.x === bx && f.y === by && f.z === bz) return true;
+
         if (!this.bot.pathfinder) return false;
-        const goal = new goals.GoalBlock(bx, by, bz);
-        const pr = this.bot.pathfinder.goto(goal);
-        const to = new Promise((_, rej) => setTimeout(() => rej(new Error(`goto timeout (${Math.round(pathfinderTimeoutMs / 1000)}s)`)), pathfinderTimeoutMs));
-        try { await Promise.race([pr, to]); } finally { try { this.bot.pathfinder.setGoal(null); } catch (e) {} }
-        f = this._baritoneFeet();
-        return f.x === bx && f.y === by && f.z === bz;
-    }
-
-    // Nếu sau #goto + alignToCenter mà vẫn lệch tâm ô: goto ĐỐI XỨNG (lùi 1 ô ngược hướng delta)
-    // rồi goto LẠI ô đích. Pathfinder khi bước vào ô sẽ tự canh đúng tâm nên hết lệch.
-    // Ví dụ delta (0,0,1) -> goto (0,0,-1) rồi goto lại (0,0,1); delta (-1,0,0) -> goto (1,0,0) rồi goto lại (-1,0,0).
-    // Trục nào delta = 0 thì KHÔNG đối xứng (giữ nguyên).
-    async _recenterByMirrorGoto(targetX, targetYBlock, targetZ, DX, DZ, TAG, aborted, maxRounds = 2) {
-        const TOL = 0.11 + 0.03;
-        const sx = Math.sign(DX), sz = Math.sign(DZ);
-        if (sx === 0 && sz === 0) return false;
-        const offBy = () => {
-            const p = this.bot && this.bot.entity ? this.bot.entity.position : null;
-            return p ? Math.hypot(targetX + 0.5 - p.x, targetZ + 0.5 - p.z) : 0;
-        };
-        const gotoBlock = async (bx, by, bz) => {
-            const okStep = await this._baritoneGotoBlock(bx, by, bz, aborted, 15000);
-            if (!okStep) throw new Error(`mirror goto không tới được ô (${bx},${by},${bz})`);
-        };
-        for (let round = 1; round <= maxRounds; round++) {
-            if ((aborted && aborted()) || !this.bot || !this.bot.entity || !this.bot.pathfinder) return false;
-            const err = offBy();
-            if (err <= TOL) return true;
-            const mx = targetX - sx, mz = targetZ - sz;
-            this.log(`🪞 ${TAG} [CĂN TÂM ĐỐI XỨNG] lệch ${err.toFixed(3)} → goto đối xứng (${-sx},0,${-sz}) tới (${mx}, ${targetYBlock}, ${mz}) rồi goto lại (${sx},0,${sz}) [${round}/${maxRounds}]`, '#4a9eff');
-            try {
-                this._goto_in_progress = true;
-                this._goto_ideal_pos = { x: mx + 0.5, y: targetYBlock, z: mz + 0.5 };
-                await gotoBlock(mx, targetYBlock, mz);
-                if ((aborted && aborted()) || !this.bot || !this.bot.entity) return false;
-                this._goto_ideal_pos = { x: targetX + 0.5, y: targetYBlock, z: targetZ + 0.5 };
-                await gotoBlock(targetX, targetYBlock, targetZ);
-                // Sau mỗi vòng đối xứng luôn căn tâm lại (đứng thẳng, không sneak) (pathfinder một mình chỉ chính xác ~0.35 ô).
-                try { this.bot.pathfinder.setGoal(null); } catch (e2) {}
-                if (this.bot && this.bot.entity) await this.alignToCenter(targetX + 0.5, targetZ + 0.5);
-            } catch (e) {
-                this.log(`⚠️ ${TAG} [CĂN TÂM ĐỐI XỨNG] goto lỗi: ${e && e.message ? e.message : e}`, '#f5c842');
-            } finally {
-                try { if (this.bot && this.bot.pathfinder) this.bot.pathfinder.setGoal(null); } catch (e) {}
+        try {
+            const goal = new goals.GoalBlock(bx, by, bz);
+            const pr = this.bot.pathfinder.goto(goal);
+            const to = new Promise((_, rej) => setTimeout(() => rej(new Error(`goto timeout (${Math.round(pathfinderTimeoutMs / 1000)}s)`)), pathfinderTimeoutMs));
+            await Promise.race([pr, to]);
+        } catch (e) {
+            // timeout hoặc hủy
+        } finally {
+            try { this.bot.pathfinder.setGoal(null); } catch (e) {}
+            for (const k of ['forward', 'back', 'left', 'right', 'sprint', 'jump']) {
+                try { this.bot.setControlState(k, false); } catch (e) {}
             }
-            await this.sleep(120);
         }
-        const finalErr = offBy();
-        if (finalErr <= TOL) {
-            this.log(`✅ ${TAG} [CĂN TÂM ĐỐI XỨNG] Đã vào tâm ô (lệch ${finalErr.toFixed(3)}).`, '#2ecc71');
-            return true;
-        }
-        this.log(`⚠️ ${TAG} [CĂN TÂM ĐỐI XỨNG] Vẫn lệch ${finalErr.toFixed(3)} sau ${maxRounds} vòng.`, '#f5c842');
-        return false;
+        f = this._baritoneFeet();
+        const p = this.bot.entity ? this.bot.entity.position : null;
+        const dist = p ? Math.hypot(bx + 0.5 - p.x, bz + 0.5 - p.z) : 999;
+        return (f.x === bx && f.y === by && f.z === bz) || dist <= 0.85;
     }
 
-    async _runConfiguredChestGoto(dx, deltaY, dz, lockY, pitch, yaw, TAG, aborted, settleMs = 1000) {
+    async _runConfiguredChestGoto(dx, deltaY, dz, lockY, pitch, yaw, TAG, aborted, settleMs = 500) {
         const oldDx = this.move_delta_x, oldDy = this.move_delta_y, oldDz = this.move_delta_z;
-        const HARD_FAIL_ERR = 0.30;   // sau căn + đối xứng mà vẫn lệch tâm > 0.30 ô → coi là hỏng, /back reset
         try {
             const DX = Math.round(Number(dx) || 0);
             const DY = Math.round(Number(deltaY) || 0);
@@ -2697,12 +2735,6 @@ class BotInstance {
             const current = this.bot && this.bot.entity ? this.bot.entity.position : null;
             if (!current) return false;
 
-            // X/Y/Z ở đây đều là DELTA cho #goto. LOCK_Y hoàn toàn tách riêng:
-            // chỉ dùng để so sánh Y hiện tại rồi quyết định có khóa Pitch/Yaw hay không.
-            //
-            // FIX CỘNG DỒN: tính đích từ Ô NEO (đích của #goto trước) thay vì floor(vị trí hiện tại).
-            // Nếu bot đứng lệch sang mép/ô bên cạnh thì floor() sai 1 ô và sai số cộng dồn qua từng #goto.
-            // Chỉ dùng ô neo khi bot vẫn còn ở quanh nó (sau /back, /home bị dịch chuyển thì bỏ neo).
             const _bf = this._baritoneFeet();   // gốc "~" của Baritone: floor(x), floor(y+0.1251), floor(z)
             let baseX = _bf.x, baseY = _bf.y, baseZ = _bf.z;
             const a = this._goto_anchor;
@@ -2715,7 +2747,6 @@ class BotInstance {
             const wantCenter = !(DX === 0 && DY === 0 && DZ === 0);
 
             // 🧭 BARITONE FREELOOK: Áp dụng và KHÓA NGAY Pitch/Yaw của rương đích
-            // trước khi bước đi, để trong suốt quá trình goto cái mặt luôn cố định hướng đó!
             if (pitch !== undefined && yaw !== undefined && pitch !== null && yaw !== null) {
                 this.lock_pitch = this._safeStoragePitch(pitch);
                 this.lock_yaw = this._safeStorageYaw(yaw);
@@ -2734,43 +2765,37 @@ class BotInstance {
                 this._goto_in_progress = true;
                 try {
                     this._goto_ideal_pos = { x: targetX + 0.5, y: targetYBlock, z: targetZ + 0.5 };
-                    // Chỉ chạy pathfinder khi chưa ở trong ô đích; nếu đã ở trong ô (nhưng có thể lệch) thì chỉ căn tâm.
                     if (!sameBlock) {
                         this.log(`🧭 [Pathfinder] ${TAG} #goto delta (${DX},${DY},${DZ}) -> đích (${targetX}, ${targetYBlock}, ${targetZ})`, '#4a9eff');
-                        const reached = await this._baritoneGotoBlock(targetX, targetYBlock, targetZ, aborted, 30000);
-                        if (!reached && !aborted()) throw new Error('Ô chân chưa trùng ô đích sau goto');
+                        const reached = await this._baritoneGotoBlock(targetX, targetYBlock, targetZ, aborted, 20000);
+                        if (!reached && !aborted()) throw new Error('Chưa tới được ô đích sau goto');
                     } else {
-                        this.log(`🧭 ${TAG} đã ở trong ô đích (${targetX}, ${targetYBlock}, ${targetZ}) → chỉ căn tâm.`, '#4a9eff');
+                        this.log(`🧭 ${TAG} đã ở trong ô đích (${targetX}, ${targetYBlock}, ${targetZ}).`, '#4a9eff');
                     }
                     try { this.bot.pathfinder.setGoal(null); } catch (e) {}
                     if (aborted()) return false;
 
-                    // Căn tâm: align (không sneak) → (lệch) goto đối xứng + căn lại → (vẫn lệch) báo hỏng.
-                    let centered = false;
+                    // Dừng hoàn toàn quán tính
+                    for (const k of ['forward', 'back', 'left', 'right', 'sprint', 'jump']) {
+                        try { this.bot.setControlState(k, false); } catch (e) {}
+                    }
+
+                    // Căn nhẹ nhàng (tối đa 400ms) nếu cần
                     if (this.bot && this.bot.entity) {
-                        centered = await this.alignToCenter(targetX + 0.5, targetZ + 0.5);
-                        if (!centered && !aborted()) {
-                            centered = await this._recenterByMirrorGoto(targetX, targetYBlock, targetZ, DX, DZ, TAG, aborted);
-                            if (!centered && !aborted() && this.bot && this.bot.entity) centered = await this.alignToCenter(targetX + 0.5, targetZ + 0.5);
+                        const p = this.bot.entity.position;
+                        const err = Math.hypot(targetX + 0.5 - p.x, targetZ + 0.5 - p.z);
+                        if (err > 0.25) {
+                            await this.alignToCenter(targetX + 0.5, targetZ + 0.5, 400);
                         }
                     }
-                    if (aborted() || !this.bot || !this.bot.entity) return false;
-                    const p = this.bot.entity.position;
-                    const finalErr = Math.hypot(targetX + 0.5 - p.x, targetZ + 0.5 - p.z);
-                    if (!centered && finalErr > HARD_FAIL_ERR) {
-                        this._goto_fail_streak++;
-                        this._storage_recover_pending = `#goto không căn được tâm ô (lệch ${finalErr.toFixed(2)})`;
-                        this.log(`🛟 ${TAG} Căn tâm + goto đối xứng vẫn lệch ${finalErr.toFixed(2)} → sẽ /back về Nhà Rương, reset và chạy lại từ đầu.`, '#ff9f43');
-                        return false;
-                    }
-                    if (!centered) this.log(`ℹ️ ${TAG} Lệch nhẹ ${finalErr.toFixed(2)} (< ${HARD_FAIL_ERR}) → vẫn tiếp tục, nếu không mở được rương sẽ căn lại.`, '#9b59b6');
+
                     // Thành công: ghi nhớ ô neo cho #goto kế tiếp.
                     this._goto_anchor = { x: targetX, y: targetYBlock, z: targetZ };
                     this._goto_fail_streak = 0;
                 } catch (e) {
                     this._goto_fail_streak++;
-                    this.log(`⚠️ ${TAG} Không tới được đích (${targetX},${targetYBlock},${targetZ}): ${e && e.message ? e.message : e} [lỗi liên tiếp ${this._goto_fail_streak}/2]`, '#f5c842');
-                    if (this._goto_fail_streak >= 2) {
+                    this.log(`⚠️ ${TAG} Không tới được đích (${targetX},${targetYBlock},${targetZ}): ${e && e.message ? e.message : e} [lỗi liên tiếp ${this._goto_fail_streak}/3]`, '#f5c842');
+                    if (this._goto_fail_streak >= 3) {
                         this._storage_recover_pending = `#goto lỗi ${this._goto_fail_streak} lần liên tiếp`;
                     }
                     return false;
@@ -3242,8 +3267,9 @@ class BotInstance {
         };
 
         try {
-            // /back đã đưa bot thẳng tới vị trí NHÀ RƯƠNG.
-            // TUYỆT ĐỐI KHÔNG #goto ở lần vào đầu tiên. Chỉ #goto khi rương hiện tại FULL.
+            // Kiểm tra có waypoint vị trí cất dở dang trước đó không → GOTO thẳng tới đó
+            await this._resumeDepositWaypointIfAny('runChestDepositFlow');
+
             this.move_delta_x = this.storage_deposit_delta_x;
             this.move_delta_y = this.storage_deposit_delta_y;
             this.move_delta_z = this.storage_deposit_delta_z;
@@ -3886,10 +3912,17 @@ class BotInstance {
         await this.sleep(GUI_SETTLE_MS);
 
         let totalPushed = 0;
-        let hops = 0;
+        let hops = this._saved_resume_hops || 0;
+        this._saved_resume_hops = 0;
         let stage = Number.isInteger(this._storage_active_deposit_stage) ? this._storage_active_deposit_stage : 0;
         const depCfgs = this._getStorageDepositConfigs();
         this._active_storage_chest_config = depCfgs[stage] || depCfgs[0];
+
+        // Lưu waypoint ngay tại rương đang đứng cất
+        if (this.bot && this.bot.entity) {
+            const p = this.bot.entity.position;
+            this._saveDepositWaypoint(p.x, p.y, p.z, hops);
+        }
 
         const hasTargetConfigured = String(this.target_item_id || '').trim() !== '';
         if (!hasTargetConfigured) {
@@ -3916,6 +3949,10 @@ class BotInstance {
 
             if (result.stuck === 0) {
                 this.log(`✅ ${TAG} Đã đẩy hết đồ, tổng cộng ${totalPushed} ô item.`, '#2ecc71');
+                if (this.bot && this.bot.entity) {
+                    const p = this.bot.entity.position;
+                    this._saveDepositWaypoint(p.x, p.y, p.z, hops);
+                }
                 this._chest_busy = false;
                 return true;
             }
@@ -3953,6 +3990,7 @@ class BotInstance {
             if (hops > MAX_CHEST_HOPS) {
                 this.log(`⚠️ ${TAG} Đã thử ${MAX_CHEST_HOPS} lần #goto mà inventory vẫn còn item - dừng flow cất.`, '#f5c842');
                 this._chest_busy = false;
+                this._clearDepositWaypoint(`đạt giới hạn ${MAX_CHEST_HOPS} rương`);
                 return true;
             }
             this.log(`📦 ${TAG} ${chestCfg.name} FULL → #goto Rương 1 kế tiếp bằng delta (${nextCfg.dx},${nextCfg.dy},${nextCfg.dz}) lần ${hops}/${MAX_CHEST_HOPS}.`, '#4a9eff');
@@ -3968,6 +4006,10 @@ class BotInstance {
                 }
                 this._active_storage_chest_config = nextCfg;
                 this._storage_active_deposit_stage = stage;
+                if (this.bot && this.bot.entity) {
+                    const p = this.bot.entity.position;
+                    this._saveDepositWaypoint(p.x, p.y, p.z, hops);
+                }
             } catch (e) {}
             await this.sleep(0);
             if (!this.running) { this._chest_busy = false; return true; }
@@ -5304,6 +5346,11 @@ class BotInstance {
                 } else {
                     this.log(`ℹ️ [VỀ NHÀ RƯƠNG] Đang ở Y=${curY.toFixed(3)}, sẵn sàng chạy Chuỗi Rương.`, '#4a9eff');
                 }
+            }
+
+            // Nếu đã ở Nhà Rương và có waypoint cất đồ dở dang trước đó → GOTO thẳng tới đúng vị trí rương đó
+            if (this.isNearDepositY(1.5)) {
+                await this._resumeDepositWaypointIfAny('sau khi vào lại server & về Nhà Rương');
             }
 
             // Tự động BẬT và chạy Chuỗi Rương

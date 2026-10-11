@@ -450,8 +450,8 @@ class BotInstance {
     }
 
     showManualRestartHint(reason) {
-        if (!this.running || this.joined_server) return;
-        this.log(`⚠️ ${reason} Kẹt tiến trình/compass → Kill node.exe để khởi động lại sạch sẽ...`, '#ff4d6d');
+        if (!this.running) return;
+        this.log(`⚠️ ${reason} → Kill node.exe để khởi động lại sạch sẽ...`, '#ff4d6d');
         try { if (this.bot) this.bot.quit(); } catch (e) {}
         this._forceKillAndRestart(0);
     }
@@ -460,10 +460,11 @@ class BotInstance {
         this.clearGuiOpenTimeout();
         this._gui_open_timer = setTimeout(() => {
             this._gui_open_timer = null;
-            if (!this.running || this.joined_server) return;
+            if (!this.running || this.isJoinedServer()) return;
 
-            if ((this._compass_open_attempts || 0) < 2) {
-                this.log(`⚠️ Bấm compass nhưng ${Math.round(ms / 1000)}s chưa thấy GUI, thử bấm lại (lần ${(this._compass_open_attempts || 0) + 1}/2)...`, '#f5c842');
+            this._compass_open_attempts = (this._compass_open_attempts || 0) + 1;
+            if (this._compass_open_attempts < 2) {
+                this.log(`⚠️ Bấm compass nhưng ${Math.round(ms / 1000)}s chưa thấy GUI, thử bấm lại (lần ${this._compass_open_attempts + 1}/2)...`, '#f5c842');
                 this._compass_opened = false;
                 this.waitForCompassAndOpen();
                 return;
@@ -501,7 +502,7 @@ class BotInstance {
         if (!this.bot || !this.bot.entity) return false;
         const y = Number(this.bot.entity.position.y);
         const clearY = Number(this.storage_clear_lock_y);
-        if (!Number.isFinite(y) || !Number.isFinite(clearY)) return false;
+        if (!Number.isFinite(y) || !Number.isFinite(clearY) || clearY === 0) return false;
         return Math.abs(y - clearY) <= tolerance || Math.floor(y) === Math.floor(clearY);
     }
 
@@ -509,24 +510,24 @@ class BotInstance {
         if (!this.bot || !this.bot.entity) return false;
         const y = Number(this.bot.entity.position.y);
         const depY = Number(this.storage_deposit_lock_y);
-        if (!Number.isFinite(y) || !Number.isFinite(depY)) return false;
+        if (!Number.isFinite(y) || !Number.isFinite(depY) || depY === 0) return false;
         return Math.abs(y - depY) <= tolerance || Math.floor(y) === Math.floor(depY);
     }
 
     isAtSpawn() {
         if (this.findCompassSlot() !== -1) return true;
-        if (!this.bot || !this.bot.entity) return false;
+        if (!this.bot || !this.bot.entity || !this.bot.entity.position) return false;
         const p = this.bot.entity.position;
-        if (!p) return false;
         const y = Number(p.y);
         if (!Number.isFinite(y)) return false;
         if (this.isNearClearY(2.0) || this.isNearDepositY(2.0)) return false;
-        return (y >= 20 && y <= 35);
+        // Y tại lobby server thường là 28.06 (hoặc nằm trong dải spawn 20-35)
+        return (Math.abs(y - 28.06) <= 2.5) || (y >= 20 && y <= 35);
     }
 
-    sendDn(reason = '', minGapMs = 2500) {
+    sendDn(reason = '', minGapMs = 2000) {
         if (!this.bot || !this.running) return false;
-        if (this._already_logged_in) return false;
+        if (this._already_logged_in && this.isJoinedServer()) return false;
         const now = Date.now();
         if (now - this._last_dn_at < minGapMs) return false;
         this._last_dn_at = now;
@@ -558,13 +559,12 @@ class BotInstance {
     }
 
     // Gửi /dn CÓ ĐIỀU KIỆN, không dồn dập:
-    //  - Hotbar đã có compass             -> dừng hẳn, KHÔNG gửi nữa.
+    //  - Hotbar đã có compass             -> dừng hẳn, mở compass.
     //  - Hotbar có item khác, hết compass -> đã vào server rồi, KHÔNG gửi nữa.
-    //  - Chưa có compass và chưa có item  -> gửi /dn, đợi 1s rồi kiểm tra lại mới gửi tiếp.
-    // Chỉ có 1 vòng chạy tại một thời điểm nên login event + chat "đăng nhập" không thể gửi chồng nhau.
+    //  - Chưa có compass và chưa có item  -> gửi /dn, đợi 2s rồi kiểm tra lại mới gửi tiếp.
     startDnLoop(reason = '') {
         if (this._dn_loop_active) return;
-        if (!this.bot || !this.running || this.joined_server) return;
+        if (!this.bot || !this.running || this.isJoinedServer()) return;
         this._dn_loop_active = true;
         this._dn_attempts = 0;
         const token = ++this._dn_loop_token;
@@ -577,10 +577,19 @@ class BotInstance {
         };
         const tick = () => {
             if (token !== this._dn_loop_token) return;
-            if (!this.bot || !this.running || this.joined_server) return finish();
-            if (this.findCompassSlot() !== -1) return finish('🧭 Hotbar đã có compass → dừng, không gửi /dn nữa.');
-            if (this._hotbarHasAnyItem()) return finish('✅ Hotbar đã có item (không còn compass) → đã vào server, không gửi /dn nữa.');
-            if (this._dn_attempts >= this.DN_MAX_ATTEMPTS) return finish(`⚠️ Đã gửi /dn ${this._dn_attempts} lần mà chưa thấy compass → dừng gửi thêm.`);
+            if (!this.bot || !this.running || this.isJoinedServer()) return finish();
+            if (this.findCompassSlot() !== -1) {
+                if (!this._verify_join_running) {
+                    this.waitForCompassAndOpen(15000, 300);
+                }
+                return finish('🧭 Hotbar đã có compass → dừng gửi /dn, mở GUI compass.');
+            }
+            if (this.isJoinedServer()) return finish('✅ Đã vào server, không gửi /dn nữa.');
+            if (this._dn_attempts >= this.DN_MAX_ATTEMPTS) {
+                this.log(`⚠️ Đã gửi /dn ${this._dn_attempts} lần mà chưa thấy compass → Kill node.exe để khởi động lại...`, '#ff4d6d');
+                this.showManualRestartHint(`Gửi /dn ${this._dn_attempts} lần thất bại`);
+                return finish();
+            }
             this._dn_attempts++;
             this.sendDn(`${reason || 'login'} • lần ${this._dn_attempts}`, Math.max(0, this.DN_RETRY_DELAY_MS - 200));
             this._dn_loop_timer = setTimeout(tick, this.DN_RETRY_DELAY_MS);
@@ -641,13 +650,22 @@ class BotInstance {
 
         this._had_compass_state = true;
         this.joined_server = false;
+        this._already_logged_in = false;
         this.gui_opened = false;
         this.clicked_axe = false;
         this._compass_opened = false;
+        this._compass_open_attempts = 0;
+
+        // Đóng window / clear cache GUI cũ nếu có để tránh lag/kẹt
+        try {
+            if (this.bot.currentWindow) {
+                this.bot.closeWindow(this.bot.currentWindow);
+            }
+        } catch (e) {}
 
         // DỪNG NGAY LẬP TỨC MỌI HOẠT ĐỘNG
         if (this.auto_storage_running) {
-            this.log(`⛔ [LOBBY DETECTED] Hotbar có compass (${reason}) → DỪNG NGAY CHUỖI RƯƠNG! Chuẩn bị vào lại server...`, '#ff4d6d');
+            this.log(`⛔ [LOBBY DETECTED] Phát hiện ở lobby (${reason}) → DỪNG NGAY CHUỖI RƯƠNG! Chuẩn bị vào lại server...`, '#ff4d6d');
             this._resume_storage_after_rejoin = true;
             this.auto_storage_running = false;
         }
@@ -657,26 +675,34 @@ class BotInstance {
         if (this.anti_afk_running) this.stopAntiAfk();
         if (this.auto_farm_running) this.stopAutoFarm();
 
-        // Chỉ gửi /dn nếu CHƯA đăng nhập
-        if (!this._already_logged_in) {
-            this.sendDn(`lobby có compass: ${reason}`);
-            this.startDnLoop(`lobby có compass: ${reason}`);
-        } else {
-            this.log(`🔑 Đã đăng nhập trước đó → Không gửi lại /dn, mở ngay GUI compass...`, '#2ecc71');
-        }
+        // Gửi ngay /dn và kích hoạt vòng lặp gửi /dn
+        this.sendDn(`phát hiện lobby: ${reason}`);
+        this.startDnLoop(`phát hiện lobby: ${reason}`);
 
-        // Chạy quy trình mở compass & click axe (chỉ chạy 1 instance)
+        // Chạy quy trình mở compass & click diamond/axe (chỉ chạy 1 instance)
         if (!this._verify_join_running) {
             this.waitForCompassAndOpen(15000, 300);
         }
     }
 
     hotbarTick(reason = 'hotbar') {
-        if (!this.running || !this.bot || !this.bot.inventory) return;
+        if (!this.running || !this.bot) return;
 
-        if (this.findCompassSlot() !== -1) {
-            this._handleCompassDetected(reason);
+        // ⭐ CHECK Y VÀ COMPASS LIÊN TỤC TRÁNH LAG/KẸT LOBBY:
+        const inLobby = this.findCompassSlot() !== -1 || this.isAtSpawn();
+        if (inLobby) {
+            if (!this._lobby_stuck_since) {
+                this._lobby_stuck_since = Date.now();
+            } else if (Date.now() - this._lobby_stuck_since > 30000) {
+                this.log(`⚠️ Đang ở lobby quá 30s mà chưa vào được server → Kill node.exe để khởi động lại sạch sẽ...`, '#ff4d6d');
+                this.showManualRestartHint('Kẹt ở lobby quá 30s');
+                return;
+            }
+            const curY = this.bot.entity && this.bot.entity.position ? Number(this.bot.entity.position.y).toFixed(2) : '?';
+            this._handleCompassDetected(`${reason} (Y=${curY})`);
             return;
+        } else {
+            this._lobby_stuck_since = null;
         }
 
         // Nếu hotbar không còn compass nhưng chưa mark joined và có item:
@@ -1521,6 +1547,7 @@ class BotInstance {
         // Nếu phiên cũ vẫn đang ở giữa một await sau khi vừa TẮT, không chạy
         // song song 2 chuỗi. Chờ phiên cũ thoát hẳn rồi mới khởi động phiên mới.
         this.auto_storage_running = true;
+        this.storage_persist = true;
         this.log(`📦 CHUỖI RƯƠNG: BẬT LẠI → RESET VỀ HỘP 1 / GOTO 1`, '#2ecc71');
         this.sendStatus();
         this._expect_guard_busy = false;
@@ -4985,7 +5012,7 @@ class BotInstance {
         const isStale = () => this._conn_epoch !== myEpoch || this._verify_token !== myToken;
 
         this._verify_join_running = true;
-        this.log("🔍 Bắt đầu click axe để vào server...", '#4a9eff');
+        this.log("🔍 Bắt đầu click diamond/axe để vào server...", '#4a9eff');
 
         let attempt = 0;
         const verifyLoop = () => {
@@ -5002,7 +5029,7 @@ class BotInstance {
 
             if (this.isJoinedServer()) {
                 this._verify_join_running = false;
-                this.log("🎉 THÀNH CÔNG! Đã vào server! (phát hiện qua hotbar)", '#2ecc71');
+                this.log("🎉 THÀNH CÔNG! Đã vào server! (phát hiện qua hotbar & vị trí)", '#2ecc71');
                 this.sendJoined();
                 this.markJoinedServer();
                 return;
@@ -5011,11 +5038,12 @@ class BotInstance {
             attempt++;
             if (attempt > maxRetries) {
                 this._verify_join_running = false;
-                this.showManualRestartHint(`Đã click axe ${maxRetries} lần mà vẫn chưa vào được server.`);
+                this.log(`⛔ Đã click diamond/axe ${maxRetries} lần mà vẫn kẹt ở lobby → Kill node.exe để khởi động lại sạch sẽ...`, '#ff4d6d');
+                this.showManualRestartHint(`Đã click diamond/axe ${maxRetries} lần mà vẫn kẹt.`);
                 return;
             }
 
-            this.log(`🔄 Lần thử ${attempt}/${maxRetries} - Click axe...`, '#f5c842');
+            this.log(`🔄 Lần thử ${attempt}/${maxRetries} - Click diamond/axe...`, '#f5c842');
             this.clickAxeAuto(true);
 
             setTimeout(verifyLoop, retryDelay);
@@ -5074,6 +5102,42 @@ class BotInstance {
         }
     }
 
+    _isDiamondOrAxeItem(slot) {
+        if (!slot) return false;
+        const nameLc = (slot.name || '').toLowerCase();
+        const displayLc = (slot.displayName || '').toLowerCase();
+        return nameLc.includes('axe') || displayLc.includes('axe') || displayLc.includes('rìu')
+            || nameLc.includes('diamond') || displayLc.includes('diamond') || displayLc.includes('kim cương')
+            || nameLc.includes('sword') || displayLc.includes('kiếm');
+    }
+
+    _findDiamondOrAxeSlot(window) {
+        if (!window || !window.slots) return -1;
+        const slots = window.slots;
+
+        // 1. Ưu tiên ô 23 (slot chuẩn của server)
+        const slot23 = slots[23];
+        if (slot23 && this._isDiamondOrAxeItem(slot23)) {
+            return 23;
+        }
+
+        // 2. Quét toàn bộ ô container (rương 27 hoặc 54 ô)
+        const maxSlots = Math.min(54, slots.length);
+        for (let i = 0; i < maxSlots; i++) {
+            const it = slots[i];
+            if (it && this._isDiamondOrAxeItem(it)) {
+                return i;
+            }
+        }
+
+        // 3. Fallback: Nếu ô 23 có item bất kỳ
+        if (slot23) {
+            return 23;
+        }
+
+        return -1;
+    }
+
     clickAxeAuto(force = false) {
         if (!this.bot || !this.running) return false;
         if (this.clicked_axe && !force) return false;
@@ -5087,49 +5151,43 @@ class BotInstance {
                     this.markJoinedServer();
                     return true;
                 }
-                this.log("❌ Chưa mở GUI!", '#ff4d6d');
+                this.log("❌ Chưa mở GUI, thử mở lại compass...", '#ff4d6d');
+                this.openCompass();
                 return false;
             }
 
-            const slots = window.slots || [];
-            const slot = slots[23];
-
-            if (slot) {
-                const nameLc = (slot.name || '').toLowerCase();
-                const displayLc = (slot.displayName || '').toLowerCase();
-                const isAxe = nameLc.includes('axe') || displayLc.includes('axe') || displayLc.includes('rìu');
-
-                if (!isAxe) {
-                    this.log(`❌ Ô 23 không phải Diamond Axe (đang là "${slot.displayName || slot.name}")`, '#ff4d6d');
-                    return false;
-                }
-
-                const display = slot.displayName || slot.name || 'item';
-                this.log(`🖱️ Click vào ô 23 (${display})`, '#f5c842');
-
-                const clickPromise = this.bot.simpleClick.leftMouse(23, window);
-                if (clickPromise && typeof clickPromise.catch === 'function') {
-                    clickPromise.catch((err) => {});
-                }
-
-                this.clicked_axe = true;
-                this.log(`✅ Đã click`, '#2ecc71');
-                this.debugDumpHotbar('Ngay sau khi click');
-
-                setTimeout(() => {
-                    this.debugDumpHotbar('500ms sau khi click');
-                    if (this.isJoinedServer()) {
-                        this.log("🎉 THÀNH CÔNG! Đã vào server!", '#2ecc71');
-                        this.sendJoined();
-                        this.markJoinedServer();
-                    }
-                }, 500);
-
-                return true;
-            } else {
-                this.log("❌ Ô 23 chưa có item, chờ thử lại...", '#ff4d6d');
+            const targetSlot = this._findDiamondOrAxeSlot(window);
+            if (targetSlot === -1) {
+                this.log("❌ Không tìm thấy ô diamond/axe trong GUI, chờ thử lại...", '#ff4d6d');
                 return false;
             }
+
+            const slot = window.slots[targetSlot];
+            const display = slot ? (slot.displayName || slot.name || `ô ${targetSlot}`) : `ô ${targetSlot}`;
+            this.log(`🖱️ Click vào ô ${targetSlot} (${display})`, '#f5c842');
+
+            try {
+                if (this.bot.clickWindow) {
+                    this.bot.clickWindow(targetSlot, 0, 0).catch(() => {});
+                } else if (this.bot.simpleClick && this.bot.simpleClick.leftMouse) {
+                    this.bot.simpleClick.leftMouse(targetSlot).catch(() => {});
+                }
+            } catch (err) {}
+
+            this.clicked_axe = true;
+            this.log(`✅ Đã gửi click ô ${targetSlot}`, '#2ecc71');
+            this.debugDumpHotbar('Ngay sau khi click');
+
+            setTimeout(() => {
+                this.debugDumpHotbar('500ms sau khi click');
+                if (this.isJoinedServer()) {
+                    this.log("🎉 THÀNH CÔNG! Đã vào server!", '#2ecc71');
+                    this.sendJoined();
+                    this.markJoinedServer();
+                }
+            }, 500);
+
+            return true;
         } catch (e) {
             this.log(`❌ Lỗi click: ${e}`, '#ff4d6d');
             return false;
@@ -5138,23 +5196,25 @@ class BotInstance {
 
     isJoinedServer() {
         if (!this.bot || !this.bot.inventory) return false;
-        try {
-            let hasCompass = false;
-            for (let i = 36; i <= 44; i++) {
-                const slot = this.bot.inventory.slots[i];
-                if (!slot) continue;
-                const name = (slot.name || '').toLowerCase();
-                const display = (slot.displayName || '').toLowerCase();
-                if (name.includes('compass') || display.includes('compass') || display.includes('la bàn')) {
-                    hasCompass = true;
-                    break;
-                }
-            }
-            if (hasCompass) return false;
-            return true;
-        } catch (e) {
-            return false;
+        if (!this.bot.entity || !this.bot.entity.position) return false;
+
+        // Nếu đang ở spawn lobby theo vị trí hoặc compass -> Tuyệt đối không phải đã vào server!
+        if (this.isAtSpawn()) return false;
+
+        const y = Number(this.bot.entity.position.y);
+        if (Number.isFinite(y)) {
+            // Y lobby thường là 28.06 (hoặc nằm trong khoảng spawn 20-35)
+            if (Math.abs(y - 28.06) <= 2.5) return false;
+            if (y >= 20 && y <= 35 && !this.isNearClearY(2.0) && !this.isNearDepositY(2.0)) return false;
         }
+
+        // Nếu hotbar vẫn có compass -> vẫn đang ở lobby
+        if (this.findCompassSlot() !== -1) return false;
+
+        // Phải có ít nhất 1 item trên hotbar (tránh lúc mới load chưa kịp sync inventory)
+        if (!this._hotbarHasAnyItem()) return false;
+
+        return true;
     }
 
     closeBookWindowIfAny(reason = '') {
@@ -5241,9 +5301,16 @@ class BotInstance {
             await this.sleep(1000);
             await this.ensureAtDepositHouse('vào lại game');
 
-            if (this._resume_storage_after_rejoin || this.storage_persist) {
+            // ⭐ KHI ĐÃ VỀ NHÀ RƯƠNG: TỰ ĐỘNG CHẠY LUÔN CHUỖI RƯƠNG KHÔNG CẦN BẬT TAY!
+            const hasStorageConfig = (Number.isFinite(Number(this.storage_clear_lock_y)) && Number(this.storage_clear_lock_y) > 0)
+                || (Number.isFinite(Number(this.storage_deposit_lock_y)) && Number(this.storage_deposit_lock_y) > 0)
+                || this.storage_persist
+                || this._resume_storage_after_rejoin;
+
+            if (hasStorageConfig && !this.auto_storage_running && this.running && this.joined_server) {
                 this._resume_storage_after_rejoin = false;
-                this.log(`▶️ [CHUỖI RƯƠNG] Đã về Nhà Rương an toàn → Tự động tiếp tục Chuỗi Rương...`, '#2ecc71');
+                this.storage_persist = true;
+                this.log(`▶️ [CHUỖI RƯƠNG] Đã về Nhà Rương an toàn → Tự động BẬT và chạy Chuỗi Rương...`, '#2ecc71');
                 this.startAutoStorage();
             }
         })().catch((e) => this.log(`⚠️ Lỗi kiểm tra vị trí khi vào server: ${e}`, '#f5c842'));
@@ -5408,8 +5475,18 @@ class BotInstance {
             this._storage_viewlock_last_key = null;
             this.bot.on('move', () => {
                 try {
-                    if (!this.running || !this.bot || !this.bot.entity || this._goto_in_progress) return;
+                    if (!this.running || !this.bot || !this.bot.entity) return;
                     const y = Number(this.bot.entity.position.y);
+
+                    // ⭐ PHÁT HIỆN LOBBY NGAY LẬP TỨC KHI THAY ĐỔI TỌA ĐỘ Y:
+                    if (this.isAtSpawn()) {
+                        if (this.joined_server || !this._in_lobby_state) {
+                            this._handleCompassDetected(`move Y=${y.toFixed(2)} ở lobby`);
+                            return;
+                        }
+                    }
+
+                    if (this._goto_in_progress) return;
                     const clearY = Number(this.storage_clear_lock_y);
                     const depY = Number(this.storage_deposit_lock_y);
                     const clearHit = Number.isFinite(clearY) && Math.abs(y - clearY) <= 0.15;
@@ -5572,13 +5649,18 @@ class BotInstance {
 
                 try {
                     const plain = msg.toString();
-                    if (/đã đăng nhập|da dang nhap|đăng nhập thành công/i.test(plain)) {
+                    if (/connecting you to the best available lobby|chuyển về lobby/i.test(plain)) {
+                        this._handleCompassDetected('proxy chuyển về lobby');
+                    } else if (/đã đăng nhập|da dang nhap|đăng nhập thành công/i.test(plain)) {
                         this._already_logged_in = true;
                         this._stopDnLoop();
-                    } else if (/\/dn\b|\/login\b|chưa đăng nhập|bạn phải đăng nhập|vui lòng gõ lệnh|mật-khẩu/i.test(plain)) {
-                        if (!this._already_logged_in) {
-                            this.sendDn('server yêu cầu đăng nhập trong chat', 2500);
+                        if (!this.joined_server) {
+                            setTimeout(() => this.waitForCompassAndOpen(15000, 300), 300);
                         }
+                    } else if (/\/dn\b|\/login\b|chưa đăng nhập|bạn phải đăng nhập|vui lòng gõ lệnh|mật-khẩu/i.test(plain)) {
+                        this._already_logged_in = false;
+                        this.sendDn('server yêu cầu đăng nhập trong chat', 1500);
+                        this.startDnLoop('server yêu cầu đăng nhập trong chat');
                     }
                 } catch (e) {}
 
@@ -5610,7 +5692,8 @@ class BotInstance {
             });
 
             this.bot.on('windowOpen', (window) => {
-                if (!window || this.joined_server) return;
+                if (!window) return;
+                if (this.isJoinedServer()) return;
                 this.gui_opened = true;
                 this.clearGuiOpenTimeout();
                 this.log(`📂 GUI MỞ: "${window.title || '?'}"`, '#4a9eff');

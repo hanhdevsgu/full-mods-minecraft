@@ -5235,22 +5235,21 @@ class BotInstance {
         if (!this.running || !this.bot) return false;
         const clearY = Number(this.storage_clear_lock_y);
         const depY = Number(this.storage_deposit_lock_y);
-        if (!Number.isFinite(clearY) || !Number.isFinite(depY)) return true;
+        if (!Number.isFinite(depY) || depY === 0) return true;
 
         const pos = this.bot.entity ? this.bot.entity.position : null;
         if (!pos) return false;
         const curY = Number(pos.y);
 
         // Nếu Y dọn và Y nhà trùng nhau thì không cần chuyển
-        if (Math.floor(clearY) === Math.floor(depY)) return true;
+        if (Number.isFinite(clearY) && clearY > 0 && Math.floor(clearY) === Math.floor(depY)) return true;
 
-        const isAtClear = this.isNearClearY(1.5);
         const isAtDeposit = this.isNearDepositY(1.5);
 
-        // Nếu đang ở Y dọn rương (và chưa ở Nhà Rương)
-        if (isAtClear && !isAtDeposit) {
+        // Nếu chưa ở Nhà Rương (cho dù đang ở Dọn Rương hay ở bất kỳ đâu)
+        if (!isAtDeposit) {
             const homeCmd = String(this.storage_reconnect_home_command || this.storage_deposit_command || '/home 1 delay 8000').trim();
-            this.log(`🏠 [VỀ NHÀ RƯƠNG] (${reason}): Y hiện tại=${curY.toFixed(3)} đang ở DỌN RƯƠNG → Chạy "${homeCmd}" để về Nhà Rương...`, '#4a9eff');
+            this.log(`🏠 [VỀ NHÀ RƯƠNG] (${reason}): Y hiện tại=${curY.toFixed(3)} chưa ở Nhà Rương (Y khóa=${depY.toFixed(3)}) → Chạy "${homeCmd}" để về Nhà Rương...`, '#4a9eff');
             const cmds = this.parseStorageCommands(homeCmd);
             if (cmds.length) {
                 await this.runCommandSequence(cmds);

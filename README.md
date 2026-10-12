@@ -1,4 +1,4 @@
-﻿# 💣 TNT Auto-Logistics Mod (Minecraft 1.12.2)
+# 💣 TNT Auto-Logistics Mod (Minecraft 1.12.2)
 
 Mod hỗ trợ chiến thuật pháo đài / bắn canon TNT chuyên nghiệp: tự động rút TNT rương 0-tick, nạp máy phân phát đủ số lượng, vẽ ESP viền đỏ và **đồng bộ đám mây 24/7 cho toàn bộ thành viên trong team**.
 
@@ -43,6 +43,8 @@ Mod hỗ trợ chiến thuật pháo đài / bắn canon TNT chuyên nghiệp: t
   - Nút [RESET VỀ GỐC / XÓA ESP] để xóa sạch các điểm đánh dấu khi bắt đầu trận mới.
 - **Phím F8:** Menu toggle bật/tắt nhanh chế độ hiển thị ESP viền đỏ.
 - **Lệnh Chat:**
-  - /t toggle : Bật/Tắt mod nhanh.
-  - /t amount <số> : Đổi định mức nạp TNT.
-  - /t clear : Xóa sạch các điểm ESP đỏ trên bản đồ.
+  - `/t status` : Xem trạng thái kết nối Cloud 24/7 và phòng đồng bộ hiện tại.
+  - `/t toggle` : Bật/Tắt mod nhanh.
+  - `/t amount <số>` : Đổi định mức nạp TNT.
+  - `/t room <tên>` : Đổi phòng đồng bộ Team.
+  - `/t clear` : Xóa sạch các điểm ESP đỏ trên bản đồ.

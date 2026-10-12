@@ -1535,6 +1535,14 @@ class BotInstance {
             await this.ensureAtDepositHouse('bấm chuỗi rương tại Y dọn');
         }
 
+        // ⭐ NẾU ĐANG ĐỨNG Ở Y NHÀ RƯƠNG (treo dãy mới hoặc rương mới):
+        // Luôn lưu ngay vị trí hiện tại làm waypoint, và TUYỆT ĐỐI GOTO KHÔNG ĐƯỢC CHẠY!
+        if (this.isNearDepositY(1.5) && this.bot && this.bot.entity) {
+            const p = this.bot.entity.position;
+            this._saveDepositWaypoint(p.x, p.y, p.z, 0);
+            this.log(`💾 [CHUỖI RƯƠNG] Đang đứng ở Y Nhà Rương → Lưu waypoint vị trí hiện tại (${p.x.toFixed(2)}, ${p.y.toFixed(2)}, ${p.z.toFixed(2)}), TUYỆT ĐỐI KHÔNG GOTO!`, '#2ecc71');
+        }
+
         // MỖI LẦN BẬT LẠI = MỘT PHIÊN MỚI, LUÔN CHẠY TỪ ĐẦU HỘP 1.
         // Không được giữ stage/goto/box của phiên cũ.
         this._storage_clear_stage = 0;
@@ -2420,8 +2428,46 @@ class BotInstance {
         } catch (e) {}
     }
 
-    async _resumeDepositWaypointIfAny(reason = '') {
-        // Tắt toàn bộ pathfinder GOTO tự động khi ở Nhà Rương để tránh chạy lung tung tới XYZ lạ
+    async _gotoSavedWaypointAfterHome(reason = '') {
+        if (!this.running || !this.bot || !this.bot.entity) return false;
+        const wp = this._loadDepositWaypoint();
+        if (!wp) return false;
+
+        const cur = this.bot.entity.position;
+        const depY = Number(this.storage_deposit_lock_y);
+        if (Number.isFinite(depY) && depY > 0 && Math.abs(wp.y - depY) > 2.0) {
+            return false;
+        }
+
+        const dist = Math.hypot(wp.x - cur.x, wp.z - cur.z);
+        // Nếu khoảng cách > 1.5 blocks (tức là điểm /home cách vị trí rương vừa đứng > 1.5 blocks)
+        if (dist > 1.5) {
+            this.log(`📍 [WAYPOINT RESUME] (${reason}) Phát hiện vị trí rương vừa đứng tại (${wp.x}, ${wp.y}, ${wp.z}) (rương #${(wp.hops || 0) + 1}) → GOTO tới vị trí này...`, '#4a9eff');
+            const targetBlockX = Math.floor(wp.x);
+            const targetBlockY = Math.floor(wp.y);
+            const targetBlockZ = Math.floor(wp.z);
+
+            const reached = await this._pathfinderGotoExactXYZ(
+                targetBlockX, targetBlockY, targetBlockZ,
+                '📍 [VỀ RƯƠNG VỪA ĐỨNG]',
+                () => !this.running || !this.bot || this.findCompassSlot() !== -1
+            );
+            if (reached) {
+                this.log(`✅ [WAYPOINT RESUME] Đã tới đúng vị trí rương vừa đứng! Khóa góc nhìn và tiếp tục cất đồ.`, '#2ecc71');
+                this._goto_anchor = { x: targetBlockX, y: targetBlockY, z: targetBlockZ };
+                this._saved_resume_hops = wp.hops || 0;
+                this.lock_pitch = this._safeStoragePitch(this.storage_deposit_pitch);
+                this.lock_yaw = this._safeStorageYaw(this.storage_deposit_yaw);
+                this.lock_pitch_yaw = true;
+                this.applyChestPitchYaw();
+                this.startPitchYawLockLoop();
+                return true;
+            } else {
+                this.log(`⚠️ [WAYPOINT RESUME] Không thể tới rương (${wp.x}, ${wp.z}) → sẽ cất đồ từ vị trí hiện tại.`, '#f5c842');
+            }
+        } else {
+            this.log(`ℹ️ [WAYPOINT RESUME] Đã đang ở đúng vị trí rương vừa đứng (${wp.x}, ${wp.z}), không cần GOTO.`, '#2ecc71');
+        }
         return false;
     }
 
@@ -5288,17 +5334,28 @@ class BotInstance {
                     await this.runCommandSequence(cmds);
                     // Đợi bot teleport và Y cập nhật về Nhà Rương
                     const waitStart = Date.now();
+                    let arrivedAtDep = false;
                     while (this.running && this.bot && Date.now() - waitStart < 15000) {
                         await this.sleep(300);
                         if (this.isNearDepositY(1.5)) {
+                            arrivedAtDep = true;
                             const newY = this.bot.entity ? Number(this.bot.entity.position.y) : NaN;
                             this.log(`✅ [VỀ NHÀ RƯƠNG] Đã về tới Nhà Rương an toàn (Y=${newY.toFixed(3)}).`, '#2ecc71');
                             break;
                         }
                     }
+
+                    // ⭐ KHI VÀO LẠI SERVER MÀ Y KHÁC Y NHÀ RƯƠNG: /home VỀ NHÀ RƯƠNG XONG THÌ MỚI GOTO VỀ VỊ TRÍ RƯƠNG VỪA ĐỨNG
+                    if (arrivedAtDep) {
+                        await this._gotoSavedWaypointAfterHome('sau khi /home về Nhà Rương');
+                    }
                 }
             } else if (hasDepLock && isAtDep) {
-                this.log(`✅ [VỀ NHÀ RƯƠNG] Bot đã đang ở Nhà Rương an toàn (Y=${curY.toFixed(3)}).`, '#2ecc71');
+                this.log(`✅ [VỀ NHÀ RƯƠNG] Bot đã đang ở Nhà Rương (Y=${curY.toFixed(3)}) → TUYỆT ĐỐI KHÔNG GOTO, lưu vị trí hiện tại và cất tại đây.`, '#2ecc71');
+                if (this.bot && this.bot.entity) {
+                    const p = this.bot.entity.position;
+                    this._saveDepositWaypoint(p.x, p.y, p.z, 0);
+                }
             } else {
                 // Trường hợp chưa khóa Y Nhà Rương
                 const hasClearLock = Number.isFinite(clearY) && clearY > 0;
@@ -5308,17 +5365,13 @@ class BotInstance {
                     const cmds = this.parseStorageCommands(homeCmd);
                     if (cmds.length) {
                         await this.runCommandSequence(cmds);
+                        await this.sleep(1500);
+                        if (this.isNearDepositY(1.5)) {
+                            await this._gotoSavedWaypointAfterHome('sau khi về Nhà Rương từ Dọn Rương');
+                        }
                     }
                 } else {
                     this.log(`ℹ️ [VỀ NHÀ RƯƠNG] Đang ở Y=${curY.toFixed(3)}, sẵn sàng chạy Chuỗi Rương.`, '#4a9eff');
-                }
-            }
-
-            // Đã ở Nhà Rương: lưu ngay vị trí hiện tại của bot làm mốc cất đồ, bắt đầu cất từ đây
-            if (this.isNearDepositY(1.5)) {
-                if (this.bot && this.bot.entity) {
-                    const p = this.bot.entity.position;
-                    this._saveDepositWaypoint(p.x, p.y, p.z, 0);
                 }
             }
 
@@ -5539,6 +5592,16 @@ class BotInstance {
                         if (this.joined_server || !this._in_lobby_state) {
                             this._handleCompassDetected(`move Y=${y.toFixed(2)} ở lobby`);
                             return;
+                        }
+                    }
+
+                    // ⭐ KHI CHƯA BẬT CHUỖI RƯƠNG (ví dụ đang đứng ở dãy mới), ĐỨNG Ở Y NHÀ RƯƠNG THÌ LUÔN LƯU WAYPOINT TẠI ĐÓ:
+                    if (!this.auto_storage_running && this.joined_server && this.isNearDepositY(1.0)) {
+                        const now = Date.now();
+                        if (!this._last_idle_dep_wp_save || now - this._last_idle_dep_wp_save > 1500) {
+                            this._last_idle_dep_wp_save = now;
+                            const p = this.bot.entity.position;
+                            this._saveDepositWaypoint(p.x, p.y, p.z, 0);
                         }
                     }
 

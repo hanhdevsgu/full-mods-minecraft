@@ -57,7 +57,6 @@ public class ClientCrafter {
     private static boolean running = false;
     private static Container startContainer;
     private static ItemResolver.Target target;
-    private static IRecipe currentRecipe = null;
     private static List<IRecipe> candidates;
     private static int candIdx;
     private static int rounds;
@@ -200,7 +199,6 @@ public class ClientCrafter {
 
         startContainer = c;
         candIdx = 0;
-        currentRecipe = null;
         rounds = 0;
         before = count(p, target);
         phase = FILL;
@@ -262,32 +260,8 @@ public class ClientCrafter {
     private static void step(EntityPlayerSP p, Container c) {
         switch (phase) {
             case FILL: {
-                if (rounds >= MAX_ROUNDS) { finish(null); return; }
-                IRecipe rc = getNextRecipeToCraft(p, c, target, gridW);
-                if (rc == null) {
-                    if (gridDirty(p, c)) startClean(c, true);
-                    else {
-                        phase = DRAIN;
-                        drainTicks = 0;
-                        resetSettle();
-                    }
-                    return;
-                }
-                if (currentRecipe != null && currentRecipe != rc) {
-                    if (gridDirty(p, c)) {
-                        startClean(c, false);
-                        return;
-                    }
-                    currentRecipe = rc;
-                    lastCount = count(p, rc.getRecipeOutput());
-                    stall = 0;
-                    useBook = true;
-                } else if (currentRecipe == null) {
-                    currentRecipe = rc;
-                    lastCount = count(p, rc.getRecipeOutput());
-                    stall = 0;
-                    useBook = true;
-                }
+                if (rounds >= MAX_ROUNDS || candIdx >= candidates.size()) { finish(null); return; }
+                IRecipe rc = candidates.get(candIdx);
                 int r;
                 if (useBook) {
                     int pairs = burstPairs(p, c, rc);
@@ -307,14 +281,10 @@ public class ClientCrafter {
                 if (r < 0) return;                 // stopReason da set
                 if (r == 0) {
                     useBook = true;
-                    if (gridDirty(p, c)) startClean(c, true);
-                    else {
-                        phase = DRAIN;
-                        drainTicks = 0;
-                        resetSettle();
-                    }
+                    if (gridDirty(p, c)) startClean(c, true); // don luoi roi moi sang cong thuc ke tiep / ket thuc
+                    else candIdx++;
                     return;
-                }
+                } // thieu nguyen lieu -> cong thuc khac / ket thuc
                 phase = WAIT_RESULT;
                 timer = 0;
                 return;
@@ -343,8 +313,7 @@ public class ClientCrafter {
                 // o ket qua do SERVER tinh va gui ve -> phai doi, client khong tu du doan duoc
                 ItemStack out = c.getSlot(0).getStack();
                 if (!out.isEmpty()) {
-                    ItemStack expected = (currentRecipe != null) ? currentRecipe.getRecipeOutput() : target.toStack();
-                    if (out.getItem() == expected.getItem() && (expected.getMetadata() == 32767 || out.getMetadata() == expected.getMetadata())) {
+                    if (out.getItem() == target.item && (target.meta < 0 || out.getMetadata() == target.meta)) {
                         click(c, 0, 0, ClickType.QUICK_MOVE); // server tu lap craft toi het nguyen lieu trong luoi
                         phase = WAIT_CRAFT;
                         resetSettle();
@@ -374,7 +343,7 @@ public class ClientCrafter {
                     return;
                 }
                 rounds++;
-                int now = count(p, (currentRecipe != null) ? currentRecipe.getRecipeOutput() : target.toStack());
+                int now = count(p, target);
                 if (now <= lastCount && useBook) {
                     // ban lien tiep khong ra gi (cong thuc chua unlock...) -> thu cach tu xep tung buoc
                     QuickCraftMod.logger.info("[QuickCraft] ban lien tiep khong ra item -> chuyen sang tu xep nguyen lieu");
@@ -457,7 +426,10 @@ public class ClientCrafter {
 
     /** Con cong thuc nao du nguyen lieu de craft it nhat 1 lan khong. */
     private static boolean anyCraftable(EntityPlayerSP p, Container c) {
-        return getNextRecipeToCraft(p, c, target, gridW) != null;
+        for (IRecipe rc : candidates) {
+            if (burstPairs(p, c, rc) > 0) return true;
+        }
+        return false;
     }
 
     /**
@@ -572,7 +544,7 @@ public class ClientCrafter {
         } else if (got > 0) {
             msg = "\u00a7aĐã craft " + got + " x " + name + ".";
         } else {
-            msg = "\u00a7aĐã hoàn tất quá trình chế tạo!";
+            msg = "\u00a7cKhông đủ nguyên liệu để craft: " + name;
         }
         ClientHandler.setStatus(msg);
         QuickCraftMod.logger.info("[QuickCraft] xong: {} (rounds={}, got={})", msg, rounds, got);
@@ -759,88 +731,5 @@ public class ClientCrafter {
             n += s.getCount();
         }
         return n;
-    }
-
-    private static int count(EntityPlayerSP p, ItemStack st) {
-        if (st == null || st.isEmpty()) return 0;
-        int n = 0;
-        for (ItemStack s : p.inventory.mainInventory) {
-            if (s.isEmpty() || s.getItem() != st.getItem()) continue;
-            if (st.getMetadata() != 32767 && s.getMetadata() != st.getMetadata()) continue;
-            n += s.getCount();
-        }
-        return n;
-    }
-
-    /**
-     * Tim cong thuc tiep theo can craft:
-     * 1. Uu tien cong thuc truc tiep cua target neu da co du nguyen lieu trong tui.
-     * 2. Neu chua the craft truc tiep (do thieu nguyen lieu hoac chua du so luong),
-     *    tim cong thuc tao ra nguyen lieu trung gian ma tui do dang co san nguyen lieu thô
-     *    (vi du: Mia -> Giay truoc khi ghep Giay + Da bo -> Sach, hoac Hat vang -> Phoi vang -> Khoi vang).
-     */
-    public static IRecipe getNextRecipeToCraft(EntityPlayerSP p, Container c, ItemResolver.Target target, int gridW) {
-        if (target == null || candidates == null) return null;
-
-        // 1. Kiem tra cong thuc truc tiep cua target xem co craft duoc ngay khong
-        for (IRecipe dr : candidates) {
-            if (canCraft(p, c, dr, gridW)) {
-                return dr;
-            }
-        }
-
-        // 2. Neu chua the craft truc tiep, tim nguyen lieu trung gian co the che tao them
-        List<Item> visited = new ArrayList<Item>();
-        visited.add(target.item);
-
-        for (IRecipe dr : candidates) {
-            Ingredient[] grid = layoutFor(dr, 3);
-            if (grid == null) continue;
-            for (Ingredient ing : grid) {
-                if (ing == null) continue;
-
-                IRecipe sub = findCraftableIntermediate(p, c, ing, gridW, 0, visited);
-                if (sub != null) {
-                    return sub;
-                }
-            }
-        }
-
-        return null;
-    }
-
-    private static IRecipe findCraftableIntermediate(EntityPlayerSP p, Container c, Ingredient missingIng, int gridW, int depth, List<Item> visited) {
-        if (depth > 3) return null;
-        for (IRecipe subR : ForgeRegistries.RECIPES.getValuesCollection()) {
-            ItemStack out = subR.getRecipeOutput();
-            if (out.isEmpty() || !missingIng.apply(out)) continue;
-            if (visited.contains(out.getItem())) continue;
-            if (layoutFor(subR, 3) == null) continue;
-            if (!subR.canFit(gridW, gridW)) continue;
-
-            if (canCraft(p, c, subR, gridW)) {
-                return subR;
-            }
-
-            Ingredient[] subGrid = layoutFor(subR, 3);
-            if (subGrid != null) {
-                visited.add(out.getItem());
-                for (Ingredient subIng : subGrid) {
-                    if (subIng == null) continue;
-                    IRecipe nested = findCraftableIntermediate(p, c, subIng, gridW, depth + 1, visited);
-                    if (nested != null) {
-                        return nested;
-                    }
-                }
-                visited.remove(out.getItem());
-            }
-        }
-        return null;
-    }
-
-    private static boolean canCraft(EntityPlayerSP p, Container c, IRecipe r, int gridW) {
-        if (!r.canFit(gridW, gridW)) return false;
-        if (burstPairs(p, c, r) > 0) return true;
-        return plan(p, c, r) != null;
     }
 }

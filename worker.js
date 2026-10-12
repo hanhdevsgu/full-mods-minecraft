@@ -709,9 +709,10 @@ class BotInstance {
             this._lobby_stuck_since = null;
         }
 
-        // Nếu hotbar không còn compass nhưng chưa mark joined và có item:
-        if (!this.joined_server && this._had_compass_state && this.isJoinedServer() && this._hotbarHasAnyItem()) {
-            this.log(`🎉 [HOTBAR CHECK] Hotbar không còn compass (${reason}) → Đã vào server!`, '#2ecc71');
+        // Nếu hotbar không còn compass (khác compass, kể cả tay trống / không có item) và đã vào server:
+        if (!this.joined_server && this.isJoinedServer()) {
+            const hasItem = this._hotbarHasAnyItem();
+            this.log(`🎉 [HOTBAR CHECK] Hotbar khác compass (${hasItem ? 'có item' : 'tay trống'}) (${reason}) → Đã vào server!`, '#2ecc71');
             this.sendJoined();
             this.markJoinedServer();
         }
@@ -2420,44 +2421,7 @@ class BotInstance {
     }
 
     async _resumeDepositWaypointIfAny(reason = '') {
-        if (!this.running || !this.bot || !this.bot.entity) return false;
-        const wp = this._loadDepositWaypoint();
-        if (!wp) return false;
-
-        const cur = this.bot.entity.position;
-        const depY = Number(this.storage_deposit_lock_y);
-
-        // Chỉ resume nếu waypoint có Y khớp với Y Nhà Rương
-        if (Number.isFinite(depY) && depY > 0 && Math.abs(wp.y - depY) > 2.0) {
-            return false;
-        }
-
-        const dist = Math.hypot(wp.x - cur.x, wp.z - cur.z);
-        // Nếu khoảng cách > 1.8 blocks (tức là vị trí cất đồ trước đó ở xa điểm /home hiện tại)
-        if (dist > 1.8) {
-            this.log(`📍 [WAYPOINT RESUME] (${reason}) Đang ở đầu dãy Nhà Rương. Phát hiện vị trí cất dở trước đó tại (${wp.x}, ${wp.y}, ${wp.z}) (rương #${wp.hops + 1}) → GOTO thẳng tới vị trí này...`, '#4a9eff');
-
-            const targetBlockX = Math.floor(wp.x);
-            const targetBlockY = Math.floor(wp.y);
-            const targetBlockZ = Math.floor(wp.z);
-
-            const reached = await this._pathfinderGotoExactXYZ(targetBlockX, targetBlockY, targetBlockZ, '📍 [WAYPOINT RESUME]', () => !this.running || !this.bot || this.findCompassSlot() !== -1);
-            if (reached) {
-                this.log(`✅ [WAYPOINT RESUME] Đã tới đúng vị trí rương cất đồ dở dang! Bắt đầu cất đồ từ đây.`, '#2ecc71');
-                this._goto_anchor = { x: targetBlockX, y: targetBlockY, z: targetBlockZ };
-                this._saved_resume_hops = wp.hops;
-
-                // Khóa lại Pitch/Yaw của Nhà Rương
-                this.lock_pitch = this._safeStoragePitch(this.storage_deposit_pitch);
-                this.lock_yaw = this._safeStorageYaw(this.storage_deposit_yaw);
-                this.lock_pitch_yaw = true;
-                this.applyChestPitchYaw();
-                this.startPitchYawLockLoop();
-                return true;
-            } else {
-                this.log(`⚠️ [WAYPOINT RESUME] Không thể tới waypoint (${wp.x}, ${wp.z}) → sẽ cất đồ từ vị trí hiện tại.`, '#f5c842');
-            }
-        }
+        // Tắt toàn bộ pathfinder GOTO tự động khi ở Nhà Rương để tránh chạy lung tung tới XYZ lạ
         return false;
     }
 
@@ -3267,8 +3231,11 @@ class BotInstance {
         };
 
         try {
-            // Kiểm tra có waypoint vị trí cất dở dang trước đó không → GOTO thẳng tới đó
-            await this._resumeDepositWaypointIfAny('runChestDepositFlow');
+            // Khi ở Nhà Rương: luôn lưu lại vị trí hiện tại của bot làm mốc cất đồ (không GOTO lung tung)
+            if (this.bot && this.bot.entity && this.isNearDepositY(1.5)) {
+                const p = this.bot.entity.position;
+                this._saveDepositWaypoint(p.x, p.y, p.z, 0);
+            }
 
             this.move_delta_x = this.storage_deposit_delta_x;
             this.move_delta_y = this.storage_deposit_delta_y;
@@ -4000,7 +3967,8 @@ class BotInstance {
                     nextCfg.dx, nextCfg.dy, nextCfg.dz, nextCfg.lockY, nextCfg.pitch, nextCfg.yaw, TAG, aborted
                 );
                 if (!hopOk) {
-                    this.log(`⚠️ ${TAG} Không tới được rương kế tiếp hoặc Y chưa đúng — dừng chu kỳ cất đồ.`, '#f5c842');
+                    this.log(`⚠️ ${TAG} Không tới được rương kế tiếp (đã tới cuối hàng rương hoặc vướng) — reset waypoint để tránh kẹt hàng cũ.`, '#f5c842');
+                    this._clearDepositWaypoint('đã tới cuối hàng rương');
                     this._chest_busy = false;
                     return true;
                 }
@@ -5253,9 +5221,7 @@ class BotInstance {
         // Nếu hotbar vẫn có compass -> vẫn đang ở lobby
         if (this.findCompassSlot() !== -1) return false;
 
-        // Phải có ít nhất 1 item trên hotbar (tránh lúc mới load chưa kịp sync inventory)
-        if (!this._hotbarHasAnyItem()) return false;
-
+        // Hotbar khác compass: kể cả tay trống (không có bất kỳ item nào) hay có item khác đều coi là đã vào server
         return true;
     }
 
@@ -5348,9 +5314,12 @@ class BotInstance {
                 }
             }
 
-            // Nếu đã ở Nhà Rương và có waypoint cất đồ dở dang trước đó → GOTO thẳng tới đúng vị trí rương đó
+            // Đã ở Nhà Rương: lưu ngay vị trí hiện tại của bot làm mốc cất đồ, bắt đầu cất từ đây
             if (this.isNearDepositY(1.5)) {
-                await this._resumeDepositWaypointIfAny('sau khi vào lại server & về Nhà Rương');
+                if (this.bot && this.bot.entity) {
+                    const p = this.bot.entity.position;
+                    this._saveDepositWaypoint(p.x, p.y, p.z, 0);
+                }
             }
 
             // Tự động BẬT và chạy Chuỗi Rương
@@ -5590,6 +5559,8 @@ class BotInstance {
                 if (this.findCompassSlot() !== -1 || this.isAtSpawn()) {
                     this.log(`🌍 Đang ở spawn lobby (Y=${this.bot && this.bot.entity ? this.bot.entity.position.y.toFixed(2) : '?'}) → chuyển sang quy trình lobby...`, '#f5c842');
                     this._handleCompassDetected('spawn lobby');
+                } else if (this.isJoinedServer()) {
+                    this.markJoinedServer();
                 }
                 if (this._spawn_logged) {
                     // Spawn lại (đổi world / về lobby / hồi sinh): check hotbar ngay sau khi inventory kịp cập nhật
@@ -5611,6 +5582,9 @@ class BotInstance {
                     this.checkHeldItem();
                     this.logTargetItemDebugName();
 
+                    // Kiểm tra ngay hotbar sau khi spawn (đặc biệt khi vào thẳng server không qua lobby)
+                    setTimeout(() => this.hotbarTick('spawn ban đầu'), 800);
+
                     try {
                         if (this.bot && this.bot.inventory && !this._inventory_listener_attached) {
                             this._inventory_listener_attached = true;
@@ -5620,7 +5594,7 @@ class BotInstance {
                                     return;
                                 }
 
-                                if (this._had_compass_state && this.findCompassSlot() === -1) {
+                                if (this.findCompassSlot() === -1) {
                                     this._had_compass_state = false;
                                     if (this.isJoinedServer()) {
                                         this.markJoinedServer();

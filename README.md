@@ -1,4 +1,4 @@
-# 💣 TNT Auto-Logistics Mod (Minecraft 1.12.2)
+﻿# 💣 TNT Auto-Logistics Mod (Minecraft 1.12.2)
 
 Mod hỗ trợ chiến thuật pháo đài / bắn canon TNT chuyên nghiệp: tự động rút TNT rương 0-tick, nạp máy phân phát đủ số lượng, vẽ ESP viền đỏ và **đồng bộ đám mây 24/7 cho toàn bộ thành viên trong team**.
 
@@ -6,16 +6,16 @@ Mod hỗ trợ chiến thuật pháo đài / bắn canon TNT chuyên nghiệp: t
 
 ## 📥 TẢI MOD NHANH (DOWNLOAD)
 
-👉 **[BẤM VÀO ĐÂY ĐỂ TẢI FILE TNTMOD-1.0.JAR](https://github.com/hanhdevsgu/tntmod-cloud-relay/releases/download/v1.0/tntmod-1.0.jar)** 👈
+👉 **[BẤM VÀO ĐÂY ĐỂ TẢI FILE TNTMOD-1.0.JAR](https://github.com/hanhdevsgu/full-mods-minecraft/releases/download/tntmod-v1.0/tntmod-1.0.jar)** 👈
 
-*(Chỉ cần tải file `tntmod-1.0.jar` về rồi ném thẳng vào thư mục `.minecraft/mods` là xong, không cần cài đặt gì thêm!)*
+*(Chỉ cần tải file 	ntmod-1.0.jar về rồi ném thẳng vào thư mục .minecraft/mods là xong, không cần cài đặt gì thêm!)*
 
 ---
 
 ## ⚡ TÍNH NĂNG NỔI BẬT
 
 1. **Rút TNT từ Rương (Chest TNT Extractor):**
-   - Mở rương ra là tự động dùng `quick_move` rút sạch TNT (ID 46) xuống túi đồ với tốc độ ánh sáng (0-tick).
+   - Mở rương ra là tự động dùng quick_move rút sạch TNT (ID 46) xuống túi đồ với tốc độ ánh sáng (0-tick).
    - Tùy chọn tự đóng rương hoặc đóng bằng tay (E / ESC) trong menu F7.
 
 2. **Nạp Máy Phân Phát Thông Minh (Dispenser Smart Restock):**
@@ -37,12 +37,12 @@ Mod hỗ trợ chiến thuật pháo đài / bắn canon TNT chuyên nghiệp: t
 ## 🎮 PHÍM TẮT & LỆNH TRONG GAME
 
 - **Phím F7:** Menu cài đặt chính:
-  - Bật/Tắt Mod `[ON] / [OFF]`
+  - Bật/Tắt Mod [ON] / [OFF]
   - Đổi định mức số lượng TNT nạp máy phân phát (Mặc định: 64)
   - Bật/Tắt tự động đóng rương & đóng GUI máy phân phát
-  - Nút `[RESET VỀ GỐC / XÓA ESP]` để xóa sạch các điểm đánh dấu khi bắt đầu trận mới.
+  - Nút [RESET VỀ GỐC / XÓA ESP] để xóa sạch các điểm đánh dấu khi bắt đầu trận mới.
 - **Phím F8:** Menu toggle bật/tắt nhanh chế độ hiển thị ESP viền đỏ.
 - **Lệnh Chat:**
-  - `/t toggle` : Bật/Tắt mod nhanh.
-  - `/t amount <số>` : Đổi định mức nạp TNT.
-  - `/t clear` : Xóa sạch các điểm ESP đỏ trên bản đồ.
+  - /t toggle : Bật/Tắt mod nhanh.
+  - /t amount <số> : Đổi định mức nạp TNT.
+  - /t clear : Xóa sạch các điểm ESP đỏ trên bản đồ.

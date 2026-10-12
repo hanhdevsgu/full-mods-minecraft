@@ -1,0 +1,105 @@
+# ============================================================
+# Vietnamese Language File for Macro Recorder Mod
+# ============================================================
+
+# ============================================================
+# CATEGORY - Tên danh mục trong cài đặt điều khiển
+# ============================================================
+key.categories.macro=Macro Recorder
+
+# ============================================================
+# VIEW LOCK (AimTool) - Khóa góc nhìn Yaw/Pitch
+# ============================================================
+key.categories.aimtool=Khóa góc nhìn (View Lock)
+key.aimtool.togglelock=Bật/Tắt khóa góc nhìn
+key.aimtool.opengui=Mở GUI chỉnh Yaw/Pitch
+
+# ============================================================
+# KEY BINDINGS - Phím tắt
+# ============================================================
+key.macro.open_gui=Mở GUI cấu hình
+key.macro.run=Chạy Macro
+key.macro.stop=Dừng Macro
+
+# ============================================================
+# GUI - Giao diện cấu hình
+# ============================================================
+gui.macro.config.title=CẤU HÌNH MACRO
+gui.macro.vaults=Số vault cần lấy:
+gui.macro.action_delay=Action Delay (ticks):
+gui.macro.action_delay_note=(0=nhanh nhất, 20=1 giây)
+gui.macro.move_wait=Move Wait (ticks):
+gui.macro.move_wait_note=(thời gian chờ di chuyển)
+gui.macro.wait_after_click=Wait After Click (ticks):
+gui.macro.wait_after_click_note=(chờ sau mỗi action)
+gui.macro.help1=ENTER để Lưu & Đóng | ESC để Hủy
+gui.macro.help2=Lưu = Lưu config | Bắt đầu = Lưu và Chạy luôn
+gui.save=Lưu
+gui.start=Bắt đầu
+gui.cancel=Hủy
+
+# ============================================================
+# GUI TOOLTIPS - Gợi ý khi di chuột
+# ============================================================
+gui.tooltip.vaults=Số vault /pv muốn chạy từ 1 đến N
+gui.tooltip.action_delay=Delay giữa các action (0 = cực nhanh)
+gui.tooltip.move_wait=Thời gian chờ di chuyển giữa các vault
+gui.tooltip.wait_after_click=Thời gian chờ sau mỗi action
+gui.tooltip.save=Lưu cấu hình và đóng GUI
+gui.tooltip.start=Lưu cấu hình và bắt đầu macro ngay
+gui.tooltip.cancel=Đóng GUI mà không lưu
+
+# ============================================================
+# CONSOLE LOGS - Log trong console
+# ============================================================
+macro.log.init=Macro Recorder Mod đã được khởi tạo!
+macro.log.start=BẮT ĐẦU MACRO
+macro.log.stop=DỪNG MACRO
+macro.log.complete=HOÀN THÀNH MACRO
+macro.log.vault=Đang xử lý vault %d
+macro.log.take_sugar=Đã lấy %d stack mía
+macro.log.move_sugar=Đã bỏ %d stack mía lên
+macro.log.send_pv=Đã gửi /pv %d
+macro.log.moving=Di chuyển sang vault tiếp theo...
+macro.log.moved=Đã di chuyển xong
+macro.log.total_sugar=Tổng mía: %d stacks
+macro.log.error=Lỗi: %s
+macro.log.config_saved=Đã lưu cấu hình
+
+# ============================================================
+# STATUS MESSAGES - Thông báo trạng thái
+# ============================================================
+macro.status.stopped=DỪNG MACRO tại vault %d
+macro.status.completed=HOÀN THÀNH! Đã xử lý %d vaults
+
+# ============================================================
+# HƯỚNG DẪN SỬ DỤNG
+# ============================================================
+macro.help.title=HƯỚNG DẪN SỬ DỤNG MACRO
+macro.help.line1=1. Đứng trước rương thật, nhìn vào rương
+macro.help.line2=2. Nhấn F8 để mở GUI cấu hình
+macro.help.line3=3. Nhập số vault muốn lấy
+macro.help.line4=4. Nhấn Lưu để lưu cấu hình
+macro.help.line5=5. Nhấn F9 để bắt đầu chạy macro
+macro.help.line6=6. Nhấn F10 để dừng macro bất kỳ lúc nào
+macro.help.footer=Chúc bạn thành công!
+
+# ============================================================
+# ERROR MESSAGES - Thông báo lỗi
+# ============================================================
+error.invalid_number=Vui lòng nhập số hợp lệ (1-9999)
+error.running=Macro đang chạy, không thể mở GUI
+error.not_ready=Không thể bắt đầu: Player chưa sẵn sàng
+error.no_chest=Không tìm thấy rương, hãy nhìn vào rương
+error.no_sugar=Không tìm thấy mía trong rương này
+error.inventory_full=Inventory đã đầy, không thể lấy thêm
+
+# ============================================================
+# BUTTON LABELS - Nhãn nút
+# ============================================================
+button.save=Lưu
+button.start=Bắt đầu
+button.cancel=Hủy
+button.close=Đóng
+button.apply=Áp dụng
+button.reset=Đặt lại

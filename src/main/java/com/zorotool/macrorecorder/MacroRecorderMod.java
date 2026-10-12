@@ -983,28 +983,9 @@ public class MacroRecorderMod {
                 return false;
 
             case WAITING_NPC_VILLAGER_LOOK:
-                // VillagerLook gốc: .look -90 90, chờ 3 tick rồi đánh 15 hit trong 1 tick.
-                waitTimer++;
-                if (waitTimer >= 3) {
-                    performNpcVillagerHits(15);
-                    String recoveryShopLook = ConfigHelper.getShopLookCommand();
-                    mc.player.sendChatMessage(recoveryShopLook);
-                    System.out.println("[MacroRecorder] VillagerLook: 15 hit/1 tick -> " + recoveryShopLook);
-                    waitTimer = 0;
-                    state = MacroState.WAITING_NPC_VILLAGER_AFTER;
-                }
-                return false;
-
             case WAITING_NPC_VILLAGER_AFTER:
-                // Chờ camera quay lại hướng NPC theo .look NCP trong GUI F8 rồi mới mở lại.
-                waitTimer++;
-                if (waitTimer >= Math.max(1, npcClickRetryIntervalTicks)) {
-                    waitTimer = 0;
-                    rightClickNpc();
-                    state = MacroState.WAITING_NPC_GUI;
-                    return false;
-                }
-                return false;
+                state = MacroState.WAITING_NPC_GUI;
+                return true;
 
             case WAITING_AFTER_SHOP_CLICK_DELAY:
                 // GUI shop duoc de mo tu nhien, sau khi dong GUI -> doi 1s -> gui afterShopGoto
@@ -1442,8 +1423,33 @@ public class MacroRecorderMod {
         }
     }
 
+    private void invokeMinecraftRightClick() {
+        try {
+            java.lang.reflect.Method method;
+            try {
+                method = Minecraft.class.getDeclaredMethod("rightClickMouse");
+            } catch (NoSuchMethodException e) {
+                // Obfuscated MCP name in Forge 1.12.2
+                method = Minecraft.class.getDeclaredMethod("func_147121_ag");
+            }
+            method.setAccessible(true);
+            method.invoke(mc);
+        } catch (Exception e) {
+            // Fallback nếu không gọi được reflection
+            try {
+                if (mc.objectMouseOver != null && mc.objectMouseOver.typeOfHit == RayTraceResult.Type.ENTITY && mc.objectMouseOver.entityHit != null) {
+                    mc.playerController.interactWithEntity(mc.player, mc.objectMouseOver.entityHit, EnumHand.MAIN_HAND);
+                } else {
+                    mc.playerController.processRightClick(mc.player, mc.world, EnumHand.MAIN_HAND);
+                }
+            } catch (Exception ignored) {}
+        }
+    }
+
     private boolean rightClickNpc() {
         try {
+            if (mc == null || mc.player == null || mc.playerController == null) return false;
+
             Entity target = null;
             RayTraceResult trace = mc.objectMouseOver;
             if (trace != null && trace.typeOfHit == RayTraceResult.Type.ENTITY
@@ -1455,6 +1461,7 @@ public class MacroRecorderMod {
             }
 
             if (target != null) {
+                // Tương tác trực tiếp với entity mục tiêu (Monster / Villager / Custom NPC)
                 RayTraceResult targetTrace = new RayTraceResult(target, target.getPositionVector());
                 try {
                     RayTraceResult hit = target.getEntityBoundingBox().grow(target.getCollisionBorderSize()).calculateIntercept(
@@ -1467,25 +1474,22 @@ public class MacroRecorderMod {
                     }
                 } catch (Exception ignored) {}
 
-                // Gửi tương tác trực tiếp lên entity mục tiêu (Monster / Villager / Custom NPC)
                 net.minecraft.util.EnumActionResult result =
                         mc.playerController.interactWithEntity(mc.player, target, targetTrace, EnumHand.MAIN_HAND);
                 if (result != net.minecraft.util.EnumActionResult.SUCCESS) {
                     result = mc.playerController.interactWithEntity(mc.player, target, EnumHand.MAIN_HAND);
                 }
-                mc.player.swingArm(EnumHand.MAIN_HAND);
-                System.out.println("[MacroRecorder] Đã gửi tương tác chuột phải vào NPC (" + target.getClass().getSimpleName()
-                        + " - " + target.getName() + ", result=" + result + ")");
+
+                // Đồng thời gọi chu trình click chuột phải thật của Minecraft để mở GUI 100%
+                invokeMinecraftRightClick();
+
+                System.out.println("[MacroRecorder] Đã gửi tương tác CHUỘT PHẢI vào NPC: "
+                        + target.getClass().getSimpleName() + " (" + target.getName() + ", result=" + result + ")");
                 return true;
             } else {
-                // Nếu chưa có target chính xác, thử kiểm tra entityHit của objectMouseOver
-                if (mc.objectMouseOver != null && mc.objectMouseOver.typeOfHit == RayTraceResult.Type.ENTITY && mc.objectMouseOver.entityHit != null) {
-                    mc.playerController.interactWithEntity(mc.player, mc.objectMouseOver.entityHit, EnumHand.MAIN_HAND);
-                } else {
-                    mc.playerController.processRightClick(mc.player, mc.world, EnumHand.MAIN_HAND);
-                }
-                mc.player.swingArm(EnumHand.MAIN_HAND);
-                System.out.println("[MacroRecorder] Chưa khóa được NPC, gửi chuột phải hướng nhìn (fallback)...");
+                // Nếu chưa raytrace trúng entity cụ thể, thực hiện chuột phải thật của Minecraft
+                invokeMinecraftRightClick();
+                System.out.println("[MacroRecorder] Chuột phải hướng nhìn NPC...");
                 return false;
             }
         } catch (Exception e) {

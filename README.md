@@ -18,18 +18,20 @@ Mod hỗ trợ chiến thuật pháo đài / bắn canon TNT chuyên nghiệp: t
    - Mở rương ra là tự động dùng quick_move rút sạch TNT (ID 46) xuống túi đồ với tốc độ ánh sáng (0-tick).
    - Tùy chọn tự đóng rương hoặc đóng bằng tay (E / ESC) trong menu F7.
 
-2. **Nạp Máy Phân Phát Siêu Tốc & Kiểm Tra Chắc Chắn:**
-   - Mở máy phân phát ra sẽ tự động tính lượng TNT còn thiếu và nạp vừa đủ định mức cấu hình (ví dụ: máy có 37 viên, định mức 64 thì nạp thêm đúng 27 viên, không thừa không thiếu).
-   - **Cam kết 100%:** Kiểm tra chắc chắn đã đẩy đủ số lượng TNT vào máy rồi mới đóng GUI, tốc độ ánh sáng (0ms), không lo bị đóng GUI trước khi nạp.
+2. **Nạp Máy Phân Phát Max Tốc Độ & Cam Kết 100% Không Sót Máy:**
+   - Khi đã chuột phải vào máy phân phát là **100% chắc chắn máy đó được đẩy đủ TNT** mà không bao giờ bị bỏ sót.
+   - Cơ chế nạp Max Tốc Độ (0-tick): Tự động tính lượng TNT còn thiếu, ghép stack hoặc Shift-click tức thì (0ms).
+   - Kiểm tra nghiêm ngặt: Xác thực container đã nhận đủ TNT rồi mới đóng GUI, không lo lag mạng hay đóng GUI trước khi nạp.
 
-3. **Biến Thành Block Kim Cương & ESP Cyan Xuyên Tường Siêu Nổi Bật:**
-   - **Máy phân phát đã nạp đủ:** Ngay lập tức biến thành **Block Kim Cương (Diamond Block)** sáng bóng ở góc nhìn trực diện + phát sáng viền Neon Cyan dày 3.5px và Tag 3D `[64/64 💎]` nhìn xuyên tường cực rõ từ xa!
+3. **Biến Thành Block Kim Cương Thuần Túy (Không Rối Mắt):**
+   - **Máy phân phát đã nạp đủ:** Ngay lập tức biến thành **Block Kim Cương (Diamond Block)** trực tiếp trong thế giới. Bỏ hoàn toàn các khung viền ESP rườm rà, chỉ cần nhìn thấy khối kim cương là biết máy đó đã nạp xong, không cần nạp nữa!
+   - **Tất cả ai xài mod đều thấy:** Đồng bộ Cloud 24/7 theo thời gian thực, bất kỳ ai nạp thì cả team đều thấy khối kim cương sáng ngời.
    - **Rương hết TNT:** Tự động vẽ hộp ESP màu đỏ rực nhìn xuyên tường + Tag 3D `[HẾT TNT]` để biết rương đã cạn.
    - Không bị mất trạng thái khi thoát game hoặc tắt Minecraft.
 
 4. **Đồng Bộ Team Đám Mây 24/7 (Team Cloud Sync):**
    - Đã kết nối sẵn tới Server Cloud Render 24/7.
-   - Bất kỳ ai trong team nạp máy phân phát hay rút rương ở đâu, **màn hình của cả team lập tức biến thành khối kim cương và phát sáng xuyên tường** theo thời gian thực!
+   - Bất kỳ ai trong team nạp máy phân phát hay rút rương ở đâu, **màn hình của cả team lập tức biến thành khối kim cương** theo thời gian thực!
    - Không cần mở Radmin VPN, không cần mở port.
    - Hoàn toàn tàng hình, không để lại bất kỳ dấu vết nào trên server Minecraft.
 

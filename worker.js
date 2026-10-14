@@ -723,6 +723,18 @@ class BotInstance {
             this.sendJoined();
             this.markJoinedServer();
         }
+
+        // ⭐ LƯU VÀ KHÔI PHỤC HOTBAR Ô ĐANG CẦM (Chống kẹt ô số 5 compass lobby):
+        if (this.joined_server && !inLobby && this.bot && Number.isInteger(this.bot.quickBarSlot)) {
+            const targetSlot = this._loadHotbarSlot();
+            // Nếu bot vẫn đang cầm ô số 5 (slot 4) do tàn dư mở compass ở lobby, đổi ngay về ô lưu
+            if (this.bot.quickBarSlot === 4 && targetSlot !== 4 && this._compass_opened) {
+                this.restoreHotbarSlot();
+                this._compass_opened = false;
+            } else if (this.bot.quickBarSlot !== 4 || !this._compass_opened) {
+                this._saveHotbarSlot(this.bot.quickBarSlot);
+            }
+        }
     }
 
     recoverJoin(reason = '') {
@@ -1542,16 +1554,30 @@ class BotInstance {
             await this.ensureAtDepositHouse('bấm chuỗi rương tại Y dọn');
         }
 
-        // ⭐ NẾU ĐANG ĐỨNG Ở Y NHÀ RƯƠNG (treo dãy mới hoặc rương mới):
-        // Luôn lưu ngay vị trí hiện tại làm waypoint, và TUYỆT ĐỐI GOTO KHÔNG ĐƯỢC CHẠY!
-        if (this.isNearDepositY(1.5) && this.bot && this.bot.entity) {
-            const p = this.bot.entity.position;
-            this._saveDepositWaypoint(p.x, p.y, p.z, 0);
-            this.log(`💾 [CHUỖI RƯƠNG] Đang đứng ở Y Nhà Rương → Lưu waypoint vị trí hiện tại (${p.x.toFixed(2)}, ${p.y.toFixed(2)}, ${p.z.toFixed(2)}), TUYỆT ĐỐI KHÔNG GOTO!`, '#2ecc71');
+        // ⭐ NẾU ĐÃ CÓ _goto_anchor HOẶC VỪA GOTO TỚI WAYPOINT RƯƠNG TRƯỚC KHI DISS:
+        // Giữ nguyên vị trí và hops của rương vừa tới để tiếp tục cất đồ!
+        const hasActiveResumeAnchor = !!this._goto_anchor;
+        const currentResumeHops = this._saved_resume_hops || 0;
+
+        if (!hasActiveResumeAnchor) {
+            // Chỉ khi bắt đầu mới hoàn toàn (chưa có anchor), nếu đang ở Y Nhà Rương và chưa có waypoint:
+            if (this.isNearDepositY(1.5) && this.bot && this.bot.entity) {
+                const wp = this._loadDepositWaypoint();
+                if (!wp) {
+                    const p = this.bot.entity.position;
+                    this._saveDepositWaypoint(p.x, p.y, p.z, 0);
+                    this.log(`💾 [CHUỖI RƯƠNG] Bắt đầu mới tại Nhà Rương → Lưu waypoint vị trí ban đầu (${p.x.toFixed(2)}, ${p.y.toFixed(2)}, ${p.z.toFixed(2)})`, '#2ecc71');
+                }
+            }
+            this._goto_anchor = null;
+            this._saved_resume_hops = 0;
+            this._storage_recover_pending = null;
+            this._goto_fail_streak = 0;
+        } else {
+            this.log(`📍 [CHUỖI RƯƠNG] Tiếp tục cất đồ từ rương đã lưu (anchor: ${this._goto_anchor.x}, ${this._goto_anchor.y}, ${this._goto_anchor.z} | hops #${currentResumeHops + 1})`, '#2ecc71');
         }
 
-        // MỖI LẦN BẬT LẠI = MỘT PHIÊN MỚI, LUÔN CHẠY TỪ ĐẦU HỘP 1.
-        // Không được giữ stage/goto/box của phiên cũ.
+        // MỖI LẦN BẬT LẠI = reset clear stage (Dọn rương 1 / 2) về đầu
         this._storage_clear_stage = 0;
         this._storage_clear_gotos = 0;
         this._storage_clear_second_pending = false;
@@ -1559,9 +1585,6 @@ class BotInstance {
         this._storage_in_box2 = false;
         this._storage_box_index = 0;
         this._storage_gui_index = 0;
-        this._storage_recover_pending = null;
-        this._goto_anchor = null;
-        this._goto_fail_streak = 0;
         this._restoreGui1Config();
 
         // Nếu phiên cũ vẫn đang ở giữa một await sau khi vừa TẮT, không chạy
@@ -2392,6 +2415,51 @@ class BotInstance {
         }
     }
 
+    _getHotbarFilePath() {
+        const username = this.username || 'default';
+        return path.join(__dirname, `_hotbar_${username}.json`);
+    }
+
+    _saveHotbarSlot(slot) {
+        try {
+            if (!Number.isInteger(slot) || slot < 0 || slot > 8) return;
+            if (this.saved_hotbar_slot === slot) return;
+            this.saved_hotbar_slot = slot;
+            const filePath = this._getHotbarFilePath();
+            fs.writeFileSync(filePath, JSON.stringify({ slot, updatedAt: Date.now() }), 'utf-8');
+        } catch (e) {}
+    }
+
+    _loadHotbarSlot() {
+        try {
+            if (Number.isInteger(this.saved_hotbar_slot) && this.saved_hotbar_slot >= 0 && this.saved_hotbar_slot <= 8) {
+                return this.saved_hotbar_slot;
+            }
+            const filePath = this._getHotbarFilePath();
+            if (fs.existsSync(filePath)) {
+                const raw = fs.readFileSync(filePath, 'utf-8');
+                const data = JSON.parse(raw);
+                if (data && Number.isInteger(data.slot) && data.slot >= 0 && data.slot <= 8) {
+                    this.saved_hotbar_slot = data.slot;
+                    return data.slot;
+                }
+            }
+        } catch (e) {}
+        return 0; // Mặc định ô số 1 (slot 0)
+    }
+
+    restoreHotbarSlot() {
+        if (!this.bot || !this.running || !this.joined_server) return;
+        if (this.findCompassSlot() !== -1) return;
+        const targetSlot = this._loadHotbarSlot();
+        if (this.bot.quickBarSlot !== targetSlot) {
+            try {
+                this.bot.setQuickBarSlot(targetSlot);
+                this.log(`🗡️ [HOTBAR] Khôi phục vị trí cầm tay về ô số ${targetSlot + 1} (slot ${targetSlot})`, '#2ecc71');
+            } catch (e) {}
+        }
+    }
+
     _getWaypointFilePath() {
         const username = this.username || 'default';
         return path.join(__dirname, `_waypoint_${username}.json`);
@@ -2461,8 +2529,8 @@ class BotInstance {
         }
 
         const dist = Math.hypot(wp.x - cur.x, wp.z - cur.z);
-        // Nếu khoảng cách > 0.9 blocks (tức là điểm /home cách vị trí rương vừa đứng)
-        if (dist > 0.9) {
+        // Nếu khoảng cách > 0.65 blocks (tức là điểm /home cách vị trí rương vừa đứng)
+        if (dist > 0.65) {
             this.log(`📍 [WAYPOINT RESUME] (${reason}) Phát hiện vị trí rương vừa đứng tại (${wp.x}, ${wp.y}, ${wp.z}) (rương #${(wp.hops || 0) + 1}) → GOTO tới vị trí này...`, '#4a9eff');
             const targetBlockX = Math.floor(wp.x);
             const targetBlockY = Math.floor(wp.y);
@@ -2488,6 +2556,10 @@ class BotInstance {
             }
         } else {
             this.log(`ℹ️ [WAYPOINT RESUME] Đã đang ở đúng vị trí rương vừa đứng (${wp.x}, ${wp.z}), không cần GOTO.`, '#2ecc71');
+            const targetBlockX = Math.floor(wp.x);
+            const targetBlockY = Math.floor(wp.y);
+            const targetBlockZ = Math.floor(wp.z);
+            this._goto_anchor = { x: targetBlockX, y: targetBlockY, z: targetBlockZ };
             this._saved_resume_hops = wp.hops || 0;
             this.lock_pitch = this._safeStoragePitch(this.storage_deposit_pitch);
             this.lock_yaw = this._safeStorageYaw(this.storage_deposit_yaw);
@@ -5402,6 +5474,9 @@ class BotInstance {
             await this.sleep(600);
             if (!this.running || !this.bot || !this.bot.entity || !this.bot.entity.position) return;
 
+            // ⭐ Khôi phục vị trí hotbar đang cầm (mặc định ô 1, chống kẹt ô 5)
+            this.restoreHotbarSlot();
+
             const curY = Number(this.bot.entity.position.y);
             const clearY = Number(this.storage_clear_lock_y);
             const depY = Number(this.storage_deposit_lock_y);
@@ -5515,6 +5590,11 @@ class BotInstance {
         this.gui_opened = true;
         this.alreadyPlayingKickCount = 0;
         this.log("✅ Đã vào server!", '#2ecc71');
+
+        // ⭐ KHÔI PHỤC NGAY Ô HOTBAR ĐANG CẦM (Mặc định ô 1 = slot 0, hoặc ô trước khi diss)
+        this.restoreHotbarSlot();
+        setTimeout(() => this.restoreHotbarSlot(), 600);
+        setTimeout(() => this.restoreHotbarSlot(), 1800);
 
         setTimeout(() => {
             this.checkLocationAndAutoStartStorage('vào server');
@@ -5691,33 +5771,15 @@ class BotInstance {
                         }
                     }
 
-                    // ⭐ KHI Ở Y NHÀ RƯƠNG: LUÔN LUÔN LƯU XYZ WAYPOINT LẠI BẤT KỲ ĐANG LÀM GÌ!
-                    if (this.joined_server && this.isNearDepositY(1.5)) {
+                    // ⭐ KHI Ở Y NHÀ RƯƠNG: Chỉ cập nhật waypoint khi Chuỗi Rương ĐANG CHẠY và không trong tiến trình goto!
+                    // TUYỆT ĐỐI KHÔNG ghi đè waypoint khi auto_storage_running = false (đặc biệt khi vừa /home về hoặc vừa vào game)
+                    if (this.joined_server && this.isNearDepositY(1.5) && this.auto_storage_running) {
                         const p = this.bot.entity.position;
                         const now = Date.now();
-                        if (!this.auto_storage_running) {
-                            // Nhận diện chuyển dãy mới: nếu khoảng cách so với waypoint cũ > 2.5m
-                            const oldWp = this._last_deposit_waypoint || this._loadDepositWaypoint();
-                            if (oldWp && Number.isFinite(oldWp.x)) {
-                                const distFromOld = Math.hypot(p.x - oldWp.x, p.z - oldWp.z);
-                                if (distFromOld > 2.5) {
-                                    this._saved_resume_hops = 0;
-                                    this._goto_anchor = null;
-                                    this._saveDepositWaypoint(p.x, p.y, p.z, 0);
-                                    this.log(`🔄 [WAYPOINT] Phát hiện acc đã di chuyển sang dãy mới (${p.x.toFixed(2)}, ${p.y.toFixed(2)}, ${p.z.toFixed(2)}) → Tự động nhận diện và lưu waypoint dãy mới!`, '#2ecc71');
-                                    this._last_idle_dep_wp_save = now;
-                                }
-                            }
-                            if (!this._last_idle_dep_wp_save || now - this._last_idle_dep_wp_save > 1000) {
-                                this._last_idle_dep_wp_save = now;
-                                this._saveDepositWaypoint(p.x, p.y, p.z, 0);
-                            }
-                        } else {
-                            if (!this._goto_in_progress && (!this._last_idle_dep_wp_save || now - this._last_idle_dep_wp_save > 1500)) {
-                                this._last_idle_dep_wp_save = now;
-                                const currentHops = this._saved_resume_hops || 0;
-                                this._saveDepositWaypoint(p.x, p.y, p.z, currentHops);
-                            }
+                        if (!this._goto_in_progress && (!this._last_idle_dep_wp_save || now - this._last_idle_dep_wp_save > 1500)) {
+                            this._last_idle_dep_wp_save = now;
+                            const currentHops = this._saved_resume_hops || 0;
+                            this._saveDepositWaypoint(p.x, p.y, p.z, currentHops);
                         }
                     }
 

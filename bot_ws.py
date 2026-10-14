@@ -188,7 +188,7 @@ class BotInstanceLocal:
         self.storage_expect_reconnect_min = 5
         self.storage_clear_command = '/home 1 delay 8000'
         self.storage_deposit_command = '/back 1 delay 8000'
-        self.storage_reconnect_home_command = '/home 1 delay 8000'
+        self.storage_reconnect_home_command = '/home delay 8000'
         self.storage_clear_delta_x = 0
         self.storage_clear_delta_y = 0
         self.storage_clear_delta_z = -1
@@ -766,7 +766,7 @@ class BotManager:
                     'storage_expect_reconnect_min': int(bot.storage_expect_reconnect_min or 5),
                     'storage_clear_command': bot.storage_clear_command,
                     'storage_deposit_command': bot.storage_deposit_command,
-                    'storage_reconnect_home_command': getattr(bot, 'storage_reconnect_home_command', '/home 1 delay 8000'),
+                    'storage_reconnect_home_command': getattr(bot, 'storage_reconnect_home_command', '/home delay 8000'),
                     'storage_clear_delta_x': bot.storage_clear_delta_x,
                     'storage_clear_delta_y': bot.storage_clear_delta_y,
                     'storage_clear_delta_z': bot.storage_clear_delta_z,
@@ -1387,7 +1387,7 @@ class BotManager:
                             bot.storage_expect_reconnect_min = acc.get('storage_expect_reconnect_min', bot.storage_expect_reconnect_min)
                             bot.storage_clear_command = acc.get('storage_clear_command', bot.storage_clear_command)
                             bot.storage_deposit_command = acc.get('storage_deposit_command', bot.storage_deposit_command)
-                            bot.storage_reconnect_home_command = acc.get('storage_reconnect_home_command', getattr(bot, 'storage_reconnect_home_command', '/home 1 delay 8000'))
+                            bot.storage_reconnect_home_command = acc.get('storage_reconnect_home_command', getattr(bot, 'storage_reconnect_home_command', '/home delay 8000'))
                             bot.storage_clear_delta_x = acc.get('storage_clear_delta_x', bot.storage_clear_delta_x)
                             bot.storage_clear_delta_y = acc.get('storage_clear_delta_y', bot.storage_clear_delta_y)
                             bot.storage_clear_delta_z = acc.get('storage_clear_delta_z', bot.storage_clear_delta_z)
@@ -2039,7 +2039,7 @@ class BotManager:
                 storage_expect_reconnect_min=int(bot.storage_expect_reconnect_min or 5),
                 storage_clear_command=bot.storage_clear_command,
                 storage_deposit_command=bot.storage_deposit_command,
-                storage_reconnect_home_command=getattr(bot, 'storage_reconnect_home_command', '/home 1 delay 8000'),
+                storage_reconnect_home_command=getattr(bot, 'storage_reconnect_home_command', '/home delay 8000'),
                 storage_clear_delta_x=bot.storage_clear_delta_x,
                 storage_clear_delta_y=bot.storage_clear_delta_y,
                 storage_clear_delta_z=bot.storage_clear_delta_z,
@@ -3143,8 +3143,11 @@ class BotManager:
         clear_cmd_entry.insert(0, bot.storage_clear_command)
         self._settings_hint(chest_sec, 'Cú pháp: /home 1 delay 8000 = gửi /home 1 rồi chờ 8 giây. Số delay mặc định là milliseconds; có thể dùng delay 8s.')
         reconnect_home_cmd_entry = self._settings_field_row(chest_sec, "Lệnh về Nhà khi vào lại")
-        reconnect_home_cmd_entry.insert(0, getattr(bot, 'storage_reconnect_home_command', '/home 1 delay 8000'))
-        self._settings_hint(chest_sec, 'Dự phòng khi diss game: nếu reconnect vào lại mà Y đang ở Dọn Rương, bot tự chạy lệnh này để về Nhà Rương trước.')
+        cur_reconnect_home = getattr(bot, 'storage_reconnect_home_command', '/home delay 8000')
+        if not cur_reconnect_home or cur_reconnect_home == '/home 1 delay 8000':
+            cur_reconnect_home = '/home delay 8000'
+        reconnect_home_cmd_entry.insert(0, cur_reconnect_home)
+        self._settings_hint(chest_sec, 'Dự phòng khi diss game: nếu reconnect vào lại mà Y không ở Nhà Rương, bot tự chạy lệnh home này để về Nhà Rương trước rồi goto tới rương vừa bỏ. (TUYỆT ĐỐI không để nhầm /home 1 tại đây).')
 
         restart_row = tk.Frame(chest_sec, bg=self._SETTINGS_CARD_BG)
         restart_row.pack(fill='x', pady=(5,2))
@@ -3461,7 +3464,7 @@ class BotManager:
 
                 clear_command = clear_cmd_entry.get().strip()
                 deposit_command = deposit_cmd_entry.get().strip()
-                reconnect_home_command = reconnect_home_cmd_entry.get().strip() or '/home 1 delay 8000'
+                reconnect_home_command = reconnect_home_cmd_entry.get().strip() or '/home delay 8000'
                 try:
                     restart_h = max(0, int(restart_hour_entry.get().strip() or 0))
                     restart_m = max(0, int(restart_min_entry.get().strip() or 0))

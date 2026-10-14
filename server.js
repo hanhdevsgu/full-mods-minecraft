@@ -113,7 +113,7 @@ const DEFAULT_BOT_SETTINGS = {
     storage_expect_reconnect_min: 5,
     storage_clear_command: '/home 1 delay 8000',
     storage_deposit_command: '/back 1 delay 8000',
-    storage_reconnect_home_command: '/home 1 delay 8000',
+    storage_reconnect_home_command: '/home delay 8000',
     storage_clear_delta_x: 0,
     storage_clear_delta_y: 0,
     storage_clear_delta_z: -1,

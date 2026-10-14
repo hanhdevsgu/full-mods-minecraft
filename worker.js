@@ -3695,13 +3695,15 @@ class BotInstance {
         return atDep && !atClr;
     }
 
-    // EXPECT > 0 trong lúc đang chạy chuỗi → dừng chuỗi, chạy /home 1 delay 8000 (lệnh trên cái home khi về nhà), đợi 10s rồi kill node.exe session.
+    // EXPECT > 0 trong lúc đang chạy chuỗi:
+    // Nếu Y hiện tại đang ở Nhà Rương → thôi không gửi lệnh, đợi 10s rồi kill session.
+    // Nếu chưa ở Nhà Rương → /back cho về Y Nhà Rương, xong đợi 10s rồi kill session.
     async _expectGuardTrigger(expectN) {
         if (this._expect_guard_busy) return;
         this._expect_guard_busy = true;
         this._stopExpectGuardMonitor();
         const reconnectMin = this.storage_expect_reconnect_min;
-        this.log(`🛡️ [EXPECT GUARD] EXPECT = ${expectN} > 0 → dừng CHUỖI RƯƠNG, chạy lệnh dọn (/home 1 delay 8000), đợi 10s rồi kill session.`, '#f5c842');
+        this.log(`🛡️ [EXPECT GUARD] EXPECT = ${expectN} > 0 → dừng CHUỖI RƯƠNG...`, '#f5c842');
 
         // Huỷ chuỗi hiện tại (token++ → mọi flow đang chạy tự thoát), KHÔNG disconnect.
         this.auto_storage_running = false;
@@ -3716,14 +3718,35 @@ class BotInstance {
         // Chờ 1 chút cho flow cũ thoát hẳn
         await this.sleep(1000);
 
-        // ⭐ Chạy lệnh dọn rương (/home 1 delay 8000 - cái trên cái home khi về nhà)
-        const rawCmd = String(this.storage_clear_command || this._base_clear_command || '/home 1 delay 8000').trim();
-        const cmds = this.parseStorageCommands(rawCmd);
-        this.log(`🚀 [EXPECT GUARD] Gửi "${rawCmd}"...`, '#4a9eff');
-        await this.runCommandSequence(cmds);
+        // ⭐ KIỂM TRA Y HIỆN TẠI:
+        if (this._isAtDepositY()) {
+            this.log(`✅ [EXPECT GUARD] Bot đã đang ở Y Nhà Rương (Y=${Number(this.bot && this.bot.entity ? this.bot.entity.position.y : 0).toFixed(2)}) → THÔI không gửi lệnh nữa, đợi 10s rồi kill session.`, '#2ecc71');
+        } else {
+            // Còn chưa ở Nhà Rương: gửi /back cho nó về Y Nhà Rương
+            const rawCmd = String(this.storage_deposit_command || this._base_deposit_command || '/back delay 8000').trim();
+            const backCmds = this.parseStorageCommands(rawCmd);
+            this.log(`🔙 [EXPECT GUARD] Y hiện tại=${Number(this.bot && this.bot.entity ? this.bot.entity.position.y : 0).toFixed(2)} chưa ở Nhà Rương → Gửi "${rawCmd}" để về Nhà Rương...`, '#4a9eff');
+            await this.runCommandSequence(backCmds);
+
+            // Chờ bot teleport và tọa độ ổn định về Y Nhà Rương (tối đa 15s)
+            const t0 = Date.now();
+            while (this.running && this.bot && Date.now() - t0 < 15000) {
+                await this.sleep(300);
+                if (this._isAtDepositY()) break;
+            }
+
+            const currentY = Number(this.bot && this.bot.entity && this.bot.entity.position ? this.bot.entity.position.y : 0);
+            this.log(`📍 [EXPECT GUARD] Sau khi /back: Y hiện tại=${currentY.toFixed(2)}${this._isAtDepositY() ? ' (Đã về tới Nhà Rương)' : ''}`, '#2ecc71');
+        }
+
+        // Lưu waypoint an toàn tại Nhà Rương
+        if (this.bot && this.bot.entity && this._isAtDepositY()) {
+            const p = this.bot.entity.position;
+            this._saveDepositWaypoint(p.x, p.y, p.z, 0);
+        }
 
         if (!this.running || !this.bot) { this._expect_guard_busy = false; return; }
-        this.log(`✅ [EXPECT GUARD] Đã chạy xong "${rawCmd}" → báo server: đợi 10s kill node.exe session (riêng acc này), ${reconnectMin} phút sau vào lại.`, '#2ecc71');
+        this.log(`✅ [EXPECT GUARD] Đã cố định tại Nhà Rương → báo server: đợi 10s kill node.exe session (riêng acc này), ${reconnectMin} phút sau vào lại.`, '#2ecc71');
         this._emitExpectGuardKill(reconnectMin);
         // busy giữ nguyên = true cho tới khi process bị kill (tránh trigger lặp).
     }

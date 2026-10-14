@@ -17,19 +17,18 @@ Mod hỗ trợ chiến thuật pháo đài / bắn cannon TNT chuyên nghiệp: 
 
 ## ⚡ TÍNH NĂNG ĐƯỢC NÂNG CẤP MỚI NHẤT
 
-1. **Kiểm Tra Inventory 36 Ô Liên Tục Từng Frame — Chắc Chắn Mất TNT Mới Đóng GUI:**
-   - Hàm `countTntIn36Slots` kiểm tra liên tục 36 ô túi đồ (9 ô hotbar + 27 ô túi chính) ở tốc độ khung hình cao nhất (Max Speed).
-   - **Cam kết 100%:** Chỉ khi nào số TNT trong 36 ô inventory thực sự mất đi và đẩy thành công vào máy phân phát thì mod mới đóng GUI! Tuyệt đối không bao giờ bị tình trạng đóng GUI hớ hay kẹt item trên chuột.
+1. **Hàm Check Túi Đồ 36 Ô Liên Tục Từng Frame — Chắc Chắn Mất TNT Mới Được Mất (Đóng GUI):**
+   - Hàm `checkTuiDoDaMatTnt` kết hợp `countTntIn36Slots` kiểm tra liên tục 36 ô túi đồ (9 ô hotbar + 27 ô túi chính) ở tốc độ khung hình cao nhất (Max Speed).
+   - **Cam kết 100%:** Chỉ khi nào số TNT trong 36 ô túi đồ thực sự mất đi (đã nạp thành công vào máy phân phát) và chuột không giữ bất kỳ item nào thì GUI mới được phép mất (đóng GUI)! Tuyệt đối không bao giờ bị tình trạng đóng GUI hớ hay kẹt item trên chuột.
 
 2. **Nạp Đúng Số Lượng Còn Thiếu (Exact Partial Refill):**
    - Tự động kiểm tra số TNT đang có sẵn trong máy phân phát và chỉ nạp thêm lượng còn thiếu.
    - **Ví dụ thực tế:** Cài đặt định mức 64, trong máy phân phát đã có sẵn 32 viên thì mod sẽ **chỉ nạp đúng 32 viên** nữa để máy tròn 64, không thừa, không thiếu!
 
-3. **Biến Thành Khối Kim Cương (Không Dùng ESP, Vẫn Chuột Phải Mở Được Bình Thường):**
-   - Loại bỏ hoàn toàn khung viền ESP hay nhãn chữ gây rối mắt ở máy phân phát đầy.
+3. **Biến Thành Khối Kim Cương & Loại Bỏ Hoàn Toàn ESP / Chữ Hết TNT Ở Rương:**
+   - **Loại bỏ 100% ESP rương:** Đã bỏ hoàn toàn khung viền ESP và chữ `[HẾT TNT]` trên rương, giúp tầm nhìn sạch đẹp, không gây rối mắt hay tụt FPS.
    - Máy phân phát khi đã đủ TNT sẽ biến thành **Khối Kim Cương (Diamond Block)** 3D chân thực, sắc nét.
    - **Đặc biệt:** Khối chỉ thay đổi hình dạng bề ngoài, bản chất trong game vẫn là máy phân phát nên **người chơi vẫn chuột phải vào mở GUI bình thường 100%**!
-   - Rương hết sạch TNT sẽ hiển thị viền ESP màu đỏ rực nhìn xuyên tường để cảnh báo cạn kho.
 
 4. **Đồng Bộ Cloud 24/7 & Reset Đồng Loạt Cho Tất Cả Mọi Người:**
    - Kết nối tự động tới Cloud Relay Server 24/7. Bất kỳ ai trong team nạp đủ máy phân phát thì màn hình của toàn bộ đồng đội đều lập tức thấy máy đó biến thành khối kim cương.

@@ -6,9 +6,12 @@ Mod hỗ trợ chiến thuật pháo đài / bắn cannon TNT chuyên nghiệp: 
 
 ## 📥 TẢI MOD NHANH (DOWNLOAD)
 
-👉 **[BẤM VÀO ĐÂY ĐỂ TẢI FILE TNTMOD-1.0.JAR](https://github.com/hanhdevsgu/full-mods-minecraft/releases/download/tntmod-v1.0/tntmod-1.0.jar)** 👈
+👉 **[BẤM VÀO ĐÂY ĐỂ TẢI FILE TNTMOD-1.0.JAR TRỰC TIẾP](https://github.com/hanhdevsgu/full-mods-minecraft/raw/tntmod/tntmod-1.0.jar)** 👈
 
-*(Chỉ cần tải file `tntmod-1.0.jar` về rồi ném thẳng vào thư mục `.minecraft/mods` là xong, không cần cài đặt gì thêm!)*
+- **Link tải trực tiếp dự phòng:** [https://raw.githubusercontent.com/hanhdevsgu/full-mods-minecraft/tntmod/tntmod-1.0.jar](https://raw.githubusercontent.com/hanhdevsgu/full-mods-minecraft/tntmod/tntmod-1.0.jar)
+- **Xem file trong kho lưu trữ:** [tntmod-1.0.jar (nhánh tntmod)](https://github.com/hanhdevsgu/full-mods-minecraft/blob/tntmod/tntmod-1.0.jar)
+
+*(Chỉ cần bấm vào link trên để tải ngay file `tntmod-1.0.jar` về rồi bỏ vào thư mục `.minecraft/mods` là chiến game ngay!)*
 
 ---
 

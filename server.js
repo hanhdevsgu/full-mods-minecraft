@@ -5,7 +5,7 @@ const path = require('path');
 const { v4: uuidv4 } = require('uuid');
 
 const WS_PORT = 54323;
-const MC_SERVER_HOST = '171.244.52.181';
+const MC_SERVER_HOST = '15.235.200.239';
 const MC_SERVER_PORT = 54321;
 const SESSION_DIR = path.join(process.env.USERPROFILE || process.env.HOME, 'Desktop', 'session_new');
 
@@ -92,7 +92,7 @@ const DEFAULT_BOT_SETTINGS = {
 
     farm_smart_aim: false,
     farm_lookat: true,
-    afk_persist: true,
+    afk_persist: false,
     farm_persist: false,
 
     storage_persist: false,

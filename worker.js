@@ -7,7 +7,13 @@ const path = require('path');
 let botInstance = null;
 
 process.on('unhandledRejection', (reason) => {
-    process.stdout.write(JSON.stringify({ type: 'log', msg: `⚠️ Lỗi: ${reason}`, color: '#ff4d6d' }) + '\n');
+    const msg = String(reason && reason.message ? reason.message : reason || '');
+    process.stdout.write(JSON.stringify({ type: 'log', msg: `⚠️ Lỗi: ${msg}`, color: '#ff4d6d' }) + '\n');
+
+    // Không reconnect nếu chỉ là pathfinder goal hủy hoặc click timeout thông thường
+    if (/Goal changed|Pathfinder stopped|timeout|click timeout/i.test(msg)) {
+        return;
+    }
 
     try {
         if (botInstance && botInstance.running) {
@@ -1604,7 +1610,7 @@ class BotInstance {
         movements.canDig = false;
         movements.allow1by1towers = false;
         movements.allowParkour = false;
-        movements.allowSprinting = true;
+        movements.allowSprinting = false;
         return movements;
     }
 
@@ -2499,6 +2505,7 @@ class BotInstance {
             this.log(`🧭 [Pathfinder] ${TAG} GOTO XYZ tuyệt đối -> (${X}, ${Y}, ${Z})`, '#4a9eff');
             const goal = new goals.GoalBlock(X, Y, Z);
             const gotoPromise = this.bot.pathfinder.goto(goal);
+            gotoPromise.catch(() => {});
             const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('goto XYZ timeout (30s)')), 30000));
             await Promise.race([gotoPromise, timeoutPromise]);
             if (aborted()) return false;
@@ -2710,16 +2717,36 @@ class BotInstance {
         return true;
     }
 
-    // #goto tới Ô (bx,by,bz) chuẩn Baritone: dùng pathfinder dẫn đường mượt mà, không giật lùi/giật tiến
+    // #goto tới Ô (bx,by,bz) chuẩn Baritone: ưu tiên Traverse (Freelook - không xoay mặt) khi thẳng hàng
     async _baritoneGotoBlock(bx, by, bz, aborted, pathfinderTimeoutMs = 20000) {
         if (!this.bot || !this.bot.entity) return false;
         let f = this._baritoneFeet();
         if (f.x === bx && f.y === by && f.z === bz) return true;
 
+        // 🧭 FREELOOK TRAVERSE: Nếu cùng Y và thẳng hàng kề nhau (<= 8 ô) -> Đi bằng Traverse để KHÔNG xoay mặt bot!
+        if (f.y === by && (f.x === bx || f.z === bz)) {
+            const sx = Math.sign(bx - f.x), sz = Math.sign(bz - f.z);
+            const steps = Math.abs(bx - f.x) + Math.abs(bz - f.z);
+            if (steps <= 8) {
+                let allOk = true;
+                for (let i = 1; allOk && i <= steps; i++) {
+                    if (aborted && aborted()) return false;
+                    const r = await this._baritoneTraverse(f.x + sx * i, by, f.z + sz * i, aborted);
+                    if (r !== true) { allOk = false; break; }
+                }
+                if (allOk) {
+                    f = this._baritoneFeet();
+                    if (f.x === bx && f.y === by && f.z === bz) return true;
+                }
+            }
+        }
+
+        // Fallback: dùng pathfinder nếu không traverse được (chéo hoặc khác Y)
         if (!this.bot.pathfinder) return false;
         try {
             const goal = new goals.GoalBlock(bx, by, bz);
             const pr = this.bot.pathfinder.goto(goal);
+            pr.catch(() => {});
             const to = new Promise((_, rej) => setTimeout(() => rej(new Error(`goto timeout (${Math.round(pathfinderTimeoutMs / 1000)}s)`)), pathfinderTimeoutMs));
             await Promise.race([pr, to]);
         } catch (e) {
@@ -2728,6 +2755,9 @@ class BotInstance {
             try { this.bot.pathfinder.setGoal(null); } catch (e) {}
             for (const k of ['forward', 'back', 'left', 'right', 'sprint', 'jump']) {
                 try { this.bot.setControlState(k, false); } catch (e) {}
+            }
+            if (this.lock_pitch_yaw) {
+                this.applyChestPitchYaw();
             }
         }
         f = this._baritoneFeet();
@@ -3607,11 +3637,17 @@ class BotInstance {
         const y = Number(this.bot && this.bot.entity && this.bot.entity.position && this.bot.entity.position.y);
         const depY = Number(this.storage_deposit_lock_y);
         const clrY = Number(this.storage_clear_lock_y);
-        if (!Number.isFinite(y) || !Number.isFinite(depY)) return false;
-        const near = (a, b) => Math.abs(y - a) <= 0.15 || Math.floor(y) === Math.floor(a);
-        const atDep = near(depY);
-        // Nếu Y Dọn Rương trùng Y Nhà Rương thì không phân biệt được bằng Y → coi như CHƯA ở nhà (sẽ /back cho chắc).
-        const atClr = Number.isFinite(clrY) && near(clrY);
+        if (!Number.isFinite(y)) return false;
+        if (!Number.isFinite(depY) || depY <= 0) {
+            // Nếu chưa cấu hình depY nhưng có clrY: nếu không ở gần clrY thì coi như đang ở nhà rương
+            if (Number.isFinite(clrY) && clrY > 0) {
+                return Math.abs(y - clrY) > 2.0;
+            }
+            return false;
+        }
+        // Dung sai 1.5 blocks như isNearDepositY
+        const atDep = Math.abs(y - depY) <= 1.5;
+        const atClr = Number.isFinite(clrY) && clrY > 0 && Math.abs(y - clrY) <= 1.0;
         return atDep && !atClr;
     }
 
@@ -3633,29 +3669,38 @@ class BotInstance {
         this._resetStorageGotoRuntime('EXPECT GUARD');
         this.sendStatus();
 
-        // Chờ 1 chút cho flow cũ thoát hẳn (nếu đang ở giữa /back thì Y có thể vừa đổi).
+        // Chờ 1 chút cho flow cũ thoát hẳn
         await this.sleep(1500);
 
-        if (!this._isAtDepositY()) {
-            const backCmds = this.parseStorageCommands(this._base_deposit_command || this.storage_deposit_command);
-            const MAX_TRY = 4;
-            for (let attempt = 1; attempt <= MAX_TRY && this.running && this.bot; attempt++) {
-                this.log(`🔙 [EXPECT GUARD] /back về Nhà Rương (lần ${attempt}/${MAX_TRY}) — Y hiện tại=${Number(this.bot.entity.position.y).toFixed(2)}`, '#4a9eff');
-                await this.runCommandSequence(backCmds);
-                // Đợi tới khi Y hiện tại = Y Nhà Rương (tối đa 20s mỗi lần thử).
-                const t0 = Date.now();
-                while (this.running && this.bot && Date.now() - t0 < 20000) {
-                    if (this._isAtDepositY()) break;
-                    await this.sleep(250);
-                }
+        // NẾU ĐÃ Ở Y NHÀ RƯƠNG: TUYỆT ĐỐI KHÔNG GỬI /back LẦN NỮA! (Gửi /back khi đang ở nhà rương sẽ bị teleport ngược lại farm)
+        if (this._isAtDepositY()) {
+            this.log(`✅ [EXPECT GUARD] Bot đã đang ở Y Nhà Rương (Y=${Number(this.bot.entity.position.y).toFixed(2)}) → KHÔNG gửi /back nữa để tránh lộn về farm.`, '#2ecc71');
+        } else {
+            // Chỉ gửi /back khi chưa ở Nhà Rương
+            const rawCmd = String(this.storage_deposit_command || this._base_deposit_command || '/back delay 8000').trim();
+            const backCmds = this.parseStorageCommands(rawCmd);
+            this.log(`🔙 [EXPECT GUARD] Y hiện tại=${Number(this.bot.entity.position.y).toFixed(2)} → Gửi "${rawCmd}" để về Nhà Rương...`, '#4a9eff');
+            await this.runCommandSequence(backCmds);
+
+            // Chờ bot teleport và tọa độ ổn định về Y Nhà Rương (tối đa 15s)
+            const t0 = Date.now();
+            while (this.running && this.bot && Date.now() - t0 < 15000) {
+                await this.sleep(300);
                 if (this._isAtDepositY()) break;
-                // Trường hợp Y Dọn = Y Nhà (không phân biệt được): sau khi đã /back + đợi delay thì coi như xong.
-                const clrY = Number(this.storage_clear_lock_y), depY = Number(this.storage_deposit_lock_y);
-                if (Number.isFinite(clrY) && Number.isFinite(depY) && Math.floor(clrY) === Math.floor(depY)) break;
             }
+
+            const currentY = Number(this.bot && this.bot.entity && this.bot.entity.position ? this.bot.entity.position.y : 0);
+            this.log(`📍 [EXPECT GUARD] Sau khi /back: Y hiện tại=${currentY.toFixed(2)}${this._isAtDepositY() ? ' (Đã ở Nhà Rương)' : ''}`, '#2ecc71');
         }
+
+        // Đứng yên ở Nhà Rương, lưu waypoint an toàn tại đây
+        if (this.bot && this.bot.entity) {
+            const p = this.bot.entity.position;
+            this._saveDepositWaypoint(p.x, p.y, p.z, 0);
+        }
+
         if (!this.running || !this.bot) { this._expect_guard_busy = false; return; }
-        this.log(`✅ [EXPECT GUARD] Đã ở Y Nhà Rương → báo server: đợi 10s kill node.exe (riêng acc này), ${reconnectMin} phút sau vào lại.`, '#2ecc71');
+        this.log(`✅ [EXPECT GUARD] Đã cố định tại Y Nhà Rương → báo server: đợi 10s kill node.exe (riêng acc này), ${reconnectMin} phút sau vào lại sẽ luôn ở Nhà Rương.`, '#2ecc71');
         this._emitExpectGuardKill(reconnectMin);
         // busy giữ nguyên = true cho tới khi process bị kill (tránh trigger lặp).
     }
@@ -3803,7 +3848,7 @@ class BotInstance {
                 isChestLike = block && (block.name === 'chest' || block.name === 'trapped_chest');
             }
 
-            if (!isChestLike && !STRICT_CURSOR) {
+            if (!isChestLike && !STRICT_CURSOR && !this.lock_pitch_yaw) {
                 try {
                     const found = this.bot.findBlock({
                         matching: (b) => b && (b.name === 'chest' || b.name === 'trapped_chest'),
@@ -5325,7 +5370,7 @@ class BotInstance {
 
             const hasDepLock = Number.isFinite(depY) && depY > 0;
             const isAtDep = hasDepLock ? (Math.abs(curY - depY) <= 1.5) : false;
-            const homeCmd = String(this.storage_reconnect_home_command || this.storage_deposit_command || '/home 1 delay 8000').trim();
+            const homeCmd = String(this.storage_deposit_command || this._base_deposit_command || this.storage_reconnect_home_command || '/back delay 8000').trim();
 
             if (hasDepLock && !isAtDep) {
                 this.log(`🏠 [VỀ NHÀ RƯƠNG] Y hiện tại=${curY.toFixed(3)} khác Y Nhà Rương (${depY.toFixed(3)}) → Chạy "${homeCmd}" để về Nhà Rương...`, '#4a9eff');

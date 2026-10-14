@@ -166,7 +166,7 @@ class BotInstanceLocal:
         self.farm_max_delay = 0.8
         self.farm_smart_aim = False
         self.farm_lookat = True
-        self.afk_persist = True
+        self.afk_persist = False
         self.farm_persist = False
 
         self.proxy = None
@@ -1995,10 +1995,7 @@ class BotManager:
         if not bot:
             messagebox.showwarning("Cảnh báo", "Chọn bot trước!")
             return
-        if bot.anti_afk_running:
-            bot.afk_persist = False
-        else:
-            bot.afk_persist = True
+        bot.afk_persist = False
         if self.connected:
             self.send_command('toggle_afk', username=bot.username)
         self.save_accounts()

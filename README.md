@@ -1,6 +1,6 @@
 # 💣 TNT Auto-Logistics Mod (Minecraft 1.12.2)
 
-Mod hỗ trợ chiến thuật pháo đài / bắn cannon TNT chuyên nghiệp: tự động rút TNT rương 0-tick, nạp máy phân phát chuẩn xác 100%, biến máy đã nạp đủ thành Khối Kim Cương (vẫn chuột phải mở được), loại bỏ hoàn toàn ESP rườm rà và **đồng bộ đám mây 24/7 cho toàn bộ thành viên trong team**.
+Mod hỗ trợ chiến thuật pháo đài / bắn cannon TNT chuyên nghiệp: tự động rút TNT rương 0-tick, nạp máy phân phát chuẩn xác 100%, ESP màu xanh ngọc Pastel dịu nhẹ (dễ nhìn, không lóe đỏ, không chói mắt) và **đồng bộ đám mây 24/7 cho toàn bộ thành viên trong team**.
 
 ---
 
@@ -26,14 +26,13 @@ Mod hỗ trợ chiến thuật pháo đài / bắn cannon TNT chuyên nghiệp: 
    - Tự động kiểm tra số TNT đang có sẵn trong máy phân phát và chỉ nạp thêm lượng còn thiếu.
    - **Ví dụ thực tế:** Cài đặt định mức 64, trong máy phân phát đã có sẵn 32 viên thì mod sẽ **chỉ nạp đúng 32 viên** nữa để máy tròn 64, không thừa, không thiếu!
 
-3. **Biến Thành Khối Kim Cương & Loại Bỏ Hoàn Toàn ESP / Chữ Hết TNT Ở Rương:**
-   - **Loại bỏ 100% ESP rương:** Đã bỏ hoàn toàn khung viền ESP và chữ `[HẾT TNT]` trên rương, giúp tầm nhìn sạch đẹp, không gây rối mắt hay tụt FPS.
-   - Máy phân phát khi đã đủ TNT sẽ biến thành **Khối Kim Cương (Diamond Block)** 3D chân thực, sắc nét.
-   - **Đặc biệt:** Khối chỉ thay đổi hình dạng bề ngoài, bản chất trong game vẫn là máy phân phát nên **người chơi vẫn chuột phải vào mở GUI bình thường 100%**!
+3. **ESP Dịu Mắt Thanh Lịch (Không Biến Khối Kim Cương, Không Lóe Đỏ):**
+   - **Giữ nguyên khối nguyên bản:** Không đổi máy phân phát thành khối kim cương, giữ nguyên vẹn giao diện và khối gốc tự nhiên của game.
+   - **Tông màu Pastel Cyan / Xanh ngọc êm dịu:** Máy phân phát khi đã đủ TNT sẽ được bao bọc bởi hộp ESP 3D mượt mà kèm lớp phủ mờ nhẹ nhàng xuyên tường. Màu sắc đơn điệu, thanh lịch, dễ nhìn từ xa mà **hoàn toàn không lóe đỏ, không chói mắt**, giúp quan sát pháo đài thoải mái nhiều giờ liền.
 
 4. **Đồng Bộ Cloud 24/7 & Reset Đồng Loạt Cho Tất Cả Mọi Người:**
-   - Kết nối tự động tới Cloud Relay Server 24/7. Bất kỳ ai trong team nạp đủ máy phân phát thì màn hình của toàn bộ đồng đội đều lập tức thấy máy đó biến thành khối kim cương.
-   - Khi chạy lệnh `/t clear` hoặc bấm nút **[RESET VỀ GỐC / XÓA ESP]** trong menu F7, toàn bộ máy kim cương và đánh dấu sẽ lập tức **reset đồng bộ cho tất cả mọi người** cùng lúc!
+   - Kết nối tự động tới Cloud Relay Server 24/7. Bất kỳ ai trong team nạp đủ máy phân phát thì màn hình của toàn bộ đồng đội đều lập tức nhận được hộp ESP dịu nhẹ tại vị trí đó theo thời gian thực.
+   - Khi chạy lệnh `/t clear` hoặc bấm nút **[RESET VỀ GỐC / XÓA ESP]** trong menu F7, toàn bộ đánh dấu ESP sẽ lập tức **reset đồng bộ cho tất cả mọi người** cùng lúc!
 
 ---
 

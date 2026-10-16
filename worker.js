@@ -560,8 +560,8 @@ class BotInstance {
         if (this.findCompassSlot() !== -1) return true;
         if (this.bot && this.bot.currentWindow && this._isServerSelectWindow(this.bot.currentWindow)) return true;
 
-        // Nếu đã vào server (joined_server = true) và KHÔNG CÓ compass -> Tuyệt đối không phải ở lobby!
-        if (this.joined_server && !this._in_lobby_state) return false;
+        // Nếu đã vào server (joined_server = true và clicked_axe = true) và KHÔNG CÓ compass -> Tuyệt đối không phải ở lobby!
+        if (this.joined_server && this.clicked_axe && !this._in_lobby_state) return false;
 
         // Chỉ khi CHƯA vào server (đang trong quy trình kết nối/đăng nhập ban đầu):
         if (!this.bot || !this.bot.entity || !this.bot.entity.position) return false;
@@ -570,16 +570,17 @@ class BotInstance {
         if (!Number.isFinite(y)) return false;
         if (this.isNearClearY(2.0) || this.isNearDepositY(2.0)) return false;
 
-        // Chỉ coi là spawn lobby khi ĐANG ở trạng thái lobby hoặc chưa từng click axe
-        if (this._in_lobby_state && !this.clicked_axe) {
+        // Khi CHƯA click axe hoặc đang ở trạng thái lobby: kiểm tra toạ độ Y của sảnh (28.06 hoặc 14)
+        if (!this.clicked_axe || this._in_lobby_state) {
             return (Math.abs(y - 28.06) <= 3.0) || (Math.abs(y - 14.0) <= 3.0);
         }
         return false;
     }
 
-    sendDn(reason = '', minGapMs = 2000) {
+    sendDn(reason = '', minGapMs = 2000, force = false) {
         if (!this.bot || !this.running) return false;
-        if (this.isJoinedServer()) return false;
+        if (!this.password) return false;
+        if (!force && this._already_logged_in && this.joined_server && this.clicked_axe) return false;
         const now = Date.now();
         if (now - this._last_dn_at < minGapMs) return false;
         this._last_dn_at = now;
@@ -612,11 +613,12 @@ class BotInstance {
 
     // Gửi /dn CÓ ĐIỀU KIỆN, không dồn dập:
     //  - Hotbar đã có compass             -> dừng hẳn, mở compass.
-    //  - Hotbar có item khác, hết compass -> đã vào server rồi, KHÔNG gửi nữa.
-    //  - Chưa có compass và chưa có item  -> gửi /dn, đợi 2s rồi kiểm tra lại mới gửi tiếp.
+    //  - Đã vào server (clicked_axe & joined_server) -> KHÔNG gửi nữa.
+    //  - Chưa có compass và chưa vào server -> gửi /dn lặp lại đến khi thấy compass.
     startDnLoop(reason = '') {
         if (this._dn_loop_active) return;
-        if (!this.bot || !this.running || this.isJoinedServer()) return;
+        if (!this.bot || !this.running) return;
+        if (this._already_logged_in && this.joined_server && this.clicked_axe) return;
         this._dn_loop_active = true;
         this._dn_attempts = 0;
         const token = ++this._dn_loop_token;
@@ -629,22 +631,22 @@ class BotInstance {
         };
         const tick = () => {
             if (token !== this._dn_loop_token) return;
-            if (!this.bot || !this.running || this.isJoinedServer()) return finish();
+            if (!this.bot || !this.running) return finish();
+            if (this._already_logged_in && this.joined_server && this.clicked_axe) return finish('✅ Đã vào server, không gửi /dn nữa.');
             if (this.findCompassSlot() !== -1) {
                 if (!this._verify_join_running) {
                     this.waitForCompassAndOpen(15000, 300);
                 }
                 return finish('🧭 Hotbar đã có compass → dừng gửi /dn, mở GUI compass.');
             }
-            if (this.isJoinedServer()) return finish('✅ Đã vào server, không gửi /dn nữa.');
             if (this._dn_attempts >= this.DN_MAX_ATTEMPTS) {
                 this.log(`⚠️ Đã gửi /dn ${this._dn_attempts} lần mà chưa thấy compass → Kill node.exe để khởi động lại...`, '#ff4d6d');
                 this.showManualRestartHint(`Gửi /dn ${this._dn_attempts} lần thất bại`);
                 return finish();
             }
             this._dn_attempts++;
-            this.sendDn(`${reason || 'login'} • lần ${this._dn_attempts}`, Math.max(0, this.DN_RETRY_DELAY_MS - 200));
-            this._dn_loop_timer = setTimeout(tick, this.DN_RETRY_DELAY_MS);
+            this.sendDn(`${reason || 'login'} • lần ${this._dn_attempts}`, 0, true);
+            this._dn_loop_timer = setTimeout(tick, this.DN_RETRY_DELAY_MS || 2000);
         };
         tick();
     }
@@ -5671,12 +5673,21 @@ class BotInstance {
             return false;
         }
 
-        // 3. Nếu chưa từng click axe và đang ở trạng thái lobby
-        if (!this.clicked_axe && this._in_lobby_state) {
+        // 3. Đang ở toạ độ spawn lobby -> chắc chắn ở lobby
+        if (this.isAtSpawn()) {
             return false;
         }
 
-        // Không có compass, không mở GUI chọn server -> Đã vào server!
+        // 4. Nếu chưa từng click axe và chưa từng xác nhận vào server -> chắc chắn chưa vào server!
+        if (!this.clicked_axe && !this.joined_server) {
+            return false;
+        }
+
+        // 5. Nếu chưa từng đăng nhập và chưa từng click axe -> chưa vào server!
+        if (!this._already_logged_in && !this.clicked_axe) {
+            return false;
+        }
+
         return true;
     }
 
@@ -5727,9 +5738,9 @@ class BotInstance {
             const clearY = Number(this.storage_clear_lock_y);
             const depY = Number(this.storage_deposit_lock_y);
 
-            // Chỉ coi là ở sảnh lobby nếu THỰC SỰ có compass hoặc GUI chọn server đang mở
-            if (this.findCompassSlot() !== -1 || (this.bot.currentWindow && this._isServerSelectWindow(this.bot.currentWindow))) {
-                this.log(`⚠️ [KIỂM TRA VỊ TRÍ] (${reason}): Bot vẫn đang ở sảnh lobby (có compass / GUI mở), chưa thể chạy Chuỗi Rương.`, '#f5c842');
+            // Tuyệt đối không chạy Chuỗi Rương / /home khi bot chưa vào server chơi thật sự hoặc đang ở spawn lobby
+            if (this.findCompassSlot() !== -1 || (this.bot.currentWindow && this._isServerSelectWindow(this.bot.currentWindow)) || this.isAtSpawn() || !this.clicked_axe || !this.joined_server) {
+                this.log(`⚠️ [KIỂM TRA VỊ TRÍ] (${reason}): Bot chưa vào server chơi (đang ở lobby/chưa click rìu), bỏ qua kiểm tra vị trí.`, '#f5c842');
                 return;
             }
 
@@ -5987,7 +5998,7 @@ class BotInstance {
                 } catch (e) {}
 
                 // Gửi /dn ngay khi kết nối vào server (bất kể lần đầu hay reconnect)
-                this.sendDn('sự kiện login');
+                this.sendDn('sự kiện login', 1000, true);
                 this.startDnLoop('vòng lặp login');
             });
 
@@ -6231,9 +6242,16 @@ class BotInstance {
                         if (!this.joined_server) {
                             setTimeout(() => this.waitForCompassAndOpen(15000, 300), 300);
                         }
+                    } else if (/bạn phải đăng nhập mới được sử dụng lệnh/i.test(plain)) {
+                        this._already_logged_in = false;
+                        this.joined_server = false;
+                        this._in_lobby_state = true;
+                        this.clicked_axe = false;
+                        this.sendDn('yêu cầu đăng nhập khi dùng lệnh', 0, true);
+                        this.startDnLoop('yêu cầu đăng nhập khi dùng lệnh');
                     } else if (/\/dn\b|\/login\b|chưa đăng nhập|bạn phải đăng nhập|vui lòng gõ lệnh|mật-khẩu/i.test(plain)) {
                         this._already_logged_in = false;
-                        this.sendDn('server yêu cầu đăng nhập trong chat', 1500);
+                        this.sendDn('server yêu cầu đăng nhập trong chat', 1000, true);
                         this.startDnLoop('server yêu cầu đăng nhập trong chat');
                     }
                 } catch (e) {}

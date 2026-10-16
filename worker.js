@@ -782,10 +782,10 @@ class BotInstance {
             this.markJoinedServer();
         }
 
-        // ⭐ LƯU VÀ KHÔI PHỤC HOTBAR Ô ĐANG CẦM (Nhớ chính xác ô 1, ô 2, kiếm, rìu...):
+        // ⭐ LUÔN TỰ TÌM VÀ CẦM CÂY KIẾM TRÊN TAY KHI Ở TRONG SERVER:
         if (this.joined_server && !inLobby && this.bot && Number.isInteger(this.bot.quickBarSlot)) {
-            if (!this._hotbar_restored) {
-                this.restoreHotbarSlot();
+            if (!this.isHoldingSword()) {
+                this.ensureSwordInHand();
             } else {
                 this._saveHotbarSlot(this.bot.quickBarSlot);
             }
@@ -2505,6 +2505,82 @@ class BotInstance {
             }
         } catch (e) {}
         return 0; // Mặc định ô số 1 (slot 0) nếu chưa từng lưu
+    }
+
+    _isSwordItem(item) {
+        if (!item) return false;
+        const name = (item.name || '').toLowerCase();
+        const display = (item.displayName || '').toLowerCase();
+        return name.includes('sword') || display.includes('sword') || display.includes('kiếm');
+    }
+
+    findSwordQuickBarSlot() {
+        if (!this.bot || !this.bot.inventory) return -1;
+        for (let i = 0; i < 9; i++) {
+            const it = this.bot.inventory.slots[36 + i];
+            if (this._isSwordItem(it)) return i;
+        }
+        return -1;
+    }
+
+    isHoldingSword() {
+        try {
+            if (!this.bot || !this.bot.inventory) return false;
+            const currentSlot = this.bot.inventory.slots[36 + this.bot.quickBarSlot];
+            return this._isSwordItem(currentSlot);
+        } catch (e) {
+            return false;
+        }
+    }
+
+    async ensureSwordInHand() {
+        if (!this.bot || !this.running || !this.joined_server) return false;
+        if (this.findCompassSlot() !== -1 || this.isAtSpawn()) return false;
+
+        // 1. Kiểm tra 9 ô hotbar trước (nếu thấy kiếm ở ô nào -> cầm ô đó)
+        const qbSlot = this.findSwordQuickBarSlot();
+        if (qbSlot !== -1) {
+            if (this.bot.quickBarSlot !== qbSlot) {
+                try {
+                    this.bot.setQuickBarSlot(qbSlot);
+                    this.saved_hotbar_slot = qbSlot;
+                    this._hotbar_restored = true;
+                    this.log(`⚔️ [HOTBAR] Tự tìm thấy cây kiếm ở ô số ${qbSlot + 1} (slot ${qbSlot}) → Cầm trên tay!`, '#2ecc71');
+                } catch (e) {}
+            } else {
+                this.saved_hotbar_slot = qbSlot;
+                this._hotbar_restored = true;
+            }
+            return true;
+        }
+
+        // 2. Nếu hotbar chưa có kiếm, tìm trong túi đồ chính (slot 9 - 35) và chuyển ra hotbar ô 1
+        try {
+            if (this.bot.inventory) {
+                for (let i = 9; i <= 35; i++) {
+                    const it = this.bot.inventory.slots[i];
+                    if (this._isSwordItem(it)) {
+                        this.log(`⚔️ [HOTBAR] Thấy kiếm ở túi đồ (ô ${i}) → Chuyển ra hotbar ô 1 để cầm...`, '#f5c842');
+                        if (this.bot.moveSlotItem) {
+                            await this.bot.moveSlotItem(i, 36);
+                        } else if (this.bot.clickWindow) {
+                            await this.bot.clickWindow(i, 0, 0);
+                            await this.bot.clickWindow(36, 0, 0);
+                            await this.bot.clickWindow(i, 0, 0);
+                        }
+                        this.bot.setQuickBarSlot(0);
+                        this.saved_hotbar_slot = 0;
+                        this._hotbar_restored = true;
+                        this.log(`⚔️ [HOTBAR] Đã cầm kiếm trên tay ở ô số 1!`, '#2ecc71');
+                        return true;
+                    }
+                }
+            }
+        } catch (e) {}
+
+        // 3. Nếu không có kiếm trong người, khôi phục ô đã lưu hoặc ô số 1
+        this.restoreHotbarSlot();
+        return false;
     }
 
     restoreHotbarSlot() {
@@ -5880,11 +5956,12 @@ class BotInstance {
         this.alreadyPlayingKickCount = 0;
         this.log("✅ Đã vào server!", '#2ecc71');
 
-        // ⭐ KHÔI PHỤC ĐÚNG VỊ TRÍ Ô CẦM TAY TRƯỚC ĐÓ (Ô 1, Ô 2, RÌU, KIẾM...)
+        // ⭐ TỰ ĐỘNG TÌM KIẾM ĐỂ CẦM TRÊN TAY KHI VÀO SERVER:
         this._hotbar_restored = false;
-        this.restoreHotbarSlot();
-        setTimeout(() => this.restoreHotbarSlot(), 600);
-        setTimeout(() => this.restoreHotbarSlot(), 1800);
+        this.ensureSwordInHand();
+        setTimeout(() => this.ensureSwordInHand(), 400);
+        setTimeout(() => this.ensureSwordInHand(), 1200);
+        setTimeout(() => this.ensureSwordInHand(), 2500);
 
         setTimeout(() => {
             this.checkLocationAndAutoStartStorage('vào server');
@@ -6095,7 +6172,12 @@ class BotInstance {
                 }
                 if (this._spawn_logged) {
                     // Spawn lại (đổi world / về lobby / hồi sinh): check hotbar ngay sau khi inventory kịp cập nhật
-                    setTimeout(() => this.hotbarTick('spawn lại'), 500);
+                    setTimeout(() => {
+                        this.hotbarTick('spawn lại');
+                        if (this.joined_server && !this.isAtSpawn()) {
+                            this.ensureSwordInHand();
+                        }
+                    }, 500);
                     return;
                 }
                 if (!this._spawn_logged) {

@@ -2955,16 +2955,17 @@ class BotInstance {
 
                 const dx = (bx + 0.5) - p.x;
                 const dz = (bz + 0.5) - p.z;
-                const forward = -dx * Math.sin(curYaw) - dz * Math.cos(curYaw);
-                const strafe  = -dx * Math.cos(curYaw) + dz * Math.sin(curYaw);
+                // Vector chuẩn Minecraft: Forward = (-sin(yaw), cos(yaw)), Right = (-cos(yaw), -sin(yaw))
+                const forward = -dx * Math.sin(curYaw) + dz * Math.cos(curYaw);
+                const strafe  = -dx * Math.cos(curYaw) - dz * Math.sin(curYaw);
                 const thr = 0.08;
 
                 this.bot.setControlState('sneak', false);   // Baritone: SNEAK = false
                 this.bot.setControlState('sprint', false);  // allowSprint tắt
                 this.bot.setControlState('forward', forward > thr);
                 this.bot.setControlState('back', forward < -thr);
-                this.bot.setControlState('left', strafe > thr);
-                this.bot.setControlState('right', strafe < -thr);
+                this.bot.setControlState('right', strafe > thr);
+                this.bot.setControlState('left', strafe < -thr);
                 this.bot.setControlState('jump', feet.y < by);  // sai Y thấp hơn đích → nhảy
                 await ticks(1);
             }
@@ -2981,31 +2982,44 @@ class BotInstance {
         return true;
     }
 
-    // #goto tới Ô (bx,by,bz) chuẩn Baritone: ưu tiên Traverse (Freelook - không xoay mặt) khi thẳng hàng
+    // #goto tới Ô (bx,by,bz) chuẩn Baritone: ưu tiên Traverse (Freelook - không xoay mặt bot)
     async _baritoneGotoBlock(bx, by, bz, aborted, pathfinderTimeoutMs = 20000) {
         if (!this.bot || !this.bot.entity) return false;
         let f = this._baritoneFeet();
         if (f.x === bx && f.y === by && f.z === bz) return true;
 
-        // 🧭 FREELOOK TRAVERSE: Nếu cùng Y và thẳng hàng kề nhau (<= 8 ô) -> Đi bằng Traverse để KHÔNG xoay mặt bot!
-        if (f.y === by && (f.x === bx || f.z === bz)) {
-            const sx = Math.sign(bx - f.x), sz = Math.sign(bz - f.z);
-            const steps = Math.abs(bx - f.x) + Math.abs(bz - f.z);
-            if (steps <= 8) {
-                let allOk = true;
-                for (let i = 1; allOk && i <= steps; i++) {
-                    if (aborted && aborted()) return false;
-                    const r = await this._baritoneTraverse(f.x + sx * i, by, f.z + sz * i, aborted);
-                    if (r !== true) { allOk = false; break; }
-                }
-                if (allOk) {
-                    f = this._baritoneFeet();
-                    if (f.x === bx && f.y === by && f.z === bz) return true;
-                }
+        // 🧭 FREELOOK TRAVERSE (chuẩn Baritone #set freeLook true - 100% KHÔNG xoay mặt bot):
+        // Khi cùng Y hoặc lock_pitch_yaw: đi bằng Traverse WASD step-by-step không giới hạn số ô.
+        if (f.y === by || this.lock_pitch_yaw) {
+            let guardX = 0;
+            while (f.x !== bx && guardX++ < 100) {
+                if (aborted && aborted()) return false;
+                const sx = Math.sign(bx - f.x);
+                const nextX = f.x + sx;
+                const r = await this._baritoneTraverse(nextX, by, f.z, aborted);
+                f = this._baritoneFeet();
+                if (r !== true && f.x !== nextX) break;
             }
+            let guardZ = 0;
+            while (f.z !== bz && guardZ++ < 100) {
+                if (aborted && aborted()) return false;
+                const sz = Math.sign(bz - f.z);
+                const nextZ = f.z + sz;
+                const r = await this._baritoneTraverse(f.x, by, nextZ, aborted);
+                f = this._baritoneFeet();
+                if (r !== true && f.z !== nextZ) break;
+            }
+            if (f.x === bx && f.y === by && f.z === bz) return true;
         }
 
-        // Fallback: dùng pathfinder nếu không traverse được (chéo hoặc khác Y)
+        // Khi đang khóa Pitch/Yaw (Freelook): TUYỆT ĐỐI KHÔNG dùng pathfinder.goto vì nó sẽ tự ý xoay mặt bot!
+        if (this.lock_pitch_yaw) {
+            const p = this.bot.entity ? this.bot.entity.position : null;
+            const dist = p ? Math.hypot(bx + 0.5 - p.x, bz + 0.5 - p.z) : 999;
+            return (f.x === bx && f.y === by && f.z === bz) || dist <= 0.85;
+        }
+
+        // Fallback: chỉ dùng pathfinder nếu KHÔNG khóa góc nhìn
         if (!this.bot.pathfinder) return false;
         try {
             const goal = new goals.GoalBlock(bx, by, bz);
@@ -4141,13 +4155,14 @@ class BotInstance {
                 if (!b || !p) return false;
                 const dx = (b.position.x + 0.5) - p.x;
                 const dz = (b.position.z + 0.5) - p.z;
-                // Trong Minecraft: forward = -dx * sin(yaw) - dz * cos(yaw)
-                const forward = -dx * Math.sin(targetYawRad) - dz * Math.cos(targetYawRad);
+                // Trong Minecraft: forward = -dx * sin(yaw) + dz * cos(yaw)
+                const forward = -dx * Math.sin(targetYawRad) + dz * Math.cos(targetYawRad);
                 // BẮT BUỘC rương phải nằm ở nửa không gian phía TRƯỚC mặt bot (forward > 0.05).
                 // Loại bỏ 100% các rương nằm ngang hoặc sau lưng bot ("sau đít").
                 return forward > 0.05;
             };
 
+            // Khi đã khóa Pitch/Yaw: 100% KHÔNG gọi findBlock tìm kiếm rương khác, chỉ activate đúng block ở tâm ngắm cursor!
             if (!isChestLike && !STRICT_CURSOR && !this.lock_pitch_yaw) {
                 try {
                     const found = this.bot.findBlock({
@@ -4167,12 +4182,8 @@ class BotInstance {
                 } catch (e) {}
             }
 
-            // DỌN RƯƠNG 1 và RƯƠNG 2 phải dùng cùng một cơ chế mở.
-            // Nếu blockAtCursor() không cập nhật kịp sau packet LOOK, đừng bắt
-            // macro phải quay vòng hàng triệu lần. Chọn rương gần nhất trong
-            // reach và activate trực tiếp, KHÔNG lookAt/đổi Pitch-Yaw.
-            // Như vậy góc vẫn giữ nguyên nhưng cơ chế click giống chuột phải thật.
-            if (!isChestLike && !STRICT_CURSOR) {
+            // Fallback mở rương không xoay mặt: chỉ áp dụng khi KHÔNG khóa góc nhìn (lock_pitch_yaw = false)
+            if (!isChestLike && !STRICT_CURSOR && !this.lock_pitch_yaw) {
                 try {
                     const found = this.bot.findBlock({
                         matching: (b) => b && (b.name === 'chest' || b.name === 'trapped_chest') && isChestInFront(b),
@@ -5249,15 +5260,15 @@ class BotInstance {
                     yaw = lockYawRad;
                     try { this.bot.look(lockYawRad, lockPitchRad, true); } catch (e) {}
                 }
-                const forward = -dx * Math.sin(yaw) - dz * Math.cos(yaw);
-                const strafe  = -dx * Math.cos(yaw) + dz * Math.sin(yaw);
+                const forward = -dx * Math.sin(yaw) + dz * Math.cos(yaw);
+                const strafe  = -dx * Math.cos(yaw) - dz * Math.sin(yaw);
                 const thr = TOL * 0.7;
 
                 this.bot.setControlState('sprint', false);
                 this.bot.setControlState('forward', forward > thr);
                 this.bot.setControlState('back', forward < -thr);
-                this.bot.setControlState('left', strafe > thr);
-                this.bot.setControlState('right', strafe < -thr);
+                this.bot.setControlState('right', strafe > thr);
+                this.bot.setControlState('left', strafe < -thr);
                 // Luôn đúng 1 nhịp mỗi lần bấm rồi đo lại, để không trượt quá tâm khi không có sneak.
                 await ticks(1);
                 releaseMove();

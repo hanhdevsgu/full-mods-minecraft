@@ -8,7 +8,8 @@ Bot tự động dọn phễu, dọn rương, khóa góc nhìn FreeLook chuẩn 
 
 👉 **[TẢI VỀ BOT DỌN PHỄU (botdonpheu.zip)](https://github.com/hanhdevsgu/full-mods-minecraft/releases/download/botdonpheu-latest/botdonpheu.zip)** *(Click để tải ngay gói ZIP 3 file mới nhất)*
 
-> - ✅ **Fix đứng yên / không GOTO khi vào game**: Tách biệt hoàn toàn nhận diện sảnh Lobby (dựa vào La Bàn & GUI chọn server) với tọa độ trong game. Khắc phục triệt để tình trạng bot sau khi vào game có tọa độ Y = 10..30 (ở Nhà Rương) bị nhận nhầm là sảnh và đứng yên, đảm bảo bot vào server là lập tức `/home 2` & `#goto` tới rương tiếp tục làm việc.
+> - ✅ **Fix không GOTO tới XYZ / lệch Y Nhà Rương**: Tự động nhận diện tọa độ thực tế của Nhà Rương khi chạy `/home 2` (kể cả khi nhập lệch số Y trong giao diện), tự động đồng bộ Y Khóa Nhà và lập tức `#goto` quay lại đúng tọa độ XYZ của rương vừa đứng để tiếp tục cất đồ.
+> - ✅ **Fix đứng yên khi vào game**: Tách biệt hoàn toàn nhận diện sảnh Lobby (dựa vào La Bàn & GUI chọn server) với tọa độ trong game. Khắc phục triệt để tình trạng bot sau khi vào game có tọa độ Y = 10..30 (ở Nhà Rương) bị nhận nhầm là sảnh và đứng yên.
 > - ✅ **Fix nhận diện sảnh Lobby**: Hỗ trợ nhận diện chuẩn xác khi bị văng ra Lobby. Tuyệt đối không gửi nhầm `/home 2` hay bật Chuỗi Rương lung tung ở sảnh lobby.
 > - ✅ **Giữ nguyên Waypoint khi bị diss / văng lobby**: Không xóa vị trí rương đang cất dở khi bị ngắt kết nối giữa chừng, sau khi vào lại server và `/home 2` bot sẽ tự động `#goto` quay lại đúng rương vừa đứng để tiếp tục cất đồ.
 > - ✅ **Tự động phát hiện Ban 5 phút (Hàng rào sắt / `iron_bars`)**: Nhận diện ô chọn server biến thành hàng rào sắt, đọc tooltip hiển thị thời gian phạt và tự động kill `node.exe` riêng của session acc đó để tránh spam server.

@@ -8,6 +8,7 @@ Bot tự động dọn phễu, dọn rương, khóa góc nhìn FreeLook chuẩn 
 
 👉 **[TẢI VỀ BOT DỌN PHỄU (botdonpheu.zip)](https://github.com/hanhdevsgu/full-mods-minecraft/releases/download/botdonpheu-latest/botdonpheu.zip)** *(Click để tải ngay gói ZIP 3 file mới nhất)*
 
+> - ✅ **Fix kẹt / nhảy qua ô số 5 hotbar**: Khóa vị trí cầm tay mặc định về ô số 1 (slot 0 - Cây Kiếm), tuyệt đối không bao giờ tự ý chuyển qua ô số 5 khi đang ở trong server chơi. Sau khi mở La bàn ở Lobby xong và vào game, bot tự động đổi ngay về ô số 1 và loại bỏ triệt để việc lưu nhầm ô số 5.
 > - ✅ **Fix tự động `/dn` đăng nhập & chống gửi `/home 2` ở sảnh đăng nhập**: Sửa lỗi bot nhận nhầm sảnh đăng nhập (Y=28) là đã vào server, đảm bảo luôn gửi lệnh `/dn mật-khẩu` khi vừa kết nối hoặc khi server yêu cầu, không bao giờ gửi `/home 2` khi chưa đăng nhập và chưa click rìu vào server chơi.
 > - ✅ **Fix quay đầu cất rương sau đít sau khi `/back`**: Bộ lọc vector hướng nhìn (`forward > 0.05`) bắt buộc chỉ mở rương ở phía trước mặt theo hướng khóa Yaw. Loại bỏ triệt để các rương sau lưng ("sau đít"), tự động căn tâm block sau khi dịch chuyển `/back` để tiếp tục cất thẳng về phía trước dãy rương mà không bao giờ quay ngược lại.
 > - ✅ **Fix không GOTO tới XYZ / lệch Y Nhà Rương**: Tự động nhận diện tọa độ thực tế của Nhà Rương khi chạy `/home 2` (kể cả khi nhập lệch số Y trong giao diện), tự động đồng bộ Y Khóa Nhà và lập tức `#goto` quay lại đúng tọa độ XYZ của rương vừa đứng để tiếp tục cất đồ.

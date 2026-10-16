@@ -549,14 +549,25 @@ class BotInstance {
     }
 
     isAtSpawn() {
+        // Chỉ ở lobby nếu thực sự có compass hoặc đang mở GUI chọn server
         if (this.findCompassSlot() !== -1) return true;
+        if (this.bot && this.bot.currentWindow && this._isServerSelectWindow(this.bot.currentWindow)) return true;
+
+        // Nếu đã vào server (joined_server = true) và KHÔNG CÓ compass -> Tuyệt đối không phải ở lobby!
+        if (this.joined_server && !this._in_lobby_state) return false;
+
+        // Chỉ khi CHƯA vào server (đang trong quy trình kết nối/đăng nhập ban đầu):
         if (!this.bot || !this.bot.entity || !this.bot.entity.position) return false;
         const p = this.bot.entity.position;
         const y = Number(p.y);
         if (!Number.isFinite(y)) return false;
         if (this.isNearClearY(2.0) || this.isNearDepositY(2.0)) return false;
-        // Y tại lobby: Y=28.06 (spawn trên không), Y=14.00 (mặt đất sảnh lobby), hoặc dải Y lobby 10-35
-        return (Math.abs(y - 28.06) <= 3.0) || (Math.abs(y - 14.0) <= 3.0) || (y >= 10 && y <= 35);
+
+        // Chỉ coi là spawn lobby khi ĐANG ở trạng thái lobby hoặc chưa từng click axe
+        if (this._in_lobby_state && !this.clicked_axe) {
+            return (Math.abs(y - 28.06) <= 3.0) || (Math.abs(y - 14.0) <= 3.0);
+        }
+        return false;
     }
 
     sendDn(reason = '', minGapMs = 2000) {
@@ -1577,8 +1588,8 @@ class BotInstance {
     async startAutoStorage() {
         if (this.auto_storage_running || !this.running) return;
 
-        if (this.findCompassSlot() !== -1 || this.isAtSpawn()) {
-            this.log(`🧭 [CHUỖI RƯƠNG] Bot đang ở lobby (có compass / spawn), chưa thể dọn rương! Đang chuyển sang quy trình vào server...`, '#f5c842');
+        if (this.findCompassSlot() !== -1 || (this.bot && this.bot.currentWindow && this._isServerSelectWindow(this.bot.currentWindow))) {
+            this.log(`🧭 [CHUỖI RƯƠNG] Bot đang ở lobby (có compass / GUI mở), chưa thể dọn rương! Đang chuyển sang quy trình vào server...`, '#f5c842');
             this._handleCompassDetected('bật chuỗi rương ở lobby');
             return;
         }
@@ -5597,25 +5608,20 @@ class BotInstance {
         if (!this.bot || !this.bot.inventory) return false;
         if (!this.bot.entity || !this.bot.entity.position) return false;
 
-        // Nếu đang ở spawn lobby theo vị trí hoặc compass -> Tuyệt đối không phải đã vào server!
-        if (this.isAtSpawn()) return false;
-
-        const y = Number(this.bot.entity.position.y);
-        if (Number.isFinite(y)) {
-            // Y lobby thường là 28.06 hoặc 14.00 (hoặc nằm trong dải lobby 10-35)
-            if (Math.abs(y - 28.06) <= 3.0 || Math.abs(y - 14.0) <= 3.0) return false;
-            if (y >= 10 && y <= 35 && !this.isNearClearY(2.0) && !this.isNearDepositY(2.0)) return false;
-        }
-
-        // Nếu hotbar hoặc inventory vẫn có compass -> vẫn đang ở lobby
+        // 1. Nếu có compass trong hotbar hoặc túi đồ -> chắc chắn vẫn ở lobby
         if (this.findCompassSlot() !== -1) return false;
 
-        // Nếu GUI chọn server đang mở -> vẫn đang ở lobby
+        // 2. Nếu GUI chọn server đang mở -> chắc chắn vẫn ở lobby
         if (this.bot.currentWindow && this._isServerSelectWindow(this.bot.currentWindow)) {
             return false;
         }
 
-        // Hotbar khác compass: kể cả tay trống hay có item khác đều coi là đã vào server
+        // 3. Nếu chưa từng click axe và đang ở trạng thái lobby
+        if (!this.clicked_axe && this._in_lobby_state) {
+            return false;
+        }
+
+        // Không có compass, không mở GUI chọn server -> Đã vào server!
         return true;
     }
 
@@ -5666,9 +5672,9 @@ class BotInstance {
             const clearY = Number(this.storage_clear_lock_y);
             const depY = Number(this.storage_deposit_lock_y);
 
-            // Nếu vẫn còn ở sảnh lobby (Y ≈ 28, Y ≈ 14 hoặc có compass) thì không chạy home hay chuỗi rương
-            if (this.isAtSpawn() || (Number.isFinite(curY) && (Math.abs(curY - 28.06) <= 3.0 || Math.abs(curY - 14.0) <= 3.0 || (curY >= 10 && curY <= 35)))) {
-                this.log(`⚠️ [KIỂM TRA VỊ TRÍ] (${reason}): Bot vẫn đang ở sảnh lobby (Y=${curY.toFixed(2)}), chưa thể chạy Chuỗi Rương.`, '#f5c842');
+            // Chỉ coi là ở sảnh lobby nếu THỰC SỰ có compass hoặc GUI chọn server đang mở
+            if (this.findCompassSlot() !== -1 || (this.bot.currentWindow && this._isServerSelectWindow(this.bot.currentWindow))) {
+                this.log(`⚠️ [KIỂM TRA VỊ TRÍ] (${reason}): Bot vẫn đang ở sảnh lobby (có compass / GUI mở), chưa thể chạy Chuỗi Rương.`, '#f5c842');
                 return;
             }
 
@@ -5708,8 +5714,9 @@ class BotInstance {
                     if (arrivedAtDep) {
                         await this._gotoSavedWaypointAfterHome('sau khi /home về Nhà Rương');
                     } else {
-                        this.log(`⚠️ [VỀ NHÀ RƯƠNG] Chưa xác nhận về tới Nhà Rương (Y=${this.bot.entity ? this.bot.entity.position.y.toFixed(3) : '?'}) sau 15s → không chạy chuỗi rương bừa bãi.`, '#ff4d6d');
-                        return;
+                        const newY = this.bot.entity ? Number(this.bot.entity.position.y) : curY;
+                        this.log(`ℹ️ [VỀ NHÀ RƯƠNG] Sau 15s tọa độ Y=${newY.toFixed(3)} → Tiếp tục kiểm tra waypoint và chạy Chuỗi Rương...`, '#4a9eff');
+                        await this._gotoSavedWaypointAfterHome('sau khi gửi home');
                     }
                 }
             } else if (hasDepLock && isAtDep) {
@@ -5731,6 +5738,7 @@ class BotInstance {
                     }
                 } else {
                     this.log(`ℹ️ [VỀ NHÀ RƯƠNG] Đang ở Y=${curY.toFixed(3)}, sẵn sàng chạy Chuỗi Rương.`, '#4a9eff');
+                    await this._gotoSavedWaypointAfterHome('khi vào lại server');
                 }
             }
 

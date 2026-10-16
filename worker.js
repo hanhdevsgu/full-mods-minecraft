@@ -301,6 +301,7 @@ class BotInstance {
         this._spawn_at = 0;
         this._already_logged_in = false;
         this._in_lobby_state = false;
+        this._hotbar_restored = false;
 
         // Chuẩn bị mở GUI compass: mở ngay sau 1-1.5s và retry mỗi 5s
         this.COMPASS_OPEN_DELAY_MS = Number.isFinite(Number(settings.compass_open_delay_ms)) ? Number(settings.compass_open_delay_ms) : 1000;
@@ -724,6 +725,7 @@ class BotInstance {
         this._compass_open_attempts = 0;
         this._verify_join_running = false;
         this._verify_token++;
+        this._hotbar_restored = false;
 
         // Đóng window / clear cache GUI cũ nếu có để tránh lag/kẹt
         try {
@@ -780,17 +782,10 @@ class BotInstance {
             this.markJoinedServer();
         }
 
-        // ⭐ LƯU VÀ KHÔI PHỤC HOTBAR Ô ĐANG CẦM (Chống kẹt / nhảy qua ô số 5 compass lobby):
+        // ⭐ LƯU VÀ KHÔI PHỤC HOTBAR Ô ĐANG CẦM (Nhớ chính xác ô 1, ô 2, kiếm, rìu...):
         if (this.joined_server && !inLobby && this.bot && Number.isInteger(this.bot.quickBarSlot)) {
-            // Nếu bot đang ở ô số 5 (slot 4 do mở compass ở lobby để lại), đổi ngay về ô số 1 (slot 0 - cây kiếm)
-            if (this.bot.quickBarSlot === 4) {
-                try {
-                    const targetSlot = this._loadHotbarSlot();
-                    const slotToUse = targetSlot === 4 ? 0 : targetSlot;
-                    this.bot.setQuickBarSlot(slotToUse);
-                    this._compass_opened = false;
-                    this.log(`🗡️ [HOTBAR] Phát hiện đang ở ô số 5 (compass lobby) → Đổi ngay về ô số ${slotToUse + 1} (cây kiếm)`, '#2ecc71');
-                } catch (e) {}
+            if (!this._hotbar_restored) {
+                this.restoreHotbarSlot();
             } else {
                 this._saveHotbarSlot(this.bot.quickBarSlot);
             }
@@ -808,6 +803,7 @@ class BotInstance {
         this._conn_epoch++;
         this._storage_cancel_token++;
         this._chest_busy = false;
+        this._hotbar_restored = false;
 
         this.anti_afk_running = false;
         this.auto_farm_running = false;
@@ -2483,19 +2479,19 @@ class BotInstance {
     _saveHotbarSlot(slot) {
         try {
             if (!Number.isInteger(slot) || slot < 0 || slot > 8) return;
-            // ⭐ TUYỆT ĐỐI KHÔNG LƯU Ô SỐ 5 (slot 4): Đây là ô mở compass ở sảnh lobby!
-            if (slot === 4) return;
+            // Chỉ lưu vị trí khi ĐÃ ở trong server chơi và ĐÃ khôi phục hotbar sau khi vào game
+            if (!this.joined_server || !this._hotbar_restored) return;
             if (this.saved_hotbar_slot === slot) return;
             this.saved_hotbar_slot = slot;
             const filePath = this._getHotbarFilePath();
             fs.writeFileSync(filePath, JSON.stringify({ slot, updatedAt: Date.now() }), 'utf-8');
+            this.log(`💾 [HOTBAR] Đã nhớ vị trí cầm tay: ô số ${slot + 1} (slot ${slot})`, '#4a9eff');
         } catch (e) {}
     }
 
     _loadHotbarSlot() {
         try {
             if (Number.isInteger(this.saved_hotbar_slot) && this.saved_hotbar_slot >= 0 && this.saved_hotbar_slot <= 8) {
-                if (this.saved_hotbar_slot === 4) return 0; // Tránh ô số 5
                 return this.saved_hotbar_slot;
             }
             const filePath = this._getHotbarFilePath();
@@ -2503,26 +2499,26 @@ class BotInstance {
                 const raw = fs.readFileSync(filePath, 'utf-8');
                 const data = JSON.parse(raw);
                 if (data && Number.isInteger(data.slot) && data.slot >= 0 && data.slot <= 8) {
-                    if (data.slot === 4) return 0; // Tránh ô số 5
                     this.saved_hotbar_slot = data.slot;
                     return data.slot;
                 }
             }
         } catch (e) {}
-        return 0; // Mặc định ô số 1 (slot 0 - cây kiếm)
+        return 0; // Mặc định ô số 1 (slot 0) nếu chưa từng lưu
     }
 
     restoreHotbarSlot() {
         if (!this.bot || !this.running || !this.joined_server) return;
         if (this.findCompassSlot() !== -1) return;
-        let targetSlot = this._loadHotbarSlot();
-        if (targetSlot === 4) targetSlot = 0; // Chống kẹt ô số 5
-        if (this.bot.quickBarSlot !== targetSlot) {
-            try {
+        const targetSlot = this._loadHotbarSlot();
+        try {
+            if (this.bot.quickBarSlot !== targetSlot) {
                 this.bot.setQuickBarSlot(targetSlot);
-                this.log(`🗡️ [HOTBAR] Cầm tay ô số ${targetSlot + 1} (slot ${targetSlot} - cây kiếm)`, '#2ecc71');
-            } catch (e) {}
-        }
+                this.log(`🗡️ [HOTBAR] Khôi phục vị trí cầm tay về ô số ${targetSlot + 1} (slot ${targetSlot})`, '#2ecc71');
+            }
+            this._hotbar_restored = true;
+            this.saved_hotbar_slot = targetSlot;
+        } catch (e) {}
     }
 
     _getWaypointFilePath() {
@@ -5884,12 +5880,8 @@ class BotInstance {
         this.alreadyPlayingKickCount = 0;
         this.log("✅ Đã vào server!", '#2ecc71');
 
-        // ⭐ KHÔI PHỤC NGAY VỊ TRÍ CẦM KIẾM Ô SỐ 1 (slot 0, chống kẹt ô số 5 compass lobby)
-        try {
-            this.bot.setQuickBarSlot(0);
-            this.saved_hotbar_slot = 0;
-            this._saveHotbarSlot(0);
-        } catch (e) {}
+        // ⭐ KHÔI PHỤC ĐÚNG VỊ TRÍ Ô CẦM TAY TRƯỚC ĐÓ (Ô 1, Ô 2, RÌU, KIẾM...)
+        this._hotbar_restored = false;
         this.restoreHotbarSlot();
         setTimeout(() => this.restoreHotbarSlot(), 600);
         setTimeout(() => this.restoreHotbarSlot(), 1800);

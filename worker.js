@@ -3487,10 +3487,25 @@ class BotInstance {
         };
 
         try {
-            // Khi ở Nhà Rương: luôn lưu lại vị trí hiện tại của bot làm mốc cất đồ (không GOTO lung tung)
+            // Khi ở Nhà Rương: căn nhẹ vào tâm block (X+0.5, Z+0.5) nếu bị lệch sau /back
+            if (this.bot && this.bot.entity) {
+                const p = this.bot.entity.position;
+                const cx = Math.floor(p.x) + 0.5;
+                const cz = Math.floor(p.z) + 0.5;
+                const err = Math.hypot(cx - p.x, cz - p.z);
+                if (err > 0.12 && err <= 0.8) {
+                    await this.alignToCenter(cx, cz, 250);
+                }
+            }
+
+            // Khi ở Nhà Rương: lưu lại vị trí hiện tại của bot làm mốc cất đồ
             if (this.bot && this.bot.entity && this.isNearDepositY(1.5)) {
                 const p = this.bot.entity.position;
-                this._saveDepositWaypoint(p.x, p.y, p.z, 0);
+                const currentWp = this._loadDepositWaypoint();
+                const currentHops = (currentWp && Math.hypot(p.x - currentWp.x, p.z - currentWp.z) < 1.5) ? (currentWp.hops || 0) : 0;
+                this._saveDepositWaypoint(p.x, p.y, p.z, currentHops);
+                // Đồng thời neo _goto_anchor tại block hiện tại để nếu hop tiếp sẽ cộng delta từ block này
+                this._goto_anchor = { x: Math.floor(p.x), y: Math.floor(p.y), z: Math.floor(p.z) };
             }
 
             this.move_delta_x = this.storage_deposit_delta_x;
@@ -3500,6 +3515,7 @@ class BotInstance {
             this._storage_active_deposit_stage = 0;
             this._active_storage_chest_config = depCfgs[0];
             applyDepositViewLock();
+            await this._awaitChestLookSync(TAG, { silent: true });
 
             const ok = await this.depositAllItemsToChest();
             return ok;
@@ -4030,10 +4046,28 @@ class BotInstance {
                 isChestLike = block && (block.name === 'chest' || block.name === 'trapped_chest');
             }
 
+            // ⭐ BỘ LỌC RƯƠNG PHÍA TRƯỚC (CHỐNG QUAY ĐẦU / BỎ RƯƠNG SAU ĐÍT):
+            const p = this.bot && this.bot.entity ? this.bot.entity.position : null;
+            const targetYawDeg = (this.lock_pitch_yaw && Number.isFinite(this.lock_yaw))
+                ? Number(this.lock_yaw)
+                : (this.bot && this.bot.entity && Number.isFinite(this.bot.entity.yaw) ? (this.bot.entity.yaw * 180 / Math.PI) : 0);
+            const targetYawRad = targetYawDeg * Math.PI / 180;
+
+            const isChestInFront = (b) => {
+                if (!b || !p) return false;
+                const dx = (b.position.x + 0.5) - p.x;
+                const dz = (b.position.z + 0.5) - p.z;
+                // Trong Minecraft: forward = -dx * sin(yaw) - dz * cos(yaw)
+                const forward = -dx * Math.sin(targetYawRad) - dz * Math.cos(targetYawRad);
+                // BẮT BUỘC rương phải nằm ở nửa không gian phía TRƯỚC mặt bot (forward > 0.05).
+                // Loại bỏ 100% các rương nằm ngang hoặc sau lưng bot ("sau đít").
+                return forward > 0.05;
+            };
+
             if (!isChestLike && !STRICT_CURSOR && !this.lock_pitch_yaw) {
                 try {
                     const found = this.bot.findBlock({
-                        matching: (b) => b && (b.name === 'chest' || b.name === 'trapped_chest'),
+                        matching: (b) => b && (b.name === 'chest' || b.name === 'trapped_chest') && isChestInFront(b),
                         maxDistance: REACH,
                     });
                     if (found) {
@@ -4057,11 +4091,10 @@ class BotInstance {
             if (!isChestLike && !STRICT_CURSOR) {
                 try {
                     const found = this.bot.findBlock({
-                        matching: (b) => b && (b.name === 'chest' || b.name === 'trapped_chest'),
+                        matching: (b) => b && (b.name === 'chest' || b.name === 'trapped_chest') && isChestInFront(b),
                         maxDistance: REACH,
                     });
                     if (found) {
-                        const p = this.bot.entity.position;
                         const dx = (found.position.x + 0.5) - p.x;
                         const dy = (found.position.y + 0.5) - (p.y + (this.bot.entity.height || 1.62));
                         const dz = (found.position.z + 0.5) - p.z;
@@ -4103,6 +4136,10 @@ class BotInstance {
                 });
                 const { face, cursor } = this._computeHitFaceAndCursor(block);
                 await this.bot.activateBlock(block, face, cursor);
+                // Khôi phục ngay lập tức góc nhìn đã khóa (chống Mineflayer xoay mặt ra sau lưng)
+                if (this.lock_pitch_yaw) {
+                    this.applyChestPitchYaw();
+                }
                 const win = await windowOpenPromise;
                 if (attempt > 1) {
                     this.log(`✅ ${TAG} Mở rương thành công sau ${attempt} lần thử.`, '#2ecc71');

@@ -1,13 +1,14 @@
 # 🤖 Bot Dọn Phễu (Minecraft 1.12.2)
 
-Bot tự động dọn phễu, dọn rương, khóa góc nhìn FreeLook chuẩn xác giữa 2 dãy rương, tự động nhận diện sảnh lobby mở GUI chọn server bằng la bàn (compass), click rìu kim cương, và tự động `/home 2` về Nhà Rương an toàn khi vào lại game.
+Bot tự động dọn phễu, dọn rương, khóa góc nhìn FreeLook chuẩn xác giữa 2 dãy rương, tự động nhận diện sảnh lobby mở GUI chọn server bằng la bàn (compass), click rìu kim cương, tự động `/home 2` về Nhà Rương an toàn khi vào lại game, và **tự động phân giải DNS SRV `play.toichoi.com` (tự động nhận IP & Port mới khi server đổi proxy chống DDoS)**.
 
 ---
 
 ### 📥 Tải Về Trực Tiếp (1-Click)
 
-👉 **[TẢI VỀ BOT DỌN PHỄU (botdonpheu.zip)](https://github.com/hanhdevsgu/full-mods-minecraft/releases/download/botdonpheu-latest/botdonpheu.zip)** *(Click để tải ngay gói ZIP 3 file mới nhất)*
+👉 **[⚡ TẢI VỀ BOT DỌN PHỄU (botdonpheu.zip)](https://github.com/hanhdevsgu/full-mods-minecraft/releases/download/botdonpheu-latest/botdonpheu.zip)** *(Click để tải ngay gói ZIP 3 file mới nhất `bot_ws.py`, `server.js`, `worker.js`)*
 
+> - 🌐 **Tự động phân giải DNS SRV `play.toichoi.com`**: Mô phỏng cơ chế của TLauncher / Minecraft Client, tự động truy vấn SRV để lấy IP và Port mới nhất mỗi khi khởi động hoặc tự reconnect khi server đổi cụm IP proxy.
 > - ✅ **Tự động tìm & cầm Cây Kiếm trên tay khi vào server**: Bất kể cây kiếm nằm ở ô số 1, ô số 2 hay trong túi đồ chính, khi vào server hoặc hồi sinh/đổi world bot luôn tự động quét tìm cây kiếm và cầm ngay trên tay, loại bỏ triệt để việc bị kẹt ô số 5 sau khi mở La bàn ở Lobby.
 > - ✅ **Fix tự động `/dn` đăng nhập & chống gửi `/home 2` ở sảnh đăng nhập**: Sửa lỗi bot nhận nhầm sảnh đăng nhập (Y=28) là đã vào server, đảm bảo luôn gửi lệnh `/dn mật-khẩu` khi vừa kết nối hoặc khi server yêu cầu, không bao giờ gửi `/home 2` khi chưa đăng nhập và chưa click rìu vào server chơi.
 > - ✅ **Fix quay đầu cất rương sau đít sau khi `/back`**: Bộ lọc vector hướng nhìn (`forward > 0.05`) bắt buộc chỉ mở rương ở phía trước mặt theo hướng khóa Yaw. Loại bỏ triệt để các rương sau lưng ("sau đít"), tự động căn tâm block sau khi dịch chuyển `/back` để tiếp tục cất thẳng về phía trước dãy rương mà không bao giờ quay ngược lại.
@@ -23,5 +24,5 @@ Bot tự động dọn phễu, dọn rương, khóa góc nhìn FreeLook chuẩn 
 
 ### 📦 Danh sách 3 file trong gói ZIP:
 - `bot_ws.py` — Giao diện GUI điều khiển & quản lý tài khoản
-- `server.js` — WebSocket server điều phối tiến trình
-- `worker.js` — Core Mineflayer xử lý dọn rương, FreeLook & auto reconnect
+- `server.js` — WebSocket server điều phối tiến trình (kết nối domain `play.toichoi.com`)
+- `worker.js` — Core Mineflayer xử lý dọn rương, FreeLook & tự động dò IP qua DNS SRV

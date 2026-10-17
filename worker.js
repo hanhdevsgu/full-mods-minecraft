@@ -2,6 +2,86 @@
 const Vec3 = require('vec3').Vec3;
 const { pathfinder, Movements, goals } = require('mineflayer-pathfinder');
 
+const dns = require('dns').promises;
+const net = require('net');
+
+/**
+ * Tự động phân giải địa chỉ Minecraft server (SRV record & A record)
+ * Mô phỏng chính xác cơ chế kết nối của Minecraft Client / TLauncher:
+ * 1. Truy vấn SRV record: _minecraft._tcp.<domain>
+ * 2. Lấy host đích và port từ SRV (ví dụ: proxy.toichoi.com:54321)
+ * 3. Phân giải host đích ra IPv4 thật (tránh lỗi c-ares Windows)
+ * 4. Trả về thông tin phân giải kèm fakeHost (domain gốc) cho gói Handshake
+ */
+async function resolveMinecraftAddress(rawHost, rawPort) {
+    let host = String(rawHost || '').trim();
+    let port = rawPort ? parseInt(rawPort, 10) : null;
+
+    if (!host) {
+        host = 'play.toichoi.com';
+    }
+
+    if (host.includes(':')) {
+        const parts = host.split(':');
+        host = parts[0].trim();
+        if (!port && parts[1]) {
+            port = parseInt(parts[1].trim(), 10);
+        }
+    }
+
+    if (net.isIP(host)) {
+        return {
+            host: host,
+            port: port || 25565,
+            fakeHost: host,
+            srvTarget: null
+        };
+    }
+
+    const resolver = new dns.Resolver();
+    resolver.setServers(['8.8.8.8', '1.1.1.1', '8.8.4.4', '1.0.0.1']);
+
+    let targetHost = host;
+    let targetPort = port;
+    let srvFound = false;
+
+    if (!port || port === 25565) {
+        try {
+            const srvRecords = await resolver.resolveSrv(`_minecraft._tcp.${host}`);
+            if (srvRecords && srvRecords.length > 0) {
+                srvRecords.sort((a, b) => (a.priority - b.priority) || (b.weight - a.weight));
+                targetHost = srvRecords[0].name;
+                targetPort = srvRecords[0].port;
+                srvFound = true;
+            }
+        } catch (e) {
+            // Không tìm thấy SRV hoặc lỗi truy vấn, tiếp tục dò A record
+        }
+    }
+
+    if (!targetPort) {
+        targetPort = 25565;
+    }
+
+    let resolvedIp = targetHost;
+    try {
+        const ips = await resolver.resolve4(targetHost);
+        if (ips && ips.length > 0) {
+            resolvedIp = ips[0];
+        }
+    } catch (e) {
+        // Giữ nguyên targetHost nếu không phân giải được A record
+    }
+
+    return {
+        host: resolvedIp,
+        port: targetPort,
+        fakeHost: host,
+        srvTarget: srvFound ? `${targetHost}:${targetPort}` : null
+    };
+}
+
+
 let botInstance = null;
 
 process.on('unhandledRejection', (reason) => {
@@ -2524,10 +2604,26 @@ class BotInstance {
         }
     }
 
-    runBot() {
+    async runBot() {
+        if (!this.running) return;
+
+        let resolved = { host: this.host, port: this.port || 25565, fakeHost: this.host };
+        try {
+            this.log(`🔍 Đang phân giải domain ${this.host}...`, '#f5c842');
+            resolved = await resolveMinecraftAddress(this.host, this.port);
+            if (resolved.srvTarget) {
+                this.log(`📡 Tìm thấy SRV: ${this.host} ➔ ${resolved.srvTarget} (IP: ${resolved.host})`, '#2ecc71');
+            } else {
+                this.log(`📡 Đã phân giải: ${this.host} ➔ ${resolved.host}:${resolved.port}`, '#2ecc71');
+            }
+        } catch (err) {
+            this.log(`⚠️ Lỗi DNS (${err.message}), dùng cấu hình mặc định: ${this.host}:${this.port}`, '#ff4d6d');
+        }
+
         const botOptions = {
-            host: this.host,
-            port: this.port,
+            host: resolved.host,
+            port: resolved.port,
+            fakeHost: resolved.fakeHost || this.host,
             username: this.username,
             version: '1.12.2',
             auth: 'offline',
@@ -2555,8 +2651,8 @@ class BotInstance {
                     },
                     command: 'connect',
                     destination: {
-                        host: this.host,
-                        port: this.port,
+                        host: resolved.host,
+                        port: resolved.port,
                     },
                 }, (err, info) => {
                     if (err) {
@@ -2574,7 +2670,7 @@ class BotInstance {
             this.log(`🌐 Đang kết nối qua proxy ${proxy.host}:${proxy.port}...`, '#f5c842');
         }
 
-        this.log("🔌 Đang kết nối tới server...", '#f5c842');
+        this.log(`🔌 Đang kết nối tới ${resolved.fakeHost} (${resolved.host}:${resolved.port})...`, '#f5c842');
         this.touchActivity();
 
         try {

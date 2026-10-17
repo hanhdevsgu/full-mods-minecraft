@@ -16,8 +16,8 @@ import queue
 from collections import deque
 
 WS_URL = "ws://localhost:54322"
-MC_SERVER_HOST = '171.244.52.181'
-MC_SERVER_PORT = 54321
+MC_SERVER_HOST = 'play.toichoi.com'
+MC_SERVER_PORT = 25565
 
 FARM_SPEED_PRESETS = {
     "Cực nhanh": (0.10, 0.15),

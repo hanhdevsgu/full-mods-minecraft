@@ -5,8 +5,8 @@ const path = require('path');
 const { v4: uuidv4 } = require('uuid');
 
 const WS_PORT = 54322;
-const MC_SERVER_HOST = '171.244.52.181';
-const MC_SERVER_PORT = 54321;
+const MC_SERVER_HOST = 'play.toichoi.com';
+const MC_SERVER_PORT = 25565;
 const SESSION_DIR = path.join(process.env.USERPROFILE || process.env.HOME, 'Desktop', 'session');
 
 const RUNNING_STATE_FILE = path.join(__dirname, '_running_state.json');

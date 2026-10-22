@@ -3035,17 +3035,16 @@ class BotInstance {
 
                 const dx = (bx + 0.5) - p.x;
                 const dz = (bz + 0.5) - p.z;
-                // Vector chuẩn Minecraft: Forward = (-sin(yaw), cos(yaw)), Right = (-cos(yaw), -sin(yaw))
-                const forward = -dx * Math.sin(curYaw) + dz * Math.cos(curYaw);
-                const strafe  = -dx * Math.cos(curYaw) - dz * Math.sin(curYaw);
+                const forward = -dx * Math.sin(curYaw) - dz * Math.cos(curYaw);
+                const strafe  = -dx * Math.cos(curYaw) + dz * Math.sin(curYaw);
                 const thr = 0.08;
 
                 this.bot.setControlState('sneak', false);   // Baritone: SNEAK = false
                 this.bot.setControlState('sprint', false);  // allowSprint tắt
                 this.bot.setControlState('forward', forward > thr);
                 this.bot.setControlState('back', forward < -thr);
-                this.bot.setControlState('right', strafe > thr);
-                this.bot.setControlState('left', strafe < -thr);
+                this.bot.setControlState('left', strafe > thr);
+                this.bot.setControlState('right', strafe < -thr);
                 this.bot.setControlState('jump', feet.y < by);  // sai Y thấp hơn đích → nhảy
                 await ticks(1);
             }
@@ -3062,44 +3061,31 @@ class BotInstance {
         return true;
     }
 
-    // #goto tới Ô (bx,by,bz) chuẩn Baritone: ưu tiên Traverse (Freelook - không xoay mặt bot)
+    // #goto tới Ô (bx,by,bz) chuẩn Baritone: ưu tiên Traverse (Freelook - không xoay mặt) khi thẳng hàng
     async _baritoneGotoBlock(bx, by, bz, aborted, pathfinderTimeoutMs = 20000) {
         if (!this.bot || !this.bot.entity) return false;
         let f = this._baritoneFeet();
         if (f.x === bx && f.y === by && f.z === bz) return true;
 
-        // 🧭 FREELOOK TRAVERSE (chuẩn Baritone #set freeLook true - 100% KHÔNG xoay mặt bot):
-        // Khi cùng Y hoặc lock_pitch_yaw: đi bằng Traverse WASD step-by-step không giới hạn số ô.
-        if (f.y === by || this.lock_pitch_yaw) {
-            let guardX = 0;
-            while (f.x !== bx && guardX++ < 100) {
-                if (aborted && aborted()) return false;
-                const sx = Math.sign(bx - f.x);
-                const nextX = f.x + sx;
-                const r = await this._baritoneTraverse(nextX, by, f.z, aborted);
-                f = this._baritoneFeet();
-                if (r !== true && f.x !== nextX) break;
+        // 🧭 FREELOOK TRAVERSE: Nếu cùng Y và thẳng hàng kề nhau (<= 8 ô) -> Đi bằng Traverse để KHÔNG xoay mặt bot!
+        if (f.y === by && (f.x === bx || f.z === bz)) {
+            const sx = Math.sign(bx - f.x), sz = Math.sign(bz - f.z);
+            const steps = Math.abs(bx - f.x) + Math.abs(bz - f.z);
+            if (steps <= 8) {
+                let allOk = true;
+                for (let i = 1; allOk && i <= steps; i++) {
+                    if (aborted && aborted()) return false;
+                    const r = await this._baritoneTraverse(f.x + sx * i, by, f.z + sz * i, aborted);
+                    if (r !== true) { allOk = false; break; }
+                }
+                if (allOk) {
+                    f = this._baritoneFeet();
+                    if (f.x === bx && f.y === by && f.z === bz) return true;
+                }
             }
-            let guardZ = 0;
-            while (f.z !== bz && guardZ++ < 100) {
-                if (aborted && aborted()) return false;
-                const sz = Math.sign(bz - f.z);
-                const nextZ = f.z + sz;
-                const r = await this._baritoneTraverse(f.x, by, nextZ, aborted);
-                f = this._baritoneFeet();
-                if (r !== true && f.z !== nextZ) break;
-            }
-            if (f.x === bx && f.y === by && f.z === bz) return true;
         }
 
-        // Khi đang khóa Pitch/Yaw (Freelook): TUYỆT ĐỐI KHÔNG dùng pathfinder.goto vì nó sẽ tự ý xoay mặt bot!
-        if (this.lock_pitch_yaw) {
-            const p = this.bot.entity ? this.bot.entity.position : null;
-            const dist = p ? Math.hypot(bx + 0.5 - p.x, bz + 0.5 - p.z) : 999;
-            return (f.x === bx && f.y === by && f.z === bz) || dist <= 0.85;
-        }
-
-        // Fallback: chỉ dùng pathfinder nếu KHÔNG khóa góc nhìn
+        // Fallback: dùng pathfinder nếu không traverse được (chéo hoặc khác Y)
         if (!this.bot.pathfinder) return false;
         try {
             const goal = new goals.GoalBlock(bx, by, bz);
@@ -4235,14 +4221,13 @@ class BotInstance {
                 if (!b || !p) return false;
                 const dx = (b.position.x + 0.5) - p.x;
                 const dz = (b.position.z + 0.5) - p.z;
-                // Trong Minecraft: forward = -dx * sin(yaw) + dz * cos(yaw)
-                const forward = -dx * Math.sin(targetYawRad) + dz * Math.cos(targetYawRad);
+                // Trong Minecraft: forward = -dx * sin(yaw) - dz * cos(yaw)
+                const forward = -dx * Math.sin(targetYawRad) - dz * Math.cos(targetYawRad);
                 // BẮT BUỘC rương phải nằm ở nửa không gian phía TRƯỚC mặt bot (forward > 0.05).
                 // Loại bỏ 100% các rương nằm ngang hoặc sau lưng bot ("sau đít").
                 return forward > 0.05;
             };
 
-            // Khi đã khóa Pitch/Yaw: 100% KHÔNG gọi findBlock tìm kiếm rương khác, chỉ activate đúng block ở tâm ngắm cursor!
             if (!isChestLike && !STRICT_CURSOR && !this.lock_pitch_yaw) {
                 try {
                     const found = this.bot.findBlock({
@@ -4262,8 +4247,12 @@ class BotInstance {
                 } catch (e) {}
             }
 
-            // Fallback mở rương không xoay mặt: chỉ áp dụng khi KHÔNG khóa góc nhìn (lock_pitch_yaw = false)
-            if (!isChestLike && !STRICT_CURSOR && !this.lock_pitch_yaw) {
+            // DỌN RƯƠNG 1 và RƯƠNG 2 phải dùng cùng một cơ chế mở.
+            // Nếu blockAtCursor() không cập nhật kịp sau packet LOOK, đừng bắt
+            // macro phải quay vòng hàng triệu lần. Chọn rương gần nhất trong
+            // reach và activate trực tiếp, KHÔNG lookAt/đổi Pitch-Yaw.
+            // Như vậy góc vẫn giữ nguyên nhưng cơ chế click giống chuột phải thật.
+            if (!isChestLike && !STRICT_CURSOR) {
                 try {
                     const found = this.bot.findBlock({
                         matching: (b) => b && (b.name === 'chest' || b.name === 'trapped_chest') && isChestInFront(b),
@@ -4365,7 +4354,7 @@ class BotInstance {
 
         let totalPushed = 0;
         let hops = this._saved_resume_hops || 0;
-        this._saved_resume_hops = 0;
+        this._saved_resume_hops = hops; // Đồng bộ ngay với instance để không bị move event ghi đè về 0
         let stage = Number.isInteger(this._storage_active_deposit_stage) ? this._storage_active_deposit_stage : 0;
         const depCfgs = this._getStorageDepositConfigs();
         this._active_storage_chest_config = depCfgs[stage] || depCfgs[0];
@@ -4439,6 +4428,7 @@ class BotInstance {
             stage = 0;
             const nextCfg = depCfgs[0];
             hops++;
+            this._saved_resume_hops = hops; // Cập nhật ngay số rương hiện tại để bảo vệ waypoint
             if (hops > MAX_CHEST_HOPS) {
                 this.log(`⚠️ ${TAG} Đã thử ${MAX_CHEST_HOPS} lần #goto mà inventory vẫn còn item - dừng flow cất.`, '#f5c842');
                 this._chest_busy = false;
@@ -5340,15 +5330,15 @@ class BotInstance {
                     yaw = lockYawRad;
                     try { this.bot.look(lockYawRad, lockPitchRad, true); } catch (e) {}
                 }
-                const forward = -dx * Math.sin(yaw) + dz * Math.cos(yaw);
-                const strafe  = -dx * Math.cos(yaw) - dz * Math.sin(yaw);
+                const forward = -dx * Math.sin(yaw) - dz * Math.cos(yaw);
+                const strafe  = -dx * Math.cos(yaw) + dz * Math.sin(yaw);
                 const thr = TOL * 0.7;
 
                 this.bot.setControlState('sprint', false);
                 this.bot.setControlState('forward', forward > thr);
                 this.bot.setControlState('back', forward < -thr);
-                this.bot.setControlState('right', strafe > thr);
-                this.bot.setControlState('left', strafe < -thr);
+                this.bot.setControlState('left', strafe > thr);
+                this.bot.setControlState('right', strafe < -thr);
                 // Luôn đúng 1 nhịp mỗi lần bấm rồi đo lại, để không trượt quá tâm khi không có sneak.
                 await ticks(1);
                 releaseMove();
@@ -6181,6 +6171,16 @@ class BotInstance {
                 this.touchActivity();
                 this.log("✅ Login thành công", '#2ecc71');
 
+                // Khi server gửi packet login (kết nối mới hoặc BungeeCord chuyển về Lobby):
+                // Reset lại trạng thái để nhận diện đúng sảnh và không kẹt chuỗi rương
+                this.joined_server = false;
+                this.clicked_axe = false;
+                this._already_logged_in = false;
+                this._in_lobby_state = true;
+                this._chest_busy = false;
+                this.lock_pitch_yaw = false;
+                this.stopPitchYawLockLoop();
+
                 try {
                     if (this.bot.currentWindow) {
                         this.log(`📕 Có GUI đang mở lúc login ("${this.bot.currentWindow.title || '?'}"), đóng lại...`, '#f5c842');
@@ -6191,6 +6191,13 @@ class BotInstance {
                 // Gửi /dn ngay khi kết nối vào server (bất kể lần đầu hay reconnect)
                 this.sendDn('sự kiện login', 1000, true);
                 this.startDnLoop('vòng lặp login');
+
+                // Tự động kiểm tra la bàn để vào lại server nếu ở lobby
+                setTimeout(() => {
+                    if (this.running && (!this.joined_server || this._in_lobby_state || this.findCompassSlot() !== -1 || this.isAtSpawn())) {
+                        this.waitForCompassAndOpen(15000, 300);
+                    }
+                }, 1000);
             });
 
             this.bot.on('physicTick', () => {
@@ -6252,7 +6259,8 @@ class BotInstance {
                         const now = Date.now();
                         if (!this._goto_in_progress && (!this._last_idle_dep_wp_save || now - this._last_idle_dep_wp_save > 1500)) {
                             this._last_idle_dep_wp_save = now;
-                            const currentHops = this._saved_resume_hops || 0;
+                            const wp = this._loadDepositWaypoint();
+                            const currentHops = this._saved_resume_hops || (wp && Math.hypot(p.x - wp.x, p.z - wp.z) < 1.5 ? (wp.hops || 0) : 0);
                             this._saveDepositWaypoint(p.x, p.y, p.z, currentHops);
                         }
                     }

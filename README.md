@@ -4,25 +4,38 @@ Bot tự động dọn phễu, dọn rương, khóa góc nhìn FreeLook chuẩn 
 
 ---
 
-### 📥 Tải Về Trực Tiếp (1-Click)
+### 📥 Tải Về Trực Tiếp 3 File (1-Click Download)
 
-👉 **[⚡ TẢI VỀ BOT DỌN PHỄU (botdonpheu.zip)](https://github.com/hanhdevsgu/full-mods-minecraft/releases/download/botdonpheu-latest/botdonpheu.zip)** *(Click để tải ngay gói ZIP 3 file mới nhất `bot_ws.py`, `server.js`, `worker.js`)*
+👉 **[⚡ CLICK VÀO ĐÂY ĐỂ TẢI TRỌN BỘ 3 FILE (.ZIP)](https://github.com/hanhdevsgu/full-mods-minecraft/archive/refs/heads/botdonpheu.zip)**  
+*(Chỉ cần click 1 cái là trình duyệt tự động tải ngay file `.zip` chứa đủ cả 3 file: `bot_ws.py`, `server.js`, `worker.js`)*
 
-> - 🌐 **Tự động phân giải DNS SRV `play.toichoi.com`**: Mô phỏng cơ chế của TLauncher / Minecraft Client, tự động truy vấn SRV để lấy IP và Port mới nhất mỗi khi khởi động hoặc tự reconnect khi server đổi cụm IP proxy.
-> - ✅ **Tự động tìm & cầm Cây Kiếm trên tay khi vào server**: Bất kể cây kiếm nằm ở ô số 1, ô số 2 hay trong túi đồ chính, khi vào server hoặc hồi sinh/đổi world bot luôn tự động quét tìm cây kiếm và cầm ngay trên tay, loại bỏ triệt để việc bị kẹt ô số 5 sau khi mở La bàn ở Lobby.
-> - ✅ **Fix tự động `/dn` đăng nhập & chống gửi `/home 2` ở sảnh đăng nhập**: Sửa lỗi bot nhận nhầm sảnh đăng nhập (Y=28) là đã vào server, đảm bảo luôn gửi lệnh `/dn mật-khẩu` khi vừa kết nối hoặc khi server yêu cầu, không bao giờ gửi `/home 2` khi chưa đăng nhập và chưa click rìu vào server chơi.
-> - ✅ **Fix quay đầu cất rương sau đít sau khi `/back`**: Bộ lọc vector hướng nhìn (`forward > 0.05`) bắt buộc chỉ mở rương ở phía trước mặt theo hướng khóa Yaw. Loại bỏ triệt để các rương sau lưng ("sau đít"), tự động căn tâm block sau khi dịch chuyển `/back` để tiếp tục cất thẳng về phía trước dãy rương mà không bao giờ quay ngược lại.
-> - ✅ **Fix không GOTO tới XYZ / lệch Y Nhà Rương**: Tự động nhận diện tọa độ thực tế của Nhà Rương khi chạy `/home 2` (kể cả khi nhập lệch số Y trong giao diện), tự động đồng bộ Y Khóa Nhà và lập tức `#goto` quay lại đúng tọa độ XYZ của rương vừa đứng để tiếp tục cất đồ.
-> - ✅ **Fix đứng yên khi vào game**: Tách biệt hoàn toàn nhận diện sảnh Lobby (dựa vào La Bàn & GUI chọn server) với tọa độ trong game. Khắc phục triệt để tình trạng bot sau khi vào game có tọa độ Y = 10..30 (ở Nhà Rương) bị nhận nhầm là sảnh và đứng yên.
-> - ✅ **Fix nhận diện sảnh Lobby**: Hỗ trợ nhận diện chuẩn xác khi bị văng ra Lobby. Tuyệt đối không gửi nhầm `/home 2` hay bật Chuỗi Rương lung tung ở sảnh lobby.
-> - ✅ **Giữ nguyên Waypoint khi bị diss / văng lobby**: Không xóa vị trí rương đang cất dở khi bị ngắt kết nối giữa chừng, sau khi vào lại server và `/home 2` bot sẽ tự động `#goto` quay lại đúng rương vừa đứng để tiếp tục cất đồ.
-> - ✅ **Tự động phát hiện Ban 5 phút (Hàng rào sắt / `iron_bars`)**: Nhận diện ô chọn server biến thành hàng rào sắt, đọc tooltip hiển thị thời gian phạt và tự động kill `node.exe` riêng của session acc đó để tránh spam server.
-> - ✅ **Tự động quét & lấy Compass**: Dò tìm compass trong cả hotbar lẫn túi đồ chính (slot 9-35), tự swap ra hotbar ô 5 để mở GUI chọn server.
-> - ✅ **Failsafe tự kill Node khi kẹt**: Tự động thoát sạch session `node.exe` nếu spam click Diamond Axe quá số lần cho phép hoặc kẹt ở sảnh lobby quá 25s.
+#### Hoặc tải riêng từng file mới nhất:
+- 📄 **[Tải file `bot_ws.py`](https://raw.githubusercontent.com/hanhdevsgu/full-mods-minecraft/botdonpheu/bot_ws.py)**
+- 📄 **[Tải file `server.js`](https://raw.githubusercontent.com/hanhdevsgu/full-mods-minecraft/botdonpheu/server.js)**
+- 📄 **[Tải file `worker.js`](https://raw.githubusercontent.com/hanhdevsgu/full-mods-minecraft/botdonpheu/worker.js)**
+
+#### Lệnh tải nhanh 1 dòng (PowerShell / CMD):
+```powershell
+curl.exe -LO https://raw.githubusercontent.com/hanhdevsgu/full-mods-minecraft/botdonpheu/bot_ws.py; curl.exe -LO https://raw.githubusercontent.com/hanhdevsgu/full-mods-minecraft/botdonpheu/server.js; curl.exe -LO https://raw.githubusercontent.com/hanhdevsgu/full-mods-minecraft/botdonpheu/worker.js
+```
 
 ---
 
-### 📦 Danh sách 3 file trong gói ZIP:
-- `bot_ws.py` — Giao diện GUI điều khiển & quản lý tài khoản
+### 🚀 Tính Năng & Các Bản Sửa Lỗi Chi Tiết:
+
+- 🌐 **Tự động phân giải DNS SRV `play.toichoi.com`**: Mô phỏng cơ chế của TLauncher / Minecraft Client, tự động truy vấn SRV để lấy IP và Port mới nhất mỗi khi khởi động hoặc tự reconnect khi server đổi cụm IP proxy.
+- 💾 **Fix triệt để lỗi ghi đè Waypoint Nhà Rương (`rương #2` bị đè thành `rương #1`)**: Đồng bộ biến hops liên tục trong suốt chu kỳ `#goto` qua các rương. Ngăn chặn triệt để sự kiện move tick ghi đè vị trí rương tiến độ về 0 khi bot đang cất đồ.
+- 🔄 **Fix triệt để lỗi bị BungeeCord văng về Lobby (Y=28) lúc mở rương**: Khi server gửi gói login chuyển sub-server về sảnh lobby, bot tự động nhận diện, reset trạng thái cất đồ an toàn, tự gửi `/dn` và kích hoạt ngay chu trình mở La bàn (Compass) để bấm vào lại server, sau đó tiếp tục từ đúng rương dở dang.
+- 🧭 **Chuẩn hóa FreeLook Traverse & Căn tâm theo logic mượt nhất**: Áp dụng chuẩn xác hệ vector chiếu góc nhìn Minecraft `(-sin, -cos)` giúp bot di chuyển WASD mượt mà không xoay mặt, không bị giật lùi hay lệch khỏi tâm block.
+- 📦 **Mở rương 1 & rương 2 đồng bộ không góc chết**: Cơ chế mở rương hỗ trợ cả raycast trực diện lẫn tìm rương trong tầm với góc khóa nhìn, đảm bảo 100% mở được mọi rương trong dãy.
+- ⚔️ **Tự động tìm & cầm Cây Kiếm trên tay khi vào server**: Bất kể cây kiếm nằm ở ô số 1, ô số 2 hay trong túi đồ chính, khi vào server hoặc hồi sinh/đổi world bot luôn tự động quét tìm cây kiếm và cầm ngay trên tay, loại bỏ triệt để việc bị kẹt ô số 5 sau khi mở La bàn ở Lobby.
+- 🛡️ **Tự động phát hiện Ban 5 phút (Hàng rào sắt / `iron_bars`)**: Nhận diện ô chọn server biến thành hàng rào sắt, đọc tooltip hiển thị thời gian phạt và tự động kill `node.exe` riêng của session acc đó để tránh spam server.
+- 🧭 **Tự động quét & lấy Compass**: Dò tìm compass trong cả hotbar lẫn túi đồ chính (slot 9-35), tự swap ra hotbar ô 5 để mở GUI chọn server.
+- ⛔ **Failsafe tự kill Node khi kẹt**: Tự động thoát sạch session `node.exe` nếu spam click Diamond Axe quá số lần cho phép hoặc kẹt ở sảnh lobby quá 25s.
+
+---
+
+### 📦 Danh sách 3 file trong bản cập nhật:
+- `bot_ws.py` — Giao diện GUI điều khiển & quản lý tài khoản (mặc định kết nối domain `play.toichoi.com`)
 - `server.js` — WebSocket server điều phối tiến trình (kết nối domain `play.toichoi.com`)
-- `worker.js` — Core Mineflayer xử lý dọn rương, FreeLook & tự động dò IP qua DNS SRV
+- `worker.js` — Core Mineflayer xử lý dọn rương, FreeLook, tự động dò IP qua DNS SRV & cơ chế khôi phục Lobby/Waypoint

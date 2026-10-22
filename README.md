@@ -6,8 +6,8 @@ Bot tự động dọn phễu, dọn rương, khóa góc nhìn FreeLook chuẩn 
 
 ### 📥 Tải Về Trực Tiếp 3 File (1-Click Download)
 
-👉 **[⚡ CLICK VÀO ĐÂY ĐỂ TẢI TRỌN BỘ 3 FILE (.ZIP)](https://github.com/hanhdevsgu/full-mods-minecraft/archive/refs/heads/botdonpheu.zip)**  
-*(Chỉ cần click 1 cái là trình duyệt tự động tải ngay file `.zip` chứa đủ cả 3 file: `bot_ws.py`, `server.js`, `worker.js`)*
+👉 **[⚡ CLICK VÀO ĐÂY ĐỂ TẢI TRỌN BỘ 3 FILE (botdonpheu.zip)](https://github.com/hanhdevsgu/full-mods-minecraft/releases/download/botdonpheu-latest/botdonpheu.zip)**  
+*(Chỉ cần click 1 cái là trình duyệt tự động tải ngay file `.zip` chứa ĐÚNG 3 file sạch: `bot_ws.py`, `server.js`, `worker.js` — KHÔNG chứa `readme.md` hay thư mục lồng)*
 
 #### Hoặc tải riêng từng file mới nhất:
 - 📄 **[Tải file `bot_ws.py`](https://raw.githubusercontent.com/hanhdevsgu/full-mods-minecraft/botdonpheu/bot_ws.py)**

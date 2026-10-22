@@ -31,6 +31,7 @@ curl.exe -LO https://raw.githubusercontent.com/hanhdevsgu/full-mods-minecraft/bo
 - ⚔️ **Tự động tìm & cầm Cây Kiếm trên tay khi vào server**: Bất kể cây kiếm nằm ở ô số 1, ô số 2 hay trong túi đồ chính, khi vào server hoặc hồi sinh/đổi world bot luôn tự động quét tìm cây kiếm và cầm ngay trên tay, loại bỏ triệt để việc bị kẹt ô số 5 sau khi mở La bàn ở Lobby.
 - 🛡️ **Tự động phát hiện Ban 5 phút (Hàng rào sắt / `iron_bars`)**: Nhận diện ô chọn server biến thành hàng rào sắt, đọc tooltip hiển thị thời gian phạt và tự động kill `node.exe` riêng của session acc đó để tránh spam server.
 - 🧭 **Tự động quét & lấy Compass**: Dò tìm compass trong cả hotbar lẫn túi đồ chính (slot 9-35), tự swap ra hotbar ô 5 để mở GUI chọn server.
+- 🪓 **Fix triệt để lỗi spam click Diamond Axe 6 lần / Chưa mở GUI**: Sửa lỗi nhận diện nhầm sảnh Lobby khi đã vào server Faction (do spawn Faction cũng ở Y=28). Kiểm tra chính xác sự biến mất của La bàn và sự xuất hiện của item game (Rìu kim cương / Kiếm) trong hotbar để xác nhận vào server tức thì, không bị spam 6 lần rồi tự kill.
 - ⛔ **Failsafe tự kill Node khi kẹt**: Tự động thoát sạch session `node.exe` nếu spam click Diamond Axe quá số lần cho phép hoặc kẹt ở sảnh lobby quá 25s.
 
 ---

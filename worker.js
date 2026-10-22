@@ -1834,13 +1834,13 @@ class BotInstance {
         this._storage_gui_index = 0;
         this._restoreGui1Config();
 
-        // ⭐ DỪNG CHUỖI RƯƠNG: Reset hops = 0, nếu đang ở Y Nhà Rương thì cập nhật waypoint ngay tại vị trí hiện tại
-        this._saved_resume_hops = 0;
+        // ⭐ DỪNG CHUỖI RƯƠNG: Bảo toàn waypoint và hops tại vị trí hiện tại
         this._goto_anchor = null;
         if (this.joined_server && this.isNearDepositY(1.5) && this.bot && this.bot.entity) {
             const p = this.bot.entity.position;
-            this._saveDepositWaypoint(p.x, p.y, p.z, 0);
-            this.log(`⏹️ [CHUỖI RƯƠNG] Đã dừng chuỗi rương → Lưu waypoint vị trí hiện tại (${p.x.toFixed(2)}, ${p.y.toFixed(2)}, ${p.z.toFixed(2)}), sẵn sàng reset khi qua dãy mới.`, '#4a9eff');
+            const currentHops = this._saved_resume_hops || 0;
+            this._saveDepositWaypoint(p.x, p.y, p.z, currentHops);
+            this.log(`⏹️ [CHUỖI RƯƠNG] Đã dừng chuỗi rương → Tọa độ vừa đứng (${p.x.toFixed(2)}, ${p.y.toFixed(2)}, ${p.z.toFixed(2)}) [rương #${currentHops + 1}] được bảo toàn.`, '#4a9eff');
         }
 
         this.log("📦 CHUỖI RƯƠNG: TẮT → ĐÃ RESET, LẦN BẬT SAU CHẠY TỪ HỘP 1", '#ff4d6d');
@@ -4796,7 +4796,15 @@ class BotInstance {
         if (settings.storage_deposit_delta_z !== undefined) this.storage_deposit_delta_z = settings.storage_deposit_delta_z;
         if (settings.storage_deposit_pitch !== undefined) this.storage_deposit_pitch = this._safeStoragePitch(settings.storage_deposit_pitch);
         if (settings.storage_deposit_yaw !== undefined) this.storage_deposit_yaw = this._safeStorageYaw(settings.storage_deposit_yaw);
-        if (settings.storage_deposit_lock_y !== undefined) this.storage_deposit_lock_y = settings.storage_deposit_lock_y;
+        if (settings.storage_deposit_lock_y !== undefined) {
+            this.storage_deposit_lock_y = settings.storage_deposit_lock_y;
+            if (this.bot && this.bot.entity && this.joined_server) {
+                const p = this.bot.entity.position;
+                const wp = this._loadDepositWaypoint();
+                const curHops = this._saved_resume_hops || (wp ? wp.hops : 0);
+                this._saveDepositWaypoint(p.x, p.y, p.z, curHops);
+            }
+        }
         if (settings.storage_after_goto_x !== undefined) this.storage_after_goto_x = settings.storage_after_goto_x;
         if (settings.storage_after_goto_y !== undefined) this.storage_after_goto_y = settings.storage_after_goto_y;
         if (settings.storage_after_goto_z !== undefined) this.storage_after_goto_z = settings.storage_after_goto_z;
@@ -5959,11 +5967,13 @@ class BotInstance {
 
             this.log(`📍 [KIỂM TRA VỊ TRÍ] (${reason}): Y hiện tại=${curY.toFixed(3)} | Y Khóa Dọn=${Number.isFinite(clearY) && clearY > 0 ? clearY.toFixed(3) : '(chưa đặt)'} | Y Khóa Nhà=${Number.isFinite(depY) && depY > 0 ? depY.toFixed(3) : '(chưa đặt)'}`, '#4a9eff');
 
-            const wpInit = this._loadDepositWaypoint();
-            const wpMatchesCur = wpInit && Number.isFinite(wpInit.y) && Math.abs(curY - wpInit.y) <= 1.5;
-            const hasDepLock = Number.isFinite(depY) && depY > 0;
-            const isAtDep = (hasDepLock && Math.abs(curY - depY) <= 1.5) || wpMatchesCur;
-            // ⭐ LỆNH VỀ NHÀ KHI VÀO LẠI (Ô DƯỚI: "Lệnh về Nhà khi vào lại", TUYỆT ĐỐI KHÔNG CHẠY /home 1 delay 8000)!
+            const wp = this._loadDepositWaypoint();
+            const targetDepY = (Number.isFinite(depY) && depY > 0) ? depY : (wp && Number.isFinite(wp.y) ? wp.y : NaN);
+
+            // Kiểm tra: Y hiện tại có phải Y Nhà Rương không
+            const isAtDep = Number.isFinite(targetDepY) && Math.abs(curY - targetDepY) <= 1.5;
+
+            // Câu lệnh setup trong GUI ("Lệnh về Nhà khi vào lại", ví dụ /home delay 8000 hoặc /home 2 delay 8000):
             let homeCmd = String(this.storage_reconnect_home_command || '').trim();
             if (!homeCmd || homeCmd === '/home 1 delay 8000' || homeCmd === '/home 1') {
                 if (this.storage_deposit_command && String(this.storage_deposit_command).startsWith('/home')) {
@@ -5973,74 +5983,39 @@ class BotInstance {
                 }
             }
 
-            if ((hasDepLock || wpInit) && !isAtDep) {
-                this.log(`🏠 [VỀ NHÀ RƯƠNG] Y hiện tại=${curY.toFixed(3)} khác Y Nhà Rương (${hasDepLock ? depY.toFixed(3) : wpInit.y.toFixed(3)}) → Chạy "${homeCmd}" để về Nhà Rương...`, '#4a9eff');
+            // ⭐ NẾU Y HIỆN TẠI KHÔNG PHẢI Y NHÀ RƯƠNG → NGAY LẬP TỨC CHẠY CÂU LỆNH /home SETUP TRONG GUI
+            if (!isAtDep) {
+                this.log(`🏠 [VÀO SERVER] Y hiện tại=${curY.toFixed(2)} KHÔNG PHẢI Y Nhà Rương (${Number.isFinite(targetDepY) ? targetDepY.toFixed(2) : 'chưa xác định'}) → NGAY LẬP TỨC chạy "${homeCmd}" để về Nhà Rương...`, '#4a9eff');
                 const cmds = this.parseStorageCommands(homeCmd);
                 if (cmds.length) {
                     await this.runCommandSequence(cmds);
-                    // Đợi bot teleport và Y cập nhật về Nhà Rương
+
+                    // Đợi bot teleport và Y cập nhật về Nhà Rương (tối đa 15s)
                     const waitStart = Date.now();
-                    let arrivedAtDep = false;
                     while (this.running && this.bot && Date.now() - waitStart < 15000) {
                         await this.sleep(300);
                         const nowY = this.bot.entity ? Number(this.bot.entity.position.y) : NaN;
                         if (!Number.isFinite(nowY)) continue;
 
-                        const wp = this._loadDepositWaypoint();
-                        const isAtWpY = wp && Number.isFinite(wp.y) && Math.abs(nowY - wp.y) <= 1.5;
-                        const isAtDepY = hasDepLock && Math.abs(nowY - depY) <= 1.5;
-                        const hasMovedFromCur = Math.abs(nowY - curY) > 2.0;
+                        const isAtTarget = Number.isFinite(targetDepY) && Math.abs(nowY - targetDepY) <= 1.5;
+                        const hasMoved = Math.abs(nowY - curY) > 2.0;
 
-                        if (isAtWpY || isAtDepY || (hasMovedFromCur && Date.now() - waitStart > 800)) {
-                            arrivedAtDep = true;
-                            if (Math.abs(nowY - depY) > 1.5) {
-                                this.log(`🔄 [ĐỒNG BỘ Y NHÀ RƯƠNG] "${homeCmd}" đưa bot tới Y=${nowY.toFixed(3)} (khác Y khóa cũ ${depY.toFixed(3)}) → Tự động cập nhật Y Khóa Nhà = ${nowY.toFixed(3)}!`, '#2ecc71');
+                        if (isAtTarget || (hasMoved && Date.now() - waitStart > 800)) {
+                            this.log(`✅ [VỀ NHÀ RƯƠNG] Đã về tới Nhà Rương an toàn (Y=${nowY.toFixed(2)}).`, '#2ecc71');
+                            if (!Number.isFinite(depY) || depY <= 0 || Math.abs(nowY - depY) > 1.5) {
                                 this.storage_deposit_lock_y = Math.round(nowY * 100) / 100;
                                 this.sendStatus();
                             }
-                            this.log(`✅ [VỀ NHÀ RƯƠNG] Đã về tới Nhà Rương an toàn (Y=${nowY.toFixed(3)}).`, '#2ecc71');
                             break;
                         }
                     }
-
-                    // ⭐ KHI VÀO LẠI SERVER MÀ Y KHÁC Y NHÀ RƯƠNG: /home VỀ NHÀ RƯƠNG XONG THÌ GOTO VỀ VỊ TRÍ RƯƠNG VỪA BỎ
-                    if (arrivedAtDep) {
-                        await this._gotoSavedWaypointAfterHome('sau khi /home về Nhà Rương');
-                    } else {
-                        const newY = this.bot.entity ? Number(this.bot.entity.position.y) : curY;
-                        this.log(`ℹ️ [VỀ NHÀ RƯƠNG] Sau 15s tọa độ Y=${newY.toFixed(3)} → Tiếp tục kiểm tra waypoint và chạy Chuỗi Rương...`, '#4a9eff');
-                        await this._gotoSavedWaypointAfterHome('sau khi gửi home');
-                    }
                 }
-            } else if (isAtDep) {
-                if (Math.abs(curY - depY) > 1.5) {
-                    this.storage_deposit_lock_y = Math.round(curY * 100) / 100;
-                    this.sendStatus();
-                }
-                this.log(`✅ [VỀ NHÀ RƯƠNG] Bot đã đang ở Nhà Rương (Y=${curY.toFixed(3)}).`, '#2ecc71');
-                await this._gotoSavedWaypointAfterHome('đang ở Nhà Rương khi vào lại');
             } else {
-                // Trường hợp chưa khóa Y Nhà Rương
-                const hasClearLock = Number.isFinite(clearY) && clearY > 0;
-                const isAtClear = hasClearLock ? (Math.abs(curY - clearY) <= 1.5) : false;
-                if (isAtClear && homeCmd) {
-                    this.log(`🏠 [VỀ NHÀ RƯƠNG] Y hiện tại=${curY.toFixed(3)} đang ở Dọn Rương → Chạy "${homeCmd}" để về Nhà Rương...`, '#4a9eff');
-                    const cmds = this.parseStorageCommands(homeCmd);
-                    if (cmds.length) {
-                        await this.runCommandSequence(cmds);
-                        await this.sleep(1500);
-                        const afterY = this.bot && this.bot.entity ? Number(this.bot.entity.position.y) : NaN;
-                        if (Number.isFinite(afterY) && Math.abs(afterY - curY) > 2.0) {
-                            this.storage_deposit_lock_y = Math.round(afterY * 100) / 100;
-                            this.sendStatus();
-                        }
-                        await this._gotoSavedWaypointAfterHome('sau khi về Nhà Rương từ Dọn Rương');
-                    }
-                } else {
-                    this.log(`ℹ️ [VỀ NHÀ RƯƠNG] Đang ở Y=${curY.toFixed(3)}, sẵn sàng chạy Chuỗi Rương.`, '#4a9eff');
-                    await this._gotoSavedWaypointAfterHome('khi vào lại server');
-                }
+                this.log(`✅ [VÀO SERVER] Bot đã đang ở đúng Y Nhà Rương (Y=${curY.toFixed(2)}).`, '#2ecc71');
             }
+
+            // ⭐ SAU ĐÓ NGAY LẬP TỨC #GOTO X Y Z TỌA ĐỘ VỪA ĐỨNG GẦN NHẤT
+            await this._gotoSavedWaypointAfterHome('sau khi vào server');
 
             // Tự động BẬT và chạy Chuỗi Rương
             if (!this.auto_storage_running && this.running && this.joined_server) {
@@ -6296,16 +6271,21 @@ class BotInstance {
                         }
                     }
 
-                    // ⭐ KHI Ở Y NHÀ RƯƠNG: Chỉ cập nhật waypoint khi Chuỗi Rương ĐANG CHẠY và không trong tiến trình goto!
-                    // TUYỆT ĐỐI KHÔNG ghi đè waypoint khi auto_storage_running = false (đặc biệt khi vừa /home về hoặc vừa vào game)
-                    if (this.joined_server && this.isNearDepositY(1.5) && this.auto_storage_running) {
+                    // ⭐ KHI Ở Y NHÀ RƯƠNG: Tự động lưu tọa độ vừa đứng gần nhất (ngay cả khi macro chưa bật)
+                    if (this.joined_server && this.bot && this.bot.entity) {
                         const p = this.bot.entity.position;
-                        const now = Date.now();
-                        if (!this._goto_in_progress && (!this._last_idle_dep_wp_save || now - this._last_idle_dep_wp_save > 1500)) {
-                            this._last_idle_dep_wp_save = now;
-                            const wp = this._loadDepositWaypoint();
-                            const currentHops = this._saved_resume_hops || (wp && Math.hypot(p.x - wp.x, p.z - wp.z) < 1.5 ? (wp.hops || 0) : 0);
-                            this._saveDepositWaypoint(p.x, p.y, p.z, currentHops);
+                        const depY = Number(this.storage_deposit_lock_y);
+                        const wp = this._loadDepositWaypoint();
+                        const isAtDepY = (Number.isFinite(depY) && depY > 0 && Math.abs(p.y - depY) <= 1.5) ||
+                                         (wp && Number.isFinite(wp.y) && Math.abs(p.y - wp.y) <= 1.5);
+
+                        if (isAtDepY && !this._goto_in_progress) {
+                            const now = Date.now();
+                            if (!this._last_idle_dep_wp_save || now - this._last_idle_dep_wp_save > 1000) {
+                                this._last_idle_dep_wp_save = now;
+                                const currentHops = this._saved_resume_hops || (wp && Math.hypot(p.x - wp.x, p.z - wp.z) < 1.5 ? (wp.hops || 0) : 0);
+                                this._saveDepositWaypoint(p.x, p.y, p.z, currentHops);
+                            }
                         }
                     }
 

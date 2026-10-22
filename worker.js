@@ -1718,17 +1718,22 @@ class BotInstance {
         const currentResumeHops = this._saved_resume_hops || 0;
 
         if (!hasActiveResumeAnchor) {
-            // Chỉ khi bắt đầu mới hoàn toàn (chưa có anchor), nếu đang ở Y Nhà Rương và chưa có waypoint:
-            if (this.isNearDepositY(1.5) && this.bot && this.bot.entity) {
-                const wp = this._loadDepositWaypoint();
-                if (!wp) {
-                    const p = this.bot.entity.position;
-                    this._saveDepositWaypoint(p.x, p.y, p.z, 0);
-                    this.log(`💾 [CHUỖI RƯƠNG] Bắt đầu mới tại Nhà Rương → Lưu waypoint vị trí ban đầu (${p.x.toFixed(2)}, ${p.y.toFixed(2)}, ${p.z.toFixed(2)})`, '#2ecc71');
+            const wp = this._loadDepositWaypoint();
+            if (wp && Number.isFinite(wp.hops) && wp.hops > 0) {
+                this._saved_resume_hops = wp.hops;
+                this._goto_anchor = { x: Math.floor(wp.x), y: Math.floor(wp.y), z: Math.floor(wp.z) };
+                this.log(`📍 [CHUỖI RƯƠNG] Khôi phục vị trí rương từ file waypoint (anchor: ${this._goto_anchor.x}, ${this._goto_anchor.y}, ${this._goto_anchor.z} | hops #${wp.hops + 1})`, '#2ecc71');
+            } else {
+                if (this.isNearDepositY(1.5) && this.bot && this.bot.entity) {
+                    if (!wp) {
+                        const p = this.bot.entity.position;
+                        this._saveDepositWaypoint(p.x, p.y, p.z, 0);
+                        this.log(`💾 [CHUỖI RƯƠNG] Bắt đầu mới tại Nhà Rương → Lưu waypoint vị trí ban đầu (${p.x.toFixed(2)}, ${p.y.toFixed(2)}, ${p.z.toFixed(2)})`, '#2ecc71');
+                    }
                 }
+                this._goto_anchor = null;
+                this._saved_resume_hops = 0;
             }
-            this._goto_anchor = null;
-            this._saved_resume_hops = 0;
             this._storage_recover_pending = null;
             this._goto_fail_streak = 0;
         } else {
@@ -2778,21 +2783,30 @@ class BotInstance {
             this.sendStatus();
         }
 
+        const targetBlockX = Math.floor(wp.x);
+        const targetBlockY = Math.floor(wp.y);
+        const targetBlockZ = Math.floor(wp.z);
         const dist = Math.hypot(wp.x - cur.x, wp.z - cur.z);
+
         // Nếu khoảng cách > 0.65 blocks (tức là điểm /home cách vị trí rương vừa đứng)
         if (dist > 0.65) {
             this.log(`📍 [WAYPOINT RESUME] (${reason}) Phát hiện vị trí rương vừa đứng tại (${wp.x}, ${wp.y}, ${wp.z}) (rương #${(wp.hops || 0) + 1}) → GOTO tới vị trí này...`, '#4a9eff');
-            const targetBlockX = Math.floor(wp.x);
-            const targetBlockY = Math.floor(wp.y);
-            const targetBlockZ = Math.floor(wp.z);
 
-            const reached = await this._pathfinderGotoExactXYZ(
-                targetBlockX, targetBlockY, targetBlockZ,
-                '📍 [VỀ RƯƠNG VỪA ĐỨNG]',
-                () => !this.running || !this.bot || this.findCompassSlot() !== -1
-            );
-            if (reached) {
-                this.log(`✅ [WAYPOINT RESUME] Đã tới đúng vị trí rương vừa đứng! Khóa góc nhìn và tiếp tục cất đồ.`, '#2ecc71');
+            const abortedFn = () => !this.running || !this.bot || this.findCompassSlot() !== -1;
+            // Thử đi bằng Baritone Traverse trước (rất mượt cho hành lang rương thẳng hàng)
+            let reached = await this._baritoneGotoBlock(targetBlockX, targetBlockY, targetBlockZ, abortedFn, 20000);
+            if (!reached && !abortedFn()) {
+                reached = await this._pathfinderGotoExactXYZ(
+                    targetBlockX, targetBlockY, targetBlockZ,
+                    '📍 [VỀ RƯƠNG VỪA ĐỨNG]',
+                    abortedFn
+                );
+            }
+
+            const pNow = this.bot && this.bot.entity ? this.bot.entity.position : null;
+            const distNow = pNow ? Math.hypot(targetBlockX + 0.5 - pNow.x, targetBlockZ + 0.5 - pNow.z) : 999;
+            if (reached || distNow <= 1.25) {
+                this.log(`✅ [WAYPOINT RESUME] Đã tới đúng vị trí rương vừa đứng (${wp.x}, ${wp.z})! Khóa góc nhìn và tiếp tục cất đồ.`, '#2ecc71');
                 this._goto_anchor = { x: targetBlockX, y: targetBlockY, z: targetBlockZ };
                 this._saved_resume_hops = wp.hops || 0;
                 this.lock_pitch = this._safeStoragePitch(this.storage_deposit_pitch);
@@ -2802,13 +2816,13 @@ class BotInstance {
                 this.startPitchYawLockLoop();
                 return true;
             } else {
-                this.log(`⚠️ [WAYPOINT RESUME] Không thể tới rương (${wp.x}, ${wp.z}) → sẽ cất đồ từ vị trí hiện tại.`, '#f5c842');
+                this.log(`⚠️ [WAYPOINT RESUME] Không thể tới rương (${wp.x}, ${wp.z}), khoảng cách=${distNow.toFixed(2)} → neo waypoint và tiếp tục.`, '#f5c842');
+                this._goto_anchor = { x: targetBlockX, y: targetBlockY, z: targetBlockZ };
+                this._saved_resume_hops = wp.hops || 0;
+                return false;
             }
         } else {
             this.log(`ℹ️ [WAYPOINT RESUME] Đã đang ở đúng vị trí rương vừa đứng (${wp.x}, ${wp.z}), không cần GOTO.`, '#2ecc71');
-            const targetBlockX = Math.floor(wp.x);
-            const targetBlockY = Math.floor(wp.y);
-            const targetBlockZ = Math.floor(wp.z);
             this._goto_anchor = { x: targetBlockX, y: targetBlockY, z: targetBlockZ };
             this._saved_resume_hops = wp.hops || 0;
             this.lock_pitch = this._safeStoragePitch(this.storage_deposit_pitch);
@@ -2818,7 +2832,6 @@ class BotInstance {
             this.startPitchYawLockLoop();
             return true;
         }
-        return false;
     }
 
     _getAfterGotoXYZ() {
@@ -3089,11 +3102,11 @@ class BotInstance {
         let f = this._baritoneFeet();
         if (f.x === bx && f.y === by && f.z === bz) return true;
 
-        // 🧭 FREELOOK TRAVERSE: Nếu cùng Y và thẳng hàng kề nhau (<= 8 ô) -> Đi bằng Traverse để KHÔNG xoay mặt bot!
+        // 🧭 FREELOOK TRAVERSE: Nếu cùng Y và thẳng hàng kề nhau (<= 60 ô) -> Đi bằng Traverse để KHÔNG xoay mặt bot!
         if (f.y === by && (f.x === bx || f.z === bz)) {
             const sx = Math.sign(bx - f.x), sz = Math.sign(bz - f.z);
             const steps = Math.abs(bx - f.x) + Math.abs(bz - f.z);
-            if (steps <= 8) {
+            if (steps <= 60) {
                 let allOk = true;
                 for (let i = 1; allOk && i <= steps; i++) {
                     if (aborted && aborted()) return false;
@@ -3684,14 +3697,30 @@ class BotInstance {
                 }
             }
 
-            // Khi ở Nhà Rương: lưu lại vị trí hiện tại của bot làm mốc cất đồ
+            // ⭐ KIỂM TRA VÀ GOTO VỀ RƯƠNG ĐÃ LƯU TRƯỚC KHI CẤT ĐỒ!
+            // Khi vừa /back hoặc vào Nhà Rương, nếu đã có waypoint ở rương xa hơn:
+            const savedWp = this._loadDepositWaypoint();
+            if (savedWp && savedWp.hops > 0 && this.bot && this.bot.entity && this.isNearDepositY(1.5)) {
+                const p = this.bot.entity.position;
+                const distToSaved = Math.hypot(savedWp.x - p.x, savedWp.z - p.z);
+                if (distToSaved > 0.65) {
+                    this.log(`📍 ${TAG} Phát hiện rương cất dở trước đó tại (${savedWp.x}, ${savedWp.y}, ${savedWp.z}) (rương #${savedWp.hops + 1}) → GOTO tới rương này trước khi cất...`, '#4a9eff');
+                    await this._gotoSavedWaypointAfterHome('tiếp tục cất đồ sau /back');
+                }
+            }
+
+            // Lưu lại vị trí hiện tại của bot làm mốc cất đồ
             if (this.bot && this.bot.entity && this.isNearDepositY(1.5)) {
                 const p = this.bot.entity.position;
                 const currentWp = this._loadDepositWaypoint();
-                const currentHops = (currentWp && Math.hypot(p.x - currentWp.x, p.z - currentWp.z) < 1.5) ? (currentWp.hops || 0) : 0;
+                // Giữ nguyên hops đã lưu nếu có, không bao giờ reset về 0 nếu chưa hết dãy
+                const currentHops = (currentWp && Number.isFinite(currentWp.hops) && currentWp.hops > 0)
+                    ? currentWp.hops
+                    : 0;
                 this._saveDepositWaypoint(p.x, p.y, p.z, currentHops);
                 // Đồng thời neo _goto_anchor tại block hiện tại để nếu hop tiếp sẽ cộng delta từ block này
                 this._goto_anchor = { x: Math.floor(p.x), y: Math.floor(p.y), z: Math.floor(p.z) };
+                this._saved_resume_hops = currentHops;
             }
 
             this.move_delta_x = this.storage_deposit_delta_x;
@@ -3751,9 +3780,9 @@ class BotInstance {
                     const inventoryFull = this.isPlayerInventoryFull36();
                     const targetCount = this.countTargetItems();
 
-                    if (atDepositY && inventoryFull && targetCount > 0) {
+                    if (atDepositY && (inventoryFull || targetCount > 0)) {
                         this._storage_chain_phase = 'startup_deposit';
-                        this.log(`🎒 [CHUỖI RƯƠNG] BẬT MACRO: đang ở Y Nhà Rương (${currentY.toFixed(3)}), balo FULL 36/36 và còn ${targetCount} item → CẤT HẾT TRƯỚC, CHƯA GỬI /home.`, '#f5c842');
+                        this.log(`🎒 [CHUỖI RƯƠNG] BẬT MACRO: đang ở Y Nhà Rương (${currentY.toFixed(3)}) và còn ${targetCount} item → CẤT HẾT TRƯỚC, CHƯA GỬI /home.`, '#f5c842');
                         const depositOk = await this.runChestDepositFlow();
                         if (!this.auto_storage_running || this._storage_cancel_token !== myToken || !this.running) return;
                         const remainAfterDeposit = this.countTargetItems();
@@ -4359,8 +4388,8 @@ class BotInstance {
         const myToken = this._storage_cancel_token;
         const aborted = () => !this.running || !this.bot || this._conn_epoch !== myEpoch || this._storage_cancel_token !== myToken;
 
-        const MAX_CHEST_HOPS = 12;
-        const GUI_SETTLE_MS = 0;
+        const MAX_CHEST_HOPS = 100;
+        const GUI_SETTLE_MS = 150;
         // Retry nhanh y như flow LẤY ITEM: không chờ 8s/lần mới thử lại.
         const FAST_OPEN_OPTS = { windowOpenTimeoutMs: 1500, retryDelayMs: 150, noAimRetryDelayMs: 150, maxAttempts: 24, refreshLockBeforeOpen: true };
 
@@ -4409,6 +4438,7 @@ class BotInstance {
 
             try { this.bot.closeWindow(chestWindow); } catch (e) {}
             chestWindow = null;
+            await this.sleep(200);
 
             if (result.stuck === 0) {
                 this.log(`✅ ${TAG} Đã đẩy hết đồ, tổng cộng ${totalPushed} ô item.`, '#2ecc71');
@@ -4425,7 +4455,7 @@ class BotInstance {
                 this._chest_retry_count++;
                 if (this._chest_retry_count <= 3) {
                     this.log(`🔁 ${TAG} Rương CHƯA đầy nhưng vẫn còn ${result.stuck} ô item sót - thử đẩy lại (lần ${this._chest_retry_count}/3).`, '#f5c842');
-                    await this.sleep(0);
+                    await this.sleep(200);
                     chestWindow = await this.openChestAtCursorWithRetry(TAG, aborted, FAST_OPEN_OPTS);
                     if (!chestWindow) {
                         this._chest_retry_count = 0;
@@ -4452,9 +4482,8 @@ class BotInstance {
             hops++;
             this._saved_resume_hops = hops; // Cập nhật ngay số rương hiện tại để bảo vệ waypoint
             if (hops > MAX_CHEST_HOPS) {
-                this.log(`⚠️ ${TAG} Đã thử ${MAX_CHEST_HOPS} lần #goto mà inventory vẫn còn item - dừng flow cất.`, '#f5c842');
+                this.log(`⚠️ ${TAG} Đã thử ${MAX_CHEST_HOPS} lần #goto mà inventory vẫn còn item - dừng flow cất, giữ nguyên waypoint.`, '#f5c842');
                 this._chest_busy = false;
-                this._clearDepositWaypoint(`đạt giới hạn ${MAX_CHEST_HOPS} rương`);
                 return true;
             }
             this.log(`📦 ${TAG} ${chestCfg.name} FULL → #goto Rương 1 kế tiếp bằng delta (${nextCfg.dx},${nextCfg.dy},${nextCfg.dz}) lần ${hops}/${MAX_CHEST_HOPS}.`, '#4a9eff');
@@ -4470,8 +4499,7 @@ class BotInstance {
                         this._chest_busy = false;
                         return true;
                     }
-                    this.log(`⚠️ ${TAG} Không tới được rương kế tiếp (đã tới cuối hàng rương hoặc vướng) — reset waypoint để tránh kẹt hàng cũ.`, '#f5c842');
-                    this._clearDepositWaypoint('đã tới cuối hàng rương');
+                    this.log(`⚠️ ${TAG} Không tới được rương kế tiếp (đã tới cuối hàng rương hoặc vướng) — giữ waypoint để tránh nhảy rương.`, '#f5c842');
                     this._chest_busy = false;
                     return true;
                 }
@@ -4482,7 +4510,7 @@ class BotInstance {
                     this._saveDepositWaypoint(p.x, p.y, p.z, hops);
                 }
             } catch (e) {}
-            await this.sleep(0);
+            await this.sleep(250);
             if (!this.running) { this._chest_busy = false; return true; }
             chestWindow = await this.openChestAtCursorWithRetry(TAG, aborted, FAST_OPEN_OPTS);
             if (!chestWindow) { this._chest_busy = false; return true; }

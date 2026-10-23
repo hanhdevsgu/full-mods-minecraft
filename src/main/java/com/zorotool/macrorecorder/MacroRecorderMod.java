@@ -512,18 +512,12 @@ public class MacroRecorderMod {
             teleportCompleteMessageReceived = true;
         }
 
-        // 2. Nhận diện server cảnh báo spam lệnh / giới hạn lệnh (8 lệnh trong 10s):
-        // CHỈ KHI NÀO LOGS CHAT SERVER HIỆN THÔNG BÁO CẢNH BÁO THÌ MỚI NGHỈ 10 GIÂY!
-        if (clean.contains("quá nhanh")
-                || clean.contains("chậm lại")
-                || clean.contains("spam")
-                || (clean.contains("lệnh") && clean.contains("giây"))
-                || (clean.contains("chờ") && clean.contains("giây"))
-                || (clean.contains("đợi") && clean.contains("giây"))
-                || clean.contains("too fast")
-                || clean.contains("rate limit")) {
+        // 2. Server chỉ có 1 dòng log duy nhất này để cảnh cáo: "[!] Bạn chỉ được phép gửi 8 lệnh trong 10 giây."
+        // CHỈ KHI NÀO GẶP ĐÚNG DÒNG LOGS NÀY THÌ MỚI ĐỢI 10S, CÒN KHÔNG THÌ CỨ BÌNH THƯỜNG DIỄN RA KHÔNG CẦN ĐỢI GÌ HẾT!
+        if ((clean.contains("8 lệnh") || clean.contains("8 lenh")) 
+                && (clean.contains("10 giây") || clean.contains("10 giay") || clean.contains("10s"))) {
             serverCommandCooldownUntil = System.currentTimeMillis() + 10000L;
-            System.out.println("[MacroRecorder] Phát hiện server cảnh báo giới hạn lệnh trong chat ('" + raw + "') -> Tự động nghỉ 10s trước khi gửi tiếp...");
+            System.out.println("[MacroRecorder] Phát hiện server cảnh báo: '" + raw + "' -> Tự động nghỉ đúng 10s...");
         }
 
         // 2. Kiểm tra log khi đang bán ở shop (SELLING_ITEMS hoặc SELLING_1E_ITEMS):

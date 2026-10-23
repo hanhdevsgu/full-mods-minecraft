@@ -9,12 +9,14 @@ Mod hỗ trợ tự động bán tại biển Shop (Sell Sign), tự động l�
 1. **Anti-Buy Shield (Chống Mua Nhầm 100%)**:
    - Tự động hủy tương tác chuột phải nếu crosshair vô tình quét trúng biển Mua (Buy Sign) hoặc bị người khác đẩy lệch góc. Đảm bảo an toàn tuyệt đối cho túi tiền.
 2. **Hành Vi Tự Nhiên Chuẩn Người Thật (100% Human-Like)**:
-   - Loại bỏ hoàn toàn lỗi tự gọi `#goto` khi đang đứng yên bán hàng (đã xóa triệt để bộ lọc chat nhầm thông báo vé số/quảng cáo server).
-   - Chỉ kích hoạt `#goto` điều hướng lại khi người chơi thực sự bị đẩy văng xa khỏi quầy (> 3 mét) quá 3 giây.
+   - Loại bỏ hoàn toàn lỗi tự gọi `#goto` khi đang đứng yên bán hàng.
+   - **Tự động `#goto` về lại quầy ngay khi không được cộng tiền**: Nếu đang bán mà quá 1.5s không thấy server cộng tiền `$80` (do bị người che mắt, bị đẩy lùi góc chết, hoặc lệch góc), mod tự động gọi `#goto` bước thẳng lại quầy bán.
    - Góc nhìn xoay mượt mà, không giật lắc camera khi mở `/pv` hay chuyển mục tiêu.
 3. **Quản Lý Kho `/pv` Thông Minh**:
    - Tự động kiểm tra lượng vật phẩm trong kho `/pv`. Khi kho đã hết đồ thì đóng GUI và chuyển trạng thái về nhà ngay, tránh việc mở đi mở lại kho rỗng.
-   - Tích hợp cơ chế Rate-Limit (nghỉ 10s nếu mở 8 lệnh trong 10s) chống spam lệnh bị kick.
+   - **Chỉ nghỉ 10 giây khi server xuất hiện thông báo cảnh báo**:
+     `[!] Bạn chỉ được phép gửi 8 lệnh trong 10 giây.`
+     Còn bình thường mod chạy mượt mà ở tốc độ tối đa không có thời gian chờ nhân tạo.
 4. **Tích Hợp Sẵn QuizPeek (Auto Trả Lời Câu Hỏi)**:
    - Tự động nhận diện và trả lời đúng 100% các câu hỏi kiểm tra bot trong game.
 

@@ -1091,6 +1091,8 @@ public class MacroRecorderMod {
                     releaseUseItemKey();
                     SignAimHandler.isWarmupActive = false;
                     sellState = SellState.SELLING_1E_ITEMS;
+                    lastSellMoneyTime = System.currentTimeMillis();
+                    notSellingTimer = 0;
                 }
             }
         }
@@ -1125,20 +1127,34 @@ public class MacroRecorderMod {
 
                 if (aimingAtSellSign1E) {
                     holdUseItemKey();
-                    notSellingTimer = 0;
                 } else {
                     releaseUseItemKey();
+                }
+
+                // Nếu không ngắm được trúng bảng bán:
+                if (!aimingAtSellSign1E) {
                     notSellingTimer++;
-                    // Nếu bị che khuất tầm nhìn hoặc bị đẩy lệch góc quá 40 ticks (~2 giây):
-                    if (notSellingTimer >= 40) {
-                        System.out.println("[MacroRecorder] (F4) Bị che khuất tầm nhìn hoặc bị đẩy lệch góc ("
-                                + notSellingTimer + " ticks)! Gửi " + afterShopGotoCommand + " để Baritone bước lại quầy bán...");
-                        executeClientCommand(afterShopGotoCommand);
-                        stateBeforeRecovery = SellState.SELLING_1E_ITEMS;
-                        sellState = SellState.RECOVERING_TO_COUNTER;
-                        sellWaitTimer = 0;
+                } else {
+                    // Dù đang ngắm trúng bảng, nhưng nếu bị kẹt/người che/quá tầm với khiến server KHÔNG cộng tiền:
+                    if (System.currentTimeMillis() - lastSellMoneyTime >= 1500L) {
+                        notSellingTimer++;
+                    } else {
                         notSellingTimer = 0;
                     }
+                }
+
+                // Nếu quá 30 ticks (~1.5s) không bán được / không cộng tiền:
+                if (notSellingTimer >= 30) {
+                    System.out.println("[MacroRecorder] (F4) Sell không cộng tiền hoặc bị che khuất tầm nhìn ("
+                            + notSellingTimer + " ticks)! Gửi " + afterShopGotoCommand + " để Baritone bước lại quầy bán...");
+                    releaseUseItemKey();
+                    executeClientCommand(afterShopGotoCommand);
+                    stateBeforeRecovery = SellState.SELLING_1E_ITEMS;
+                    sellState = SellState.RECOVERING_TO_COUNTER;
+                    sellWaitTimer = 0;
+                    notSellingTimer = 0;
+                    lastSellMoneyTime = System.currentTimeMillis();
+                    return false;
                 }
                 return false;
 
@@ -1235,6 +1251,8 @@ public class MacroRecorderMod {
                         + "/2): rút " + taken + " stack thuốc súng");
                 sellClickCooldown = 0;
                 sellState = SellState.SELLING_ITEMS;
+                lastSellMoneyTime = System.currentTimeMillis();
+                notSellingTimer = 0;
                 return true;
 
             case SELLING_ITEMS:
@@ -1258,20 +1276,34 @@ public class MacroRecorderMod {
 
                 if (aimingAtSellSign) {
                     holdUseItemKey();
-                    notSellingTimer = 0;
                 } else {
                     releaseUseItemKey();
+                }
+
+                // Nếu không ngắm được trúng bảng bán:
+                if (!aimingAtSellSign) {
                     notSellingTimer++;
-                    // Nếu bị che khuất tầm nhìn hoặc bị đẩy lệch góc quá 40 ticks (~2 giây):
-                    if (notSellingTimer >= 40) {
-                        System.out.println("[MacroRecorder] (F4) Bị che khuất tầm nhìn hoặc bị đẩy lệch góc ("
-                                + notSellingTimer + " ticks)! Gửi " + afterShopGotoCommand + " để Baritone bước lại quầy bán...");
-                        executeClientCommand(afterShopGotoCommand);
-                        stateBeforeRecovery = SellState.SELLING_ITEMS;
-                        sellState = SellState.RECOVERING_TO_COUNTER;
-                        sellWaitTimer = 0;
+                } else {
+                    // Dù đang ngắm trúng bảng, nhưng nếu bị kẹt/người che/quá tầm với khiến server KHÔNG cộng tiền:
+                    if (System.currentTimeMillis() - lastSellMoneyTime >= 1500L) {
+                        notSellingTimer++;
+                    } else {
                         notSellingTimer = 0;
                     }
+                }
+
+                // Nếu quá 30 ticks (~1.5s) không bán được / không cộng tiền:
+                if (notSellingTimer >= 30) {
+                    System.out.println("[MacroRecorder] (F4) Sell không cộng tiền hoặc bị che khuất tầm nhìn ("
+                            + notSellingTimer + " ticks)! Gửi " + afterShopGotoCommand + " để Baritone bước lại quầy bán...");
+                    releaseUseItemKey();
+                    executeClientCommand(afterShopGotoCommand);
+                    stateBeforeRecovery = SellState.SELLING_ITEMS;
+                    sellState = SellState.RECOVERING_TO_COUNTER;
+                    sellWaitTimer = 0;
+                    notSellingTimer = 0;
+                    lastSellMoneyTime = System.currentTimeMillis();
+                    return false;
                 }
                 return false;
 

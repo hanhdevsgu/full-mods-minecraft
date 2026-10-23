@@ -100,11 +100,13 @@ public class MacroRecorderMod {
     // lenh trong 8 giay. Chua an toan hon 1 chut (8/8s) de tranh vua cham nguong.
     // CHI ap dung cho "/pv N" - #goto KHONG bi server gioi han nen duoc gui
     // thang, khong di qua bo dem nay (xem MOVING_TO_NEXT_CHEST).
-    // Gioi han lenh chat CLIENT-SIDE: toi da 5 lenh trong 10 giay de an toan tuyet doi
-    // truoc gioi han "8 lenh trong 10 giay" cua server!
-    private static final int MAX_CHAT_COMMANDS_PER_WINDOW = 5;
+    // Gioi han lenh chat CLIENT-SIDE (chi ap dung cho lenh gui len server nhu /pv, /home, /shop...):
+    // Tuyet doi KHONG tinh #goto, .look, baritone hay aim vao gioi han nay!
+    // Neu gui du 8 lenh server trong 10 giay -> tu dong nghi doi 10 giay roi moi gui tiep.
+    private static final int MAX_CHAT_COMMANDS_PER_WINDOW = 8;
     private static final long CHAT_COMMAND_WINDOW_MS = 10000L;
     private final Deque<Long> recentCommandTimes = new ArrayDeque<>();
+    private long commandRateLimitCooldownUntil = 0L;
 
     // Chuoi lenh toi shop, chay sau khi da xong het cac kho theo config.
     // #goto va .look deu KHONG bi server gioi han nen gui thang, khong qua
@@ -1975,17 +1977,32 @@ public class MacroRecorderMod {
         if (message == null || message.trim().isEmpty()) {
             return true;
         }
+        // Lenh client (Baritone, #goto, .look, #look, aim, ...) tuyet doi KHONG tinh vao gioi han lenh server!
         if (message.startsWith(".") || message.startsWith("#")) {
             executeClientCommand(message);
             return true;
         }
+
         long now = System.currentTimeMillis();
+
+        // Neu dang trong thoi gian nghi 10s sau khi cham nguong 8 lenh / 10s:
+        if (now < commandRateLimitCooldownUntil) {
+            return false;
+        }
+
+        // Loai bo cac moc lenh server cu hon 10 giay:
         while (!recentCommandTimes.isEmpty() && now - recentCommandTimes.peekFirst() > CHAT_COMMAND_WINDOW_MS) {
             recentCommandTimes.pollFirst();
         }
+
+        // Neu da cham nguong 8 lenh trong 10s: bat buoc nghi doi 10s roi moi gui tiep!
         if (recentCommandTimes.size() >= MAX_CHAT_COMMANDS_PER_WINDOW) {
-            return false; // dang gan cham gioi han, cho tick sau roi thu lai
+            commandRateLimitCooldownUntil = now + 10000L;
+            recentCommandTimes.clear();
+            System.out.println("[MacroRecorder] Đã gửi đủ 8 lệnh server (/pv, /home, /shop...) trong 10s -> Tự động nghỉ 10s trước khi gửi tiếp!");
+            return false;
         }
+
         mc.player.sendChatMessage(message);
         recentCommandTimes.addLast(now);
         return true;

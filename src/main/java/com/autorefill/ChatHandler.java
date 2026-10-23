@@ -19,30 +19,35 @@ public class ChatHandler {
         // Kiem tra cac lenh Baritone
         String blockName = null;
 
-        if (lower.startsWith("#set set ") || lower.startsWith(".set set ") || lower.startsWith("@set set ")) {
-            blockName = message.substring(9).trim();
-        } else if (lower.startsWith("#sel set ") || lower.startsWith(".sel set ") || lower.startsWith("@sel set ")) {
-            blockName = message.substring(9).trim();
-        } else if (lower.startsWith("#sel walls ") || lower.startsWith(".sel walls ") || lower.startsWith("@sel walls ")) {
-            blockName = message.substring(11).trim();
-        } else if (lower.startsWith("#sel wall ") || lower.startsWith(".sel wall ") || lower.startsWith("@sel wall ")) {
-            blockName = message.substring(10).trim();
-        } else if (lower.startsWith("#sel fill ") || lower.startsWith(".sel fill ") || lower.startsWith("@sel fill ")) {
-            blockName = message.substring(10).trim();
-        } else if (lower.startsWith("#sel replace ") || lower.startsWith(".sel replace ") || lower.startsWith("@sel replace ")) {
-            String[] parts = message.substring(13).trim().split("\\s+");
+        // Chuẩn hóa lệnh nếu dùng prefix Impact (.b ...)
+        String normalized = lower;
+        if (normalized.startsWith(".b ")) {
+            normalized = "#" + normalized.substring(3).trim();
+        }
+
+        if (normalized.startsWith("#set set ") || normalized.startsWith(".set set ") || normalized.startsWith("@set set ")) {
+            blockName = message.substring(message.toLowerCase().indexOf("set set ") + 8).trim();
+        } else if (normalized.startsWith("#sel set ") || normalized.startsWith(".sel set ") || normalized.startsWith("@sel set ")) {
+            blockName = message.substring(message.toLowerCase().indexOf("sel set ") + 8).trim();
+        } else if (normalized.startsWith("#sel walls ") || normalized.startsWith(".sel walls ") || normalized.startsWith("@sel walls ")) {
+            blockName = message.substring(message.toLowerCase().indexOf("sel walls ") + 10).trim();
+        } else if (normalized.startsWith("#sel wall ") || normalized.startsWith(".sel wall ") || normalized.startsWith("@sel wall ")) {
+            blockName = message.substring(message.toLowerCase().indexOf("sel wall ") + 9).trim();
+        } else if (normalized.startsWith("#sel fill ") || normalized.startsWith(".sel fill ") || normalized.startsWith("@sel fill ")) {
+            blockName = message.substring(message.toLowerCase().indexOf("sel fill ") + 9).trim();
+        } else if (normalized.startsWith("#sel replace ") || normalized.startsWith(".sel replace ") || normalized.startsWith("@sel replace ")) {
+            String[] parts = message.substring(message.toLowerCase().indexOf("sel replace ") + 12).trim().split("\\s+");
             if (parts.length >= 2) {
                 blockName = parts[1];
             }
-        } else if (lower.startsWith("#set ") || lower.startsWith(".set ") || lower.startsWith("@set ")) {
-            // Neu nguoi choi go #set <block> (nhu #set cobblestone)
-            String arg = message.substring(5).trim();
+        } else if (normalized.startsWith("#set ") || normalized.startsWith(".set ") || normalized.startsWith("@set ")) {
+            String arg = message.substring(message.toLowerCase().indexOf("set ") + 4).trim();
             if (!arg.isEmpty() && !isBaritoneInternalSetting(arg.toLowerCase())) {
                 blockName = arg;
             }
-        } else if (lower.equals("#stop") || lower.equals(".stop") || lower.equals("@stop")
-                || lower.equals("#cancel") || lower.equals(".cancel") || lower.equals("@cancel")
-                || lower.equals("#sel clear") || lower.equals(".sel clear") || lower.equals("@sel clear")) {
+        } else if (normalized.equals("#stop") || normalized.equals(".stop") || normalized.equals("@stop")
+                || normalized.equals("#cancel") || normalized.equals(".cancel") || normalized.equals("@cancel")
+                || normalized.equals("#sel clear") || normalized.equals(".sel clear") || normalized.equals("@sel clear")) {
             BaritoneIntegration.clearLastCommand();
             if (RefillHandler.hasTarget()) {
                 RefillHandler.clearTarget();

@@ -17,7 +17,7 @@ import org.apache.logging.log4j.Logger;
 )
 public class AutoRefillMod {
     public static final String MODID = "autorefill";
-    public static final String NAME = "Auto Hotbar Refill";
+    public static final String NAME = "Auto Refill & Sign Aimbot";
     public static final String VERSION = "1.0.0";
 
     public static Logger logger;
@@ -37,10 +37,12 @@ public class AutoRefillMod {
         MinecraftForge.EVENT_BUS.register(new RefillHandler());
         MinecraftForge.EVENT_BUS.register(new ChatHandler());
         MinecraftForge.EVENT_BUS.register(new KeyInputHandler());
+        MinecraftForge.EVENT_BUS.register(new SignAimHandler());
 
-        // Dang ky client command /refill, /rf
+        // Dang ky client commands
         ClientCommandHandler.instance.registerCommand(new CommandRefill());
+        ClientCommandHandler.instance.registerCommand(new CommandAimSell());
 
-        logger.info("[AutoRefill] Auto Hotbar Refill mod da khoi tao thanh cong!");
+        logger.info("[AutoRefill] Auto Refill & Sign Aimbot mod da khoi tao thanh cong!");
     }
 }

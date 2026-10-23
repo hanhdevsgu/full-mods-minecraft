@@ -35,8 +35,14 @@ Nhập trực tiếp các lệnh sau vào khung chat của game:
 
 ## 📥 Tải Xuống (Download)
 
-Kéo xuống đây và bấm vào liên kết dưới để tải trực tiếp file mod:
+Kéo xuống đây và bấm vào liên kết dưới để tải trực tiếp:
+
+### 👉 [⚡ TẢI VỀ COMBO 3 MODS (Combo-3-Mods-AutoAimSellSign.zip)](https://github.com/hanhdevsgu/full-mods-minecraft/releases/download/aimsigntool-latest/Combo-3-Mods-AutoAimSellSign.zip)
+*(Click 1 cái tải ngay file ZIP chứa trọn bộ 3 mods: `modid1.0.jar` + `Impact-4.9.1-1.12.2.jar` + `AutoAimSellSign-1.12.2-1.0.jar` — Bản fix triệt để lỗi `#goto` khi đứng yên, chống mua nhầm 100% và góc nhìn mượt mà như người thật).*
+
+---
 
 ### 👉 [Tải Xuống baritone-standalone-forge-1.2.19.jar (Click để tải)](https://github.com/hanhdevsgu/full-mods-minecraft/releases/download/v1.2.19/baritone-standalone-forge-1.2.19.jar)
 
 *(File mod Baritone độc lập chạy trên Forge 1.12.2)*
+

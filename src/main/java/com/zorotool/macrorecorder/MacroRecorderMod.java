@@ -1110,23 +1110,21 @@ public class MacroRecorderMod {
                     }
                     return true;
                 }
-                // Đè chuột phải người thật (khi tâm ngắm đang trúng bảng):
+                // Đè chuột phải người thật (khi tâm ngắm đang trúng bảng BÁN):
                 // Nếu đang nhìn vào bảng Buy hoặc bảng phía dưới: TUYỆT ĐỐI KHÔNG CLICK!
-                if (SignAimHandler.isLookingAtAnyBuySign(mc)) {
-                    releaseUseItemKey();
-                    return false;
-                }
+                boolean lookingAtBuySign1E = SignAimHandler.isLookingAtAnyBuySign(mc);
+                boolean aimingAtSellSign1E = !lookingAtBuySign1E && SignAimHandler.isAimingAtSign(mc);
 
-                if (SignAimHandler.isAimingAtSign(mc)) {
+                if (aimingAtSellSign1E) {
                     holdUseItemKey();
                     notSellingTimer = 0;
                 } else {
                     releaseUseItemKey();
                     notSellingTimer++;
-                    // CHỈ KHI THỰC SỰ BỊ ĐẨY VĂNG RA XA KHỎI QUẦY (cự ly > 3 block) và mất dấu lâu:
-                    if (notSellingTimer >= 60 && isPushedFarFromCounter()) {
-                        System.out.println("[MacroRecorder] (F4) Thực sự bị đẩy văng ra xa quầy bán! Gửi "
-                                + afterShopGotoCommand + " để bước xích lại quầy...");
+                    // Nếu bị che khuất tầm nhìn hoặc bị đẩy lệch góc quá 40 ticks (~2 giây):
+                    if (notSellingTimer >= 40) {
+                        System.out.println("[MacroRecorder] (F4) Bị che khuất tầm nhìn hoặc bị đẩy lệch góc ("
+                                + notSellingTimer + " ticks)! Gửi " + afterShopGotoCommand + " để Baritone bước lại quầy bán...");
                         executeClientCommand(afterShopGotoCommand);
                         stateBeforeRecovery = SellState.SELLING_1E_ITEMS;
                         sellState = SellState.RECOVERING_TO_COUNTER;
@@ -1262,23 +1260,21 @@ public class MacroRecorderMod {
                     }
                     return true;
                 }
-                // Đè chuột phải người thật (khi tâm ngắm đang trúng bảng):
+                // Đè chuột phải người thật (khi tâm ngắm đang trúng bảng BÁN):
                 // Nếu đang nhìn vào bảng Buy hoặc bảng phía dưới: TUYỆT ĐỐI KHÔNG CLICK!
-                if (SignAimHandler.isLookingAtAnyBuySign(mc)) {
-                    releaseUseItemKey();
-                    return false;
-                }
+                boolean lookingAtBuySign = SignAimHandler.isLookingAtAnyBuySign(mc);
+                boolean aimingAtSellSign = !lookingAtBuySign && SignAimHandler.isAimingAtSign(mc);
 
-                if (SignAimHandler.isAimingAtSign(mc)) {
+                if (aimingAtSellSign) {
                     holdUseItemKey();
                     notSellingTimer = 0;
                 } else {
                     releaseUseItemKey();
                     notSellingTimer++;
-                    // CHỈ KHI THỰC SỰ BỊ ĐẨY VĂNG RA XA KHỎI QUẦY (cự ly > 3 block) và mất dấu lâu:
-                    if (notSellingTimer >= 60 && isPushedFarFromCounter()) {
-                        System.out.println("[MacroRecorder] (F4) Thực sự bị đẩy văng ra xa quầy bán! Gửi "
-                                + afterShopGotoCommand + " để bước xích lại quầy...");
+                    // Nếu bị che khuất tầm nhìn hoặc bị đẩy lệch góc quá 40 ticks (~2 giây):
+                    if (notSellingTimer >= 40) {
+                        System.out.println("[MacroRecorder] (F4) Bị che khuất tầm nhìn hoặc bị đẩy lệch góc ("
+                                + notSellingTimer + " ticks)! Gửi " + afterShopGotoCommand + " để Baritone bước lại quầy bán...");
                         executeClientCommand(afterShopGotoCommand);
                         stateBeforeRecovery = SellState.SELLING_ITEMS;
                         sellState = SellState.RECOVERING_TO_COUNTER;
@@ -1299,11 +1295,11 @@ public class MacroRecorderMod {
                     double ddz = mc.player.posZ - (counterTarget.getZ() + 0.5);
                     distSqToCenter = ddx * ddx + ddz * ddz;
                 }
-                boolean atCenter = distSqToCenter <= 0.36; // Cự ly sát tâm quầy < 0.6 block
-                boolean canAimAgain = SignAimHandler.isAimingAtSign(mc);
+                boolean atCenter = distSqToCenter <= 0.64; // Cự ly sát tâm quầy <= 0.8 block
+                boolean canAimAgain = SignAimHandler.isAimingAtSign(mc) && !SignAimHandler.isLookingAtAnyBuySign(mc);
 
-                // Đợi ít nhất 5 ticks để Baritone kịp xuất phát thoát góc chết
-                if (sellWaitTimer >= 5 && (atCenter || canAimAgain || sellWaitTimer >= 60)) {
+                // Đợi ít nhất 8 ticks để Baritone kịp xuất phát di chuyển thoát góc chết / người che
+                if (sellWaitTimer >= 8 && (atCenter || canAimAgain || sellWaitTimer >= 60)) {
                     executeClientCommand("#stop");
                     if (mc.gameSettings != null) {
                         KeyBinding.setKeyBindState(mc.gameSettings.keyBindForward.getKeyCode(), false);
@@ -1313,6 +1309,12 @@ public class MacroRecorderMod {
                         KeyBinding.setKeyBindState(mc.gameSettings.keyBindJump.getKeyCode(), false);
                         KeyBinding.setKeyBindState(mc.gameSettings.keyBindSprint.getKeyCode(), false);
                     }
+                    if (afterShopLookCommand != null && !afterShopLookCommand.isEmpty()) {
+                        executeClientCommand(afterShopLookCommand);
+                    }
+                    int farmId = ConfigHelper.getFarmItemId();
+                    String target = (farmId == 338) ? "reeds" : "gunpowder";
+                    SignAimHandler.startAimLock(target);
                     System.out.println("[MacroRecorder] (F4) Đã thoát góc chết về lại sát quầy bán đồ! Tiếp tục bán...");
                     notSellingTimer = 0;
                     sellWaitTimer = 0;

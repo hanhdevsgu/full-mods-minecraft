@@ -100,13 +100,9 @@ public class MacroRecorderMod {
     // lenh trong 8 giay. Chua an toan hon 1 chut (8/8s) de tranh vua cham nguong.
     // CHI ap dung cho "/pv N" - #goto KHONG bi server gioi han nen duoc gui
     // thang, khong di qua bo dem nay (xem MOVING_TO_NEXT_CHEST).
-    // Gioi han lenh chat CLIENT-SIDE (chi ap dung cho lenh gui len server nhu /pv, /home, /shop...):
-    // Tuyet doi KHONG tinh #goto, .look, baritone hay aim vao gioi han nay!
-    // Neu gui du 8 lenh server trong 10 giay -> tu dong nghi doi 10 giay roi moi gui tiep.
-    private static final int MAX_CHAT_COMMANDS_PER_WINDOW = 8;
-    private static final long CHAT_COMMAND_WINDOW_MS = 10000L;
-    private final Deque<Long> recentCommandTimes = new ArrayDeque<>();
-    private long commandRateLimitCooldownUntil = 0L;
+    // Co che nghi 10s: CHI KHI NAO LOGS CHAT SERVER HIEN THONG BAO CANH BAO (spam, qua nhanh, 8 lenh/10s...)
+    // THI MOI NGHI 10S! Binh thuong cu chay lay do lien tuc binh thuong khong tu dong nghi gi het!
+    private static long serverCommandCooldownUntil = 0L;
 
     // Chuoi lenh toi shop, chay sau khi da xong het cac kho theo config.
     // #goto va .look deu KHONG bi server gioi han nen gui thang, khong qua
@@ -266,8 +262,6 @@ public class MacroRecorderMod {
     private int shopY = 151; // cao độ shop để nhận diện khi đã dịch chuyển về nhà (Y khác 151)
     private int vaultsSoldThisSession = 0; // Đếm số kho /pv thực tế đã rút bán trong đợt F4 hiện tại
     private int targetVaultsToFill = -1; // Mục tiêu số kho cần bù khi về nhà (-1: mặc định full maxVaults)
-    private int f4CommandsSentCount = 0; // Đếm số lệnh /pv đã gửi trong cửa sổ 10s (chống server cấm 8 lệnh/10s)
-    private long lastF4CommandTime = 0L; // Thời điểm gửi lệnh F4 gần nhất để tính cửa sổ 10 giây
     private volatile boolean teleportCompleteMessageReceived = false; // Nhận diện chat "Dịch chuyển hoàn tất"
     private Vec3d shopTeleportOriginPos = null; // Tọa độ lúc đứng ở shop để đo khoảng cách rời khỏi shop về nhà
     private long lastSellMoneyTime = 0L; // Thời điểm nhận được log cộng tiền bán gần nhất ($80 đã được cộng...)
@@ -516,6 +510,20 @@ public class MacroRecorderMod {
         // 1. Nhận diện tin nhắn dịch chuyển thành công (chỉ khi hoàn tất thật sự):
         if (clean.contains("dịch chuyển hoàn tất") || clean.contains("teleportation complete")) {
             teleportCompleteMessageReceived = true;
+        }
+
+        // 2. Nhận diện server cảnh báo spam lệnh / giới hạn lệnh (8 lệnh trong 10s):
+        // CHỈ KHI NÀO LOGS CHAT SERVER HIỆN THÔNG BÁO CẢNH BÁO THÌ MỚI NGHỈ 10 GIÂY!
+        if (clean.contains("quá nhanh")
+                || clean.contains("chậm lại")
+                || clean.contains("spam")
+                || (clean.contains("lệnh") && clean.contains("giây"))
+                || (clean.contains("chờ") && clean.contains("giây"))
+                || (clean.contains("đợi") && clean.contains("giây"))
+                || clean.contains("too fast")
+                || clean.contains("rate limit")) {
+            serverCommandCooldownUntil = System.currentTimeMillis() + 10000L;
+            System.out.println("[MacroRecorder] Phát hiện server cảnh báo giới hạn lệnh trong chat ('" + raw + "') -> Tự động nghỉ 10s trước khi gửi tiếp...");
         }
 
         // 2. Kiểm tra log khi đang bán ở shop (SELLING_ITEMS hoặc SELLING_1E_ITEMS):
@@ -1136,27 +1144,19 @@ public class MacroRecorderMod {
 
             case OPENING_VAULT:
                 releaseUseItemKey();
-                long elapsedSinceLastF4 = System.currentTimeMillis() - lastF4CommandTime;
-                // SV cấm gửi 8 lệnh trong 10 giây: nếu đã gửi đủ 8 lệnh thì nghỉ đợi 10s rồi mới mở tiếp
-                if (f4CommandsSentCount >= 8 && elapsedSinceLastF4 < 10000L) {
+                long nowOpening = System.currentTimeMillis();
+                if (nowOpening < serverCommandCooldownUntil) {
                     sellWaitTimer++;
                     if (sellWaitTimer % 20 == 0) {
-                        long remSec = (10000L - elapsedSinceLastF4) / 1000L + 1;
-                        System.out.println("[MacroRecorder] (F4) Đã mở 8 lệnh liên tục trong 10s -> Tạm nghỉ " + remSec
-                                + "s để chống bị server chặn 8 lệnh/10s...");
+                        long remSec = (serverCommandCooldownUntil - nowOpening) / 1000L + 1;
+                        System.out.println("[MacroRecorder] (F4) Server cảnh báo giới hạn lệnh trong chat -> Tạm nghỉ " + remSec + "s...");
                     }
                     return false;
-                }
-                if (elapsedSinceLastF4 >= 10000L) {
-                    f4CommandsSentCount = 0;
                 }
                 if (!trySendCommand("/pv " + sellVaultNumber)) {
                     return false;
                 }
-                f4CommandsSentCount++;
-                lastF4CommandTime = System.currentTimeMillis();
-                System.out.println("[MacroRecorder] (F4) Gửi lệnh /pv " + sellVaultNumber + " (lệnh thứ "
-                        + f4CommandsSentCount + "/8 trong cửa sổ 10s)...");
+                System.out.println("[MacroRecorder] (F4) Gửi lệnh /pv " + sellVaultNumber + "...");
                 sellWaitTimer = 0;
                 sellClickCooldown = 0;
                 sellState = SellState.WAITING_VAULT_OPEN;
@@ -1175,17 +1175,8 @@ public class MacroRecorderMod {
                 sellWaitTimer++;
                 int vaultRetryTicks = 130;
                 if (sellWaitTimer % vaultRetryTicks == 0 && mc.currentScreen == null) {
-                    long elapsed = System.currentTimeMillis() - lastF4CommandTime;
-                    if (elapsed >= 10000L) {
-                        f4CommandsSentCount = 0;
-                    }
-                    if (f4CommandsSentCount < 8) {
-                        if (trySendCommand("/pv " + sellVaultNumber)) {
-                            f4CommandsSentCount++;
-                            lastF4CommandTime = System.currentTimeMillis();
-                        }
-                    } else {
-                        System.out.println("[MacroRecorder] (F4) Đã chạm ngưỡng 8 lệnh/10s, chờ hết 10s mới retry /pv!");
+                    if (System.currentTimeMillis() >= serverCommandCooldownUntil) {
+                        trySendCommand("/pv " + sellVaultNumber);
                     }
                 }
                 if (sellWaitTimer > 400) {
@@ -1359,26 +1350,17 @@ public class MacroRecorderMod {
             case WAITING_NEXT_VAULT_DELAY:
                 releaseUseItemKey();
                 sellWaitTimer++;
-                // Kiểm tra cửa sổ 10 giây: nếu lệnh cuối cách đây hơn 10s thì reset bộ đếm lệnh
-                if (System.currentTimeMillis() - lastF4CommandTime >= 10000L) {
-                    f4CommandsSentCount = 0;
-                }
-                // Sv cấm gửi 8 lệnh trong 10 giây:
-                // Nếu đã gửi 8 lệnh trong 10s -> nghỉ 10 giây (200 ticks) rồi mới mở tiếp
-                // Bình thường -> delay đóng GUI mở kho là 1000ms = 1 giây (20 ticks)
-                int requiredDelay = (f4CommandsSentCount >= 8) ? 200 : 20;
-                if (sellWaitTimer < requiredDelay) {
-                    if (f4CommandsSentCount >= 8 && sellWaitTimer % 20 == 0) {
-                        int remainingSec = (200 - sellWaitTimer) / 20;
-                        System.out.println("[MacroRecorder] (F4) Đã bắn 8 lệnh liên tục! Tạm nghỉ " + remainingSec
-                                + "s để chống bị server chặn 8 lệnh/10s...");
+                long nowWait = System.currentTimeMillis();
+                if (nowWait < serverCommandCooldownUntil) {
+                    if (sellWaitTimer % 20 == 0) {
+                        long remSec = (serverCommandCooldownUntil - nowWait) / 1000L + 1;
+                        System.out.println("[MacroRecorder] (F4) Server cảnh báo giới hạn lệnh trong chat -> Tạm nghỉ " + remSec + "s...");
                     }
                     return false;
                 }
-                if (f4CommandsSentCount >= 8) {
-                    System.out
-                            .println("[MacroRecorder] (F4) Đã nghỉ đủ 10 giây sau 8 lệnh liên tục, reset bộ đếm lệnh!");
-                    f4CommandsSentCount = 0;
+                // Bình thường: delay đóng GUI mở kho là 1 giây (20 ticks) rồi mở tiếp bình thường, không nghỉ gì hết!
+                if (sellWaitTimer < 20) {
+                    return false;
                 }
                 sellWaitTimer = 0;
                 sellState = SellState.OPENING_VAULT;
@@ -1979,7 +1961,7 @@ public class MacroRecorderMod {
         if (message == null || message.trim().isEmpty()) {
             return true;
         }
-        // Lenh client (Baritone, #goto, .look, #look, aim, ...) tuyet doi KHONG tinh vao gioi han lenh server!
+        // Lệnh client (Baritone, #goto, .look, #look, aim, ...) gửi thẳng qua client handler
         if (message.startsWith(".") || message.startsWith("#")) {
             executeClientCommand(message);
             return true;
@@ -1987,26 +1969,13 @@ public class MacroRecorderMod {
 
         long now = System.currentTimeMillis();
 
-        // Neu dang trong thoi gian nghi 10s sau khi cham nguong 8 lenh / 10s:
-        if (now < commandRateLimitCooldownUntil) {
+        // CHỈ NGHỈ KHI NÀO LOGS CHAT SERVER HIỆN THÔNG BÁO CẢNH BÁO:
+        if (now < serverCommandCooldownUntil) {
             return false;
         }
 
-        // Loai bo cac moc lenh server cu hon 10 giay:
-        while (!recentCommandTimes.isEmpty() && now - recentCommandTimes.peekFirst() > CHAT_COMMAND_WINDOW_MS) {
-            recentCommandTimes.pollFirst();
-        }
-
-        // Neu da cham nguong 8 lenh trong 10s: bat buoc nghi doi 10s roi moi gui tiep!
-        if (recentCommandTimes.size() >= MAX_CHAT_COMMANDS_PER_WINDOW) {
-            commandRateLimitCooldownUntil = now + 10000L;
-            recentCommandTimes.clear();
-            System.out.println("[MacroRecorder] Đã gửi đủ 8 lệnh server (/pv, /home, /shop...) trong 10s -> Tự động nghỉ 10s trước khi gửi tiếp!");
-            return false;
-        }
-
+        // Bình thường gửi lệnh server (/pv, /home, /shop...) thẳng lên server không giới hạn nhân tạo:
         mc.player.sendChatMessage(message);
-        recentCommandTimes.addLast(now);
         return true;
     }
 
@@ -2742,7 +2711,6 @@ public class MacroRecorderMod {
         totalSugarCaneTaken = 0;
         stableLookTicks = 0;
         sethomeSentBeforeShop = false;
-        recentCommandTimes.clear();
         dropAllTrashFromInventory(); // Xả sạch rác trước khi bắt đầu lấy đồ
         if (targetVaultsToFill < 0) {
             targetVaultsToFill = (maxVaults > 0) ? maxVaults : 1;
@@ -2805,7 +2773,6 @@ public class MacroRecorderMod {
 
         reloadConfig();
 
-        recentCommandTimes.clear();
         preStartTimer = 0;
         macroPaused = false;
 
@@ -2876,8 +2843,6 @@ public class MacroRecorderMod {
         reloadConfig();
 
         vaultsSoldThisSession = 0;
-        f4CommandsSentCount = 0;
-        lastF4CommandTime = 0L;
         sellVaultNumber = 1;
         sellRoundInVault = 0;
         lastSellTakenCount = 0;
@@ -2885,7 +2850,6 @@ public class MacroRecorderMod {
         sellWaitTimer = 0;
         sellClickCooldown = 0;
         notSellingTimer = 0;
-        recentCommandTimes.clear();
         lastSellMoneyTime = System.currentTimeMillis();
         sellMacroRunning = true;
 
@@ -2956,8 +2920,6 @@ public class MacroRecorderMod {
         sellMacroRunning = false;
         targetVaultsToFill = -1;
         vaultsSoldThisSession = 0;
-        f4CommandsSentCount = 0;
-        lastF4CommandTime = 0L;
         try {
             SignAimHandler.stopAimLock(mc);
         } catch (Exception ignored) {

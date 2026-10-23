@@ -18,13 +18,15 @@ Mod hỗ trợ chiến thuật pháo đài / bắn cannon TNT chuyên nghiệp: 
 
 ## ⚡ TÍNH NĂNG ĐƯỢC NÂNG CẤP MỚI NHẤT
 
-1. **Hàm Check Túi Đồ 36 Ô Liên Tục Từng Frame — Chắc Chắn Mất TNT Mới Được Mất (Đóng GUI):**
-   - Hàm `checkTuiDoDaMatTnt` kết hợp `countTntIn36Slots` kiểm tra liên tục 36 ô túi đồ (9 ô hotbar + 27 ô túi chính) ở tốc độ khung hình cao nhất (Max Speed).
-   - **Cam kết 100%:** Chỉ khi nào số TNT trong 36 ô túi đồ thực sự mất đi (đã nạp thành công vào máy phân phát) và chuột không giữ bất kỳ item nào thì GUI mới được phép mất (đóng GUI)! Tuyệt đối không bao giờ bị tình trạng đóng GUI hớ hay kẹt item trên chuột.
+1. **Nạp & Đóng GUI 0-Tick Tức Thì — Triệt Tiêu 100% Lỗi Kẹt GUI & Dính Chuột:**
+   - Xử lý nạp TNT vào máy phân phát (Dispenser) và đóng GUI tức thì (0-Tick). Không delay, không lag, không giật màn hình.
+   - **Bảo vệ chuột tuyệt đối:** Tự động hoàn trả item về túi đồ ngay lập tức, không bao giờ để TNT kẹt trên con trỏ chuột. Tuyệt đối không bị rớt TNT ra sàn khi đóng GUI hay ấn ESC.
+   - Đóng GUI ngay lập tức giúp ngăn chặn triệt để tình trạng kẹt GUI khiến chuột bấm nhầm đặt TNT đè lên máy phân phát.
 
-2. **Nạp Đúng Số Lượng Còn Thiếu (Exact Partial Refill):**
-   - Tự động kiểm tra số TNT đang có sẵn trong máy phân phát và chỉ nạp thêm lượng còn thiếu.
-   - **Ví dụ thực tế:** Cài đặt định mức 64, trong máy phân phát đã có sẵn 32 viên thì mod sẽ **chỉ nạp đúng 32 viên** nữa để máy tròn 64, không thừa, không thiếu!
+2. **Hỗ Trợ Mọi Định Mức Nạp Siêu Mượt (32, 64, 96 = 1 st 32, 128, HẾT):**
+   - Tối ưu thuật toán nạp thông minh: Các stack 64 nạp bằng Quick-Move (1 click), các mốc như 96 (1 stack 64 + 32) chỉ mất đúng 2-3 click tách stack, triệt tiêu hoàn toàn hiện tượng delay khi cài đặt 96.
+   - Tự động kiểm tra số TNT đang có sẵn trong máy phân phát và chỉ nạp thêm lượng còn thiếu (Exact Partial Refill).
+   - Menu F7 tích hợp sẵn các nút chọn nhanh `[32] [64] [96] [128] [HẾT]` cực kỳ tiện lợi.
 
 3. **ESP Dịu Mắt Thanh Lịch (Không Biến Khối Kim Cương, Không Lóe Đỏ):**
    - **Giữ nguyên khối nguyên bản:** Không đổi máy phân phát thành khối kim cương, giữ nguyên vẹn giao diện và khối gốc tự nhiên của game.

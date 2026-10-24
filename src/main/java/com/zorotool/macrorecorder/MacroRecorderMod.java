@@ -254,6 +254,7 @@ public class MacroRecorderMod {
                                        // chống AntiCheat)
     private int notSellingTimer = 0; // Đếm số tick không ngắm được bảng khi bán để tự #goto quay lại nếu bị đẩy xa
     private int pushAwayTicks = 0; // Đếm số tick bị người khác đẩy lệch khỏi quầy để phản ứng ngay tức thì
+    private int signBlockClickCooldown = 0; // Nhịp click controller khi có người chơi đứng che bảng trước mặt
     private int homeYStableTicks = 0; // Đếm số tick Y ổn định khác 151 để đảm bảo đã về nhà và load chunk chặt chẽ
     private SellState stateBeforeRecovery = SellState.SELLING_1E_ITEMS;
 
@@ -1180,16 +1181,8 @@ public class MacroRecorderMod {
                     }
                     return true;
                 }
-                // ĐÈ CHUỘT PHẢI 100% NHƯ NGƯỜI THẬT:
-                // Người thật đè giữ phím chuột phải liên tục khi đứng ở quầy bán,
-                // game vanilla tự động xử lý tương tác hợp lệ theo tick chuẩn,
-                // dù có người che hay đẩy cũng không bao giờ bị diss/kick ra lobby!
-                boolean lookingAtBuySign1E = SignAimHandler.isLookingAtAnyBuySign(mc);
-                if (!lookingAtBuySign1E && SignAimHandler.targetSignPos != null) {
-                    holdUseItemKey();
-                } else {
-                    releaseUseItemKey();
-                }
+                // Bán đồ 100% như người thật: tự động xử lý đè chuột phải vanilla và xuyên người che
+                performSellClick(mc);
 
                 // 100% NHƯ NGƯỜI THẬT: NẾU TIỀN ĐANG CỘNG LIÊN TỤC THÌ TUYỆT ĐỐI ĐỨNG YÊN, KHÔNG NHÚC NHÍCH!
                 long now1E = System.currentTimeMillis();
@@ -1352,16 +1345,8 @@ public class MacroRecorderMod {
                     }
                     return true;
                 }
-                // ĐÈ CHUỘT PHẢI 100% NHƯ NGƯỜI THẬT:
-                // Người thật đè giữ phím chuột phải liên tục khi đứng ở quầy bán,
-                // game vanilla tự động xử lý tương tác hợp lệ theo tick chuẩn,
-                // dù có người che hay đẩy cũng không bao giờ bị diss/kick ra lobby!
-                boolean lookingAtBuySign = SignAimHandler.isLookingAtAnyBuySign(mc);
-                if (!lookingAtBuySign && SignAimHandler.targetSignPos != null) {
-                    holdUseItemKey();
-                } else {
-                    releaseUseItemKey();
-                }
+                // Bán đồ 100% như người thật: tự động xử lý đè chuột phải vanilla và xuyên người che
+                performSellClick(mc);
 
                 // 100% NHƯ NGƯỜI THẬT: NẾU TIỀN ĐANG CỘNG LIÊN TỤC THÌ TUYỆT ĐỐI ĐỨNG YÊN, KHÔNG NHÚC NHÍCH!
                 long nowItems = System.currentTimeMillis();
@@ -1968,6 +1953,58 @@ public class MacroRecorderMod {
     private void releaseUseItemKey() {
         if (mc != null && mc.gameSettings != null) {
             KeyBinding.setKeyBindState(mc.gameSettings.keyBindUseItem.getKeyCode(), false);
+        }
+    }
+
+    /**
+     * Bán đồ 100% như người thật:
+     * - Khi không có ai che: đè chuột phải vanilla (KeyBinding useItem).
+     * - Khi có người chơi khác chen đứng trước mặt che bảng:
+     *   Tia raycast objectMouseOver sẽ trúng ENTITY (người chơi che) khiến đè chuột phải vanilla
+     *   tương tác với người chơi đó mà không chạm tới bảng phía sau.
+     *   Do đó, sử dụng hàm chính thống mc.playerController.processRightClickBlock(...)
+     *   theo nhịp chuẩn người thật (mỗi 2 ticks ~ 10 clicks/s) kết hợp mc.player.swingArm(...)
+     *   để tương tác trực tiếp lên khối bảng bán, giúp bán mượt mà không bao giờ bị gián đoạn hay diss!
+     */
+    private void performSellClick(Minecraft mc) {
+        if (mc == null || mc.player == null || mc.world == null) return;
+        BlockPos targetSignPos = SignAimHandler.targetSignPos;
+        if (targetSignPos == null) {
+            releaseUseItemKey();
+            return;
+        }
+
+        // Tuyệt đối không bấm nếu đang nhìn trúng bảng Mua (Buy sign)
+        if (SignAimHandler.isLookingAtAnyBuySign(mc)) {
+            releaseUseItemKey();
+            return;
+        }
+
+        // Đè chuột phải vanilla
+        holdUseItemKey();
+
+        // Nếu bị người chơi khác đứng che chắn phía trước (tia trúng ENTITY):
+        if (mc.objectMouseOver != null && mc.objectMouseOver.typeOfHit == RayTraceResult.Type.ENTITY) {
+            signBlockClickCooldown++;
+            if (signBlockClickCooldown >= 2) {
+                signBlockClickCooldown = 0;
+                double eyeX = mc.player.posX;
+                double eyeY = mc.player.posY + mc.player.getEyeHeight();
+                double eyeZ = mc.player.posZ;
+                double dx = (targetSignPos.getX() + 0.5) - eyeX;
+                double dy = (targetSignPos.getY() + 0.5) - eyeY;
+                double dz = (targetSignPos.getZ() + 0.5) - eyeZ;
+                // Cự ly với tay tối đa trong tầm 4.5 block (4.5^2 = 20.25)
+                if (dx * dx + dy * dy + dz * dz <= 20.25) {
+                    Vec3d hitVec = new Vec3d(targetSignPos.getX() + 0.5, targetSignPos.getY() + 0.8, targetSignPos.getZ() + 0.5);
+                    if (mc.playerController != null) {
+                        mc.playerController.processRightClickBlock(mc.player, mc.world, targetSignPos, EnumFacing.UP, hitVec, EnumHand.MAIN_HAND);
+                        mc.player.swingArm(EnumHand.MAIN_HAND);
+                    }
+                }
+            }
+        } else {
+            signBlockClickCooldown = 0;
         }
     }
 

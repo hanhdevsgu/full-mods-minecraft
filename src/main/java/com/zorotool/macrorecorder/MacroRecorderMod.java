@@ -866,30 +866,30 @@ public class MacroRecorderMod {
                 return false;
 
             case OPENING_SHOP:
-                String sCmd = (shopCommand != null && !shopCommand.trim().isEmpty()) ? shopCommand : ConfigHelper.getShopCommand();
                 if (mc.player != null) {
                     farmTeleportOriginPos = new Vec3d(mc.player.posX, mc.player.posY, mc.player.posZ);
                 }
-                if (!trySendCommand(sCmd)) {
-                    return false;
+                // 1. GỬI LỆNH SETHOME TẠI FARM TRƯỚC (vd: /sethome home) khi đang đứng 100% vững vàng ở farm!
+                String sHomeCmd = (sethomeCommand != null && !sethomeCommand.trim().isEmpty()) ? sethomeCommand : ConfigHelper.getSethomeCommand();
+                if (sHomeCmd != null && !sHomeCmd.trim().isEmpty()) {
+                    if (!trySendCommand(sHomeCmd)) {
+                        return false;
+                    }
+                    System.out.println("[MacroRecorder] Đã gửi lệnh sethome tại farm: " + sHomeCmd);
                 }
                 teleportCompleteMessageReceived = false;
 
-                String sHomeCmd = (sethomeCommand != null && !sethomeCommand.trim().isEmpty()) ? sethomeCommand : ConfigHelper.getSethomeCommand();
-                // Nếu cài delay = 0 ở GUI F8: Gửi /shop và /sethome (vd: /sethome home) CÙNG LÚC luôn!
+                String sCmd = (shopCommand != null && !shopCommand.trim().isEmpty()) ? shopCommand : ConfigHelper.getShopCommand();
+                // Nếu delay = 0: Gửi luôn /shop ngay trong cùng tick!
                 if (shopToSethomeDelayTicks <= 0) {
-                    if (sHomeCmd != null && !sHomeCmd.trim().isEmpty()) {
-                        trySendCommand(sHomeCmd);
-                        System.out.println("[MacroRecorder] (Delay = 0s) Đã gửi " + sCmd + " và "
-                                + sHomeCmd + " CÙNG LÚC tại farm!");
-                    }
+                    trySendCommand(sCmd);
+                    System.out.println("[MacroRecorder] (Delay = 0s) Đã gửi " + sHomeCmd + " và " + sCmd + " cùng lúc tại farm!");
                     waitTimer = 0;
                     state = MacroState.WAITING_SHOP_TELEPORT;
                     return false;
                 }
 
-                System.out.println("[MacroRecorder] Đã đạt mục tiêu (Full PV + Full 1E)! Gửi " + sCmd
-                        + ", chờ delay " + (shopToSethomeDelayTicks / 20.0) + "s để gửi lệnh: " + sHomeCmd + " tại farm...");
+                // Nếu có delay: Chờ vài tick cho server lưu tọa độ farm xong xuôi rồi mới gửi /shop
                 waitTimer = 0;
                 state = MacroState.WAITING_SETHOME_DELAY;
                 return false;
@@ -900,13 +900,12 @@ public class MacroRecorderMod {
                 if (waitTimer < targetDelay) {
                     return false;
                 }
-                String sHome = (sethomeCommand != null && !sethomeCommand.trim().isEmpty()) ? sethomeCommand : ConfigHelper.getSethomeCommand();
-                if (sHome != null && !sHome.trim().isEmpty()) {
-                    if (!trySendCommand(sHome)) {
-                        return false;
-                    }
-                    System.out.println("[MacroRecorder] Đang chờ /shop dịch chuyển, đã gửi lệnh: " + sHome + " thành công tại farm!");
+                // Sau khi đã sethome tại farm xong: gửi lệnh /shop để dịch chuyển ra shop
+                String shopCmd = (shopCommand != null && !shopCommand.trim().isEmpty()) ? shopCommand : ConfigHelper.getShopCommand();
+                if (!trySendCommand(shopCmd)) {
+                    return false;
                 }
+                System.out.println("[MacroRecorder] Đã sethome tại farm an toàn! Gửi lệnh: " + shopCmd + " để dịch chuyển ra shop...");
                 waitTimer = 0;
                 state = MacroState.WAITING_SHOP_TELEPORT;
                 return false;
@@ -1157,27 +1156,13 @@ public class MacroRecorderMod {
      */
     private boolean processSellState() {
         // KIỂM TRA RÁC THỜI GIAN THỰC (REAL-TIME TRASH DETECTION):
-        // Nếu đang ở shop và phát hiện dính rác trong túi đồ (ngoài cây kiếm đang cầm
-        // trên tay):
+        // Nếu phát hiện dính rác trong túi đồ (ngoài cây kiếm/vũ khí đang cầm trên tay và thức ăn sinh tồn):
         if (sellState != SellState.SENDING_HOME && sellState != SellState.WAITING_TELEPORT_HOME
                 && sellState != SellState.WAITING_HOME_SETTLE) {
             if (hasTrashInInventory()) {
-                if (!onlySell1E) {
-                    onlySell1E = true;
-                    System.out.println(
-                            "[MacroRecorder] (F4) CẢNH BÁO: Phát hiện túi đồ dính rác! Kích hoạt chế độ CHỈ BÁN HẾT INVENTORY rồi về nhà ngay, hủy toàn bộ /pv!");
-                }
-                // Nếu đang ở bất kỳ bước /pv nào -> hủy ngay, đóng GUI và chuyển sang bán hết
-                // thuốc súng trong inventory
-                if (sellState == SellState.OPENING_VAULT || sellState == SellState.WAITING_VAULT_OPEN
-                        || sellState == SellState.TAKING_ITEMS || sellState == SellState.CHECK_VAULT_DONE
-                        || sellState == SellState.SELLING_ITEMS) {
-                    closeCurrentScreen();
-                    releaseUseItemKey();
-                    SignAimHandler.isWarmupActive = false;
-                    sellState = SellState.SELLING_1E_ITEMS;
-                    lastSellMoneyTime = System.currentTimeMillis();
-                    notSellingTimer = 0;
+                int dropped = dropAllTrashFromInventory();
+                if (dropped > 0) {
+                    System.out.println("[MacroRecorder] (F4) Phát hiện túi đồ dính rác -> Đã tự động Q vứt " + dropped + " stack rác ra ngoài đất!");
                 }
             }
         }
@@ -1741,15 +1726,17 @@ public class MacroRecorderMod {
         if (stack == null || stack.isEmpty()) return false;
         if (isFarmItem(stack)) return false;
         Item item = stack.getItem();
-        // Cây kiếm hoặc công cụ trên slot đang cầm trên tay -> GIỮ
-        if (slotIndex == heldHotbarIndex && (item instanceof net.minecraft.item.ItemSword || item instanceof net.minecraft.item.ItemTool)) {
+        int itemId = Item.getIdFromItem(item);
+        // Cây kiếm, công cụ, hoặc cung trên slot đang cầm trên tay -> GIỮ
+        if (slotIndex == heldHotbarIndex && (item instanceof net.minecraft.item.ItemSword || item instanceof net.minecraft.item.ItemTool || item instanceof net.minecraft.item.ItemBow)) {
             return false;
         }
-        // Thức ăn (Steak) trên hotbar (slot 0->8) -> GIỮ
-        if (slotIndex >= 0 && slotIndex <= 8 && item instanceof net.minecraft.item.ItemFood) {
+        // Thức ăn sinh tồn chuẩn (Thịt bò chín Steak ID 364, Táo vàng ID 322, Cà rốt vàng ID 396) trên hotbar (slot 0->8) -> GIỮ
+        // (Cà rốt thường ID 391, khoai tây, thịt thối zombie 367, mắt nhện... TUYỆT ĐỐI LÀ RÁC!)
+        if (slotIndex >= 0 && slotIndex <= 8 && (itemId == 364 || itemId == 322 || itemId == 396)) {
             return false;
         }
-        // Mọi item khác trong túi (giáp sắt rác, cung rác, thịt thối, xương, mob drop...) -> RÁC!
+        // Mọi item khác trong túi (cà rốt thường, giáp sắt rác, cung rác, thịt thối, xương, mob drop...) -> RÁC!
         return true;
     }
 
@@ -1767,17 +1754,17 @@ public class MacroRecorderMod {
     }
 
     /**
-     * Vứt (Q) toàn bộ vật phẩm rác ra khỏi túi đồ khi đã về tới nhà:
-     * - Giữ nguyên vũ khí trên tay, thức ăn trên hotbar, và vật phẩm farm.
-     * - VỨT HẾT TẤT CẢ CÁC MÓN RÁC KHÁC (giáp sắt mob rơi, cung, xương, thịt thối, sách, gỗ, đá...)
+     * Vứt (Q) toàn bộ vật phẩm rác ra khỏi túi đồ bằng phím Ctrl+Q native của Minecraft:
+     * - Giữ nguyên vũ khí trên tay, thức ăn sinh tồn chính thống, và vật phẩm farm.
+     * - VỨT HẾT TẤT CẢ CÁC MÓN RÁC KHÁC (cà rốt thường, giáp sắt, xương, thịt thối, sách, gỗ, đá...)
      */
     private int dropAllTrashFromInventory() {
         if (mc == null || mc.player == null || mc.playerController == null)
             return 0;
         int droppedCount = 0;
-        int heldSlot = mc.player.inventory.currentItem;
+        int originalHeld = mc.player.inventory.currentItem;
 
-        // Đóng bất kỳ màn hình nào đang mở để thao tác trên inventoryContainer
+        // Đóng bất kỳ màn hình nào đang mở để thao tác trên inventory
         if (mc.currentScreen != null) {
             mc.player.closeScreen();
         }
@@ -1786,25 +1773,34 @@ public class MacroRecorderMod {
         if (container == null)
             return 0;
 
-        for (Slot slot : container.inventorySlots) {
-            if (slot == null || !slot.getHasStack())
-                continue;
-            // Chỉ xét 36 ô túi đồ chính: slot 9 -> 35 (inventory) và 36 -> 44 (hotbar)
-            if (slot.slotNumber < 9 || slot.slotNumber > 44)
-                continue;
-
-            ItemStack stack = slot.getStack();
-            if (stack == null || stack.isEmpty())
-                continue;
-
-            int mainInvIndex = (slot.slotNumber >= 36) ? (slot.slotNumber - 36) : slot.slotNumber;
-
-            if (isTrashStack(mainInvIndex, stack, heldSlot)) {
-                // ClickType.THROW với mouseButton=1 tương đương Ctrl+Q (vứt toàn bộ stack ra đất)
-                mc.playerController.windowClick(0, slot.slotNumber, 1, ClickType.THROW, mc.player);
+        // 1. Vứt toàn bộ rác trên thanh Hotbar (slot 0..8): dùng dropItem(true) native Ctrl+Q
+        for (int hotbarIdx = 0; hotbarIdx < 9; hotbarIdx++) {
+            ItemStack stack = mc.player.inventory.mainInventory.get(hotbarIdx);
+            if (isTrashStack(hotbarIdx, stack, originalHeld)) {
+                mc.player.inventory.currentItem = hotbarIdx;
+                mc.player.dropItem(true);
                 droppedCount++;
             }
         }
+
+        // 2. Vứt toàn bộ rác trong 27 ô túi đồ chính (slot 9 -> 35):
+        int tempHotbarIdx = (originalHeld == 0) ? 1 : 0;
+        for (int slotNum = 9; slotNum <= 35; slotNum++) {
+            Slot slot = container.getSlot(slotNum);
+            if (slot != null && slot.getHasStack() && !slot.getStack().isEmpty()) {
+                ItemStack stack = slot.getStack();
+                if (isTrashStack(slotNum, stack, originalHeld)) {
+                    // Swap stack rác xuống hotbar tạm
+                    mc.playerController.windowClick(0, slotNum, tempHotbarIdx, ClickType.SWAP, mc.player);
+                    mc.player.inventory.currentItem = tempHotbarIdx;
+                    mc.player.dropItem(true); // Q vứt ra ngoài đất
+                    droppedCount++;
+                }
+            }
+        }
+
+        // Khôi phục lại ô cầm vũ khí ban đầu
+        mc.player.inventory.currentItem = originalHeld;
         return droppedCount;
     }
 

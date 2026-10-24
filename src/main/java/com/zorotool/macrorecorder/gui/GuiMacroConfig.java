@@ -275,7 +275,7 @@ public class GuiMacroConfig extends GuiScreen {
         drawFormField("Lệnh /home về nhà", "§8(vd: /home, /home mia, /home 1)", cardLeftX + 8, getLabelY(3), homeMiaCommandField);
         drawFormField("Delay lấy/đẩy đồ", "§8(ms) — 0 = nhanh nhất", cardLeftX + 8, getLabelY(4), itemTransferDelayField);
         drawFormField("Delay di chuyển #goto rương", "§8(giây)", cardLeftX + 8, getLabelY(5), moveDelayField);
-        drawFormField("Delay /shop -> /sethome", "§8(giây)", cardLeftX + 8, getLabelY(6), shopToSethomeDelayField);
+        drawFormField("Delay /sethome -> /shop", "§8(giây)", cardLeftX + 8, getLabelY(6), shopToSethomeDelayField);
 
         // 5. Vẽ Labels & Fields cho Card Phải (7 ô đầy đủ, đối xứng với Panel Trái)
         drawFormField("#goto tới NPC shop", "§8(tọa độ đứng trước NPC)", cardRightX + 8, getLabelY(0), shopGotoField);

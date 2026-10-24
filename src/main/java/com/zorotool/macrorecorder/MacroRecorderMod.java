@@ -211,6 +211,7 @@ public class MacroRecorderMod {
         OPENING_VAULT,
         WAITING_VAULT_OPEN,
         DEPOSITING_ITEMS,
+        WAITING_DEPOSIT_GUI_CLOSE_DELAY,
         WAITING_BEFORE_SHOP,
         OPENING_SHOP,
         WAITING_SHOP_TELEPORT,
@@ -265,6 +266,7 @@ public class MacroRecorderMod {
     private volatile boolean teleportCompleteMessageReceived = false; // Nhận diện chat "Dịch chuyển hoàn tất"
     private Vec3d shopTeleportOriginPos = null; // Tọa độ lúc đứng ở shop để đo khoảng cách rời khỏi shop về nhà
     private long lastSellMoneyTime = 0L; // Thời điểm nhận được log cộng tiền bán gần nhất ($80 đã được cộng...)
+    private long depositGuiCloseUntil = 0L; // Thời điểm đóng GUI kho /pv sau khi đẩy đồ xong (F8 itemTransferDelayMs)
     private boolean npcJumpActive = false; // Đang trong cú nhảy click NPC, đợi tiếp đất mới nhảy tiếp
 
     private boolean isRunning = false;
@@ -514,11 +516,14 @@ public class MacroRecorderMod {
         }
 
         // 2. Server chỉ có 1 dòng log duy nhất này để cảnh cáo: "[!] Bạn chỉ được phép gửi 8 lệnh trong 10 giây."
-        // CHỈ KHI NÀO GẶP ĐÚNG DÒNG LOGS NÀY THÌ MỚI ĐỢI 10S, CÒN KHÔNG THÌ CỨ BÌNH THƯỜNG DIỄN RA KHÔNG CẦN ĐỢI GÌ HẾT!
+        // Bắt mọi biến thể tin nhắn giới hạn lệnh của server:
         if ((clean.contains("8 lệnh") || clean.contains("8 lenh")) 
-                && (clean.contains("10 giây") || clean.contains("10 giay") || clean.contains("10s"))) {
-            serverCommandCooldownUntil = System.currentTimeMillis() + 10000L;
-            System.out.println("[MacroRecorder] Phát hiện server cảnh báo: '" + raw + "' -> Tự động nghỉ đúng 10s...");
+                && (clean.contains("10 giây") || clean.contains("10 giay") || clean.contains("10s") || clean.contains("phép gửi") || clean.contains("phep gui"))) {
+            serverCommandCooldownUntil = System.currentTimeMillis() + 10500L;
+            System.out.println("[MacroRecorder] Phát hiện server cảnh báo: '" + raw + "' -> Đứng yên chờ hết 10.5s rồi tự động chạy tiếp (TUYỆT ĐỐI KHÔNG DỪNG MACRO)...");
+            if (mc != null && mc.player != null) {
+                mc.player.sendMessage(new TextComponentString("§c[Macro] ⏳ Server giới hạn lệnh (8 lệnh/10s), tự động chờ 10.5s rồi chạy tiếp!"));
+            }
         }
 
         // 2. Kiểm tra log khi đang bán ở shop (SELLING_ITEMS hoặc SELLING_1E_ITEMS):
@@ -716,6 +721,9 @@ public class MacroRecorderMod {
                 return false;
 
             case OPENING_VAULT:
+                if (System.currentTimeMillis() < serverCommandCooldownUntil) {
+                    return false;
+                }
                 if (!trySendCommand("/pv " + vaultNumber)) {
                     return false;
                 }
@@ -728,14 +736,20 @@ public class MacroRecorderMod {
                     state = MacroState.DEPOSITING_ITEMS;
                     return true;
                 }
+                if (System.currentTimeMillis() < serverCommandCooldownUntil) {
+                    waitTimer = 0; // Đang trong thời gian server phạt 10s -> đứng yên chờ, không đếm timer gây timeout
+                    return false;
+                }
                 waitTimer++;
                 // Retry mỗi 40 ticks (2 giây) an toàn chống server cấm lệnh
                 if (waitTimer % 40 == 0 && mc.currentScreen == null) {
                     trySendCommand("/pv " + vaultNumber);
                 }
-                if (waitTimer > MOVE_TIMEOUT_TICKS_SAFETY) {
-                    System.out.println("[MacroRecorder] Không mở được kho /pv " + vaultNumber + ", dừng macro.");
-                    stopMacro();
+                // TUYỆT ĐỐI KHÔNG DỪNG MACRO (F10) KHI DÍNH GIỚI HẠN LỆNH HOẶC CHỜ KHO
+                if (waitTimer > 300) {
+                    System.out.println("[MacroRecorder] Chưa mở được kho /pv " + vaultNumber + " sau 15s, gửi lại lệnh...");
+                    waitTimer = 0;
+                    trySendCommand("/pv " + vaultNumber);
                 }
                 return false;
 
@@ -766,14 +780,25 @@ public class MacroRecorderMod {
                 } else {
                     System.out.println("[MacroRecorder] Kho /pv " + vaultNumber + " mới mở lần 1 (chưa đầy) -> Đi lấy rương cho FULL 1E rồi mở lần 2 nhồi cho đầy!");
                 }
-                closeCurrentScreen();
 
-                if (lastChestHadRemainingItems) {
-                    state = MacroState.OPENING_CHEST;
+                // Cài đặt delay đóng GUI theo F8 (itemTransferDelayMs, ví dụ 2000ms = 2s):
+                int delayCloseMs = ConfigHelper.getItemTransferDelayMs();
+                if (delayCloseMs > 0) {
+                    depositGuiCloseUntil = System.currentTimeMillis() + delayCloseMs;
+                    state = MacroState.WAITING_DEPOSIT_GUI_CLOSE_DELAY;
+                    System.out.println("[MacroRecorder] Giữ GUI kho /pv mở " + delayCloseMs + "ms trước khi đóng (theo F8)...");
+                    return false;
                 } else {
-                    state = MacroState.MOVING_TO_NEXT_CHEST;
+                    closeCurrentScreen();
+                    return finishDepositAndProceed();
                 }
-                return false;
+
+            case WAITING_DEPOSIT_GUI_CLOSE_DELAY:
+                if (System.currentTimeMillis() < depositGuiCloseUntil) {
+                    return false; // Đang chờ đủ delay đóng GUI theo F8
+                }
+                closeCurrentScreen();
+                return finishDepositAndProceed();
 
             case MOVING_TO_NEXT_CHEST:
                 if (chestIndex + 1 > MAX_CHEST_HOPS_SAFETY) {
@@ -1065,6 +1090,34 @@ public class MacroRecorderMod {
         }
     }
 
+    private boolean finishDepositAndProceed() {
+        boolean isFull1E = isInventoryFullFarm();
+        int effectiveTargetVaults = (targetVaultsToFill >= 0) ? targetVaultsToFill : ((maxVaults > 0) ? maxVaults : 1);
+
+        if (vaultNumber > effectiveTargetVaults && isFull1E) {
+            System.out.println("[MacroRecorder] ========================================");
+            System.out.println("[MacroRecorder] >>> ĐÃ ĐẠT MỤC TIÊU: BÙ XONG " + effectiveTargetVaults
+                    + " KHO /PV + FULL 1E ĐỒ FARM TRÊN NGƯỜI!");
+            System.out.println("[MacroRecorder] >>> Bắt đầu chuyển sang đi Shop...");
+            System.out.println("[MacroRecorder] ========================================");
+            finishing = true;
+            state = MacroState.WAITING_BEFORE_SHOP;
+            return true;
+        }
+
+        // Quy tắc: Khi nào lấy full 1E mới đẩy vào /pv.
+        // Sau khi cất vào kho /pv xong (kể cả kho đã full hay chưa full), nếu túi đồ (E) chưa full 1E,
+        // PHẢI TIẾP TỤC ĐI LẤY RƯƠNG CHO FULL 1E, TUYỆT ĐỐI KHÔNG MỞ KHO TIẾP THEO KHI TÚI CHƯA FULL 1E!
+        if (lastChestHadRemainingItems && !isFull1E) {
+            System.out.println("[MacroRecorder] Túi đồ chưa full 1E (mới cất kho xong), tiếp tục mở rương farm hiện tại lấy cho đầy 1E...");
+            state = MacroState.OPENING_CHEST;
+        } else {
+            System.out.println("[MacroRecorder] Tiếp tục #goto rương farm kế tiếp lấy cho đầy 1E trước khi mở kho tiếp theo...");
+            state = MacroState.MOVING_TO_NEXT_CHEST;
+        }
+        return false;
+    }
+
     /**
      * Xử lý State Machine cho macro F4 (Bán đồ):
      * 1. Kích hoạt AutoAim ghim bảng và kiểm tra rác trên người (trừ cây kiếm cầm
@@ -1189,18 +1242,21 @@ public class MacroRecorderMod {
                     sellState = SellState.TAKING_ITEMS;
                     return true;
                 }
+                if (System.currentTimeMillis() < serverCommandCooldownUntil) {
+                    sellWaitTimer = 0; // Đang trong 10s cooldown phạt của server -> giữ timer = 0, không timeout
+                    return false;
+                }
                 sellWaitTimer++;
                 int vaultRetryTicks = 130;
                 if (sellWaitTimer % vaultRetryTicks == 0 && mc.currentScreen == null) {
-                    if (System.currentTimeMillis() >= serverCommandCooldownUntil) {
-                        trySendCommand("/pv " + sellVaultNumber);
-                    }
+                    trySendCommand("/pv " + sellVaultNumber);
                 }
+                // TUYỆT ĐỐI KHÔNG DỪNG MACRO KHI CHỜ MỞ KHO
                 if (sellWaitTimer > 400) {
                     System.out.println(
-                            "[MacroRecorder] (F4) Không mở được kho /pv " + sellVaultNumber + ", dừng macro bán.");
-                    SignAimHandler.isWarmupActive = false;
-                    stopSellMacro();
+                            "[MacroRecorder] (F4) Chưa mở được kho /pv " + sellVaultNumber + " sau 20s, gửi lại lệnh...");
+                    sellWaitTimer = 0;
+                    trySendCommand("/pv " + sellVaultNumber);
                 }
                 return false;
 

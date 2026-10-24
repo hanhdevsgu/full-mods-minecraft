@@ -4,12 +4,14 @@ Mod hỗ trợ chiến thuật pháo đài / bắn cannon TNT chuyên nghiệp: 
 
 ---
 
-## 📥 TẢI MOD NHANH (DOWNLOAD)
+## 📥 TẢI MOD NHANH (CLICK LÀ TẢI NGAY)
 
-👉 **[BẤM VÀO ĐÂY ĐỂ TẢI FILE TNTMOD-1.0.JAR TRỰC TIẾP](https://github.com/hanhdevsgu/full-mods-minecraft/raw/tntmod/tntmod-1.0.jar)** 👈
+👉 **[⚡ BẤM VÀO ĐÂY ĐỂ TẢI XUỐNG TNTMOD-1.0.JAR NGAY LẬP TỨC (DIRECT DOWNLOAD)](https://raw.githubusercontent.com/hanhdevsgu/full-mods-minecraft/tntmod/tntmod-1.0.jar)** 👈
 
-- **Link tải trực tiếp dự phòng:** [https://raw.githubusercontent.com/hanhdevsgu/full-mods-minecraft/tntmod/tntmod-1.0.jar](https://raw.githubusercontent.com/hanhdevsgu/full-mods-minecraft/tntmod/tntmod-1.0.jar)
-- **Xem file trong kho lưu trữ:** [tntmod-1.0.jar (nhánh tntmod)](https://github.com/hanhdevsgu/full-mods-minecraft/blob/tntmod/tntmod-1.0.jar)
+- **Link tải dự phòng 1 (GitHub Raw):** [https://github.com/hanhdevsgu/full-mods-minecraft/raw/tntmod/tntmod-1.0.jar](https://github.com/hanhdevsgu/full-mods-minecraft/raw/tntmod/tntmod-1.0.jar)
+- **Link tải dự phòng 2 (UserContent):** [https://raw.githubusercontent.com/hanhdevsgu/full-mods-minecraft/tntmod/tntmod-1.0.jar](https://raw.githubusercontent.com/hanhdevsgu/full-mods-minecraft/tntmod/tntmod-1.0.jar)
+
+*(Chỉ cần click vào link trên là trình duyệt sẽ tự động tải file `tntmod-1.0.jar` về máy ngay lập tức, không qua trang trung gian!)*
 
 ---
 

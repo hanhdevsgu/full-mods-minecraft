@@ -787,8 +787,33 @@ public class SignAimHandler {
             }
         }
 
-        // Nếu không tìm thấy bảng khớp từ khóa và itemTarget là "any" thì mới tìm bất kỳ bảng sell nào
-        if (matchedSigns.isEmpty() && (lastItemTarget.equals("any") || lastItemTarget.equals("all"))) {
+        // Nếu chưa tìm thấy: Quét xem trong túi đồ người chơi có món nông sản nào (mía, thuốc súng...) có bảng sell gần đây không
+        if (matchedSigns.isEmpty() && player.inventory != null) {
+            for (ItemStack invStack : player.inventory.mainInventory) {
+                if (invStack != null && !invStack.isEmpty()) {
+                    int invId = Item.getIdFromItem(invStack.getItem());
+                    // Bỏ qua kiếm, giáp, công cụ
+                    if (invId > 0 && !InventoryUtils.isValuableOrTool(invStack)) {
+                        for (TileEntity te : mc.world.loadedTileEntityList) {
+                            if (te instanceof TileEntitySign) {
+                                TileEntitySign sign = (TileEntitySign) te;
+                                double distSq = player.getDistanceSq(sign.getPos());
+                                if (distSq <= maxDistSq && isMatchingSellSign(sign, String.valueOf(invId))) {
+                                    matchedSigns.add(sign);
+                                }
+                            }
+                        }
+                        if (!matchedSigns.isEmpty()) {
+                            resolveTarget(String.valueOf(invId));
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Fallback: Tìm bảng sell bất kỳ gần người chơi nhất (trong phạm vi 12 block)
+        if (matchedSigns.isEmpty()) {
             for (TileEntity te : mc.world.loadedTileEntityList) {
                 if (te instanceof TileEntitySign) {
                     TileEntitySign sign = (TileEntitySign) te;
@@ -1014,17 +1039,6 @@ public class SignAimHandler {
         double centerX = signPos.getX() + (bbox.minX + bbox.maxX) / 2.0;
         double centerY = signPos.getY() + 0.35 + yOffset;
         double centerZ = signPos.getZ() + (bbox.minZ + bbox.maxZ) / 2.0;
-
-        if (mc == null || mc.player == null || mc.world == null) {
-            return new Vec3d(centerX, centerY, centerZ);
-        }
-
-        // Nếu tia nhìn hiện tại bị người chơi khác đứng chắn trước mặt (ENTITY block):
-        // Tự động nâng điểm nhắm lên mép trên cùng của bảng (y + 0.82) để tầm nhìn vượt qua đầu/vai người che!
-        if (mc.objectMouseOver != null && mc.objectMouseOver.typeOfHit == RayTraceResult.Type.ENTITY) {
-            return new Vec3d(centerX, signPos.getY() + 0.82, centerZ);
-        }
-
         return new Vec3d(centerX, centerY, centerZ);
     }
 

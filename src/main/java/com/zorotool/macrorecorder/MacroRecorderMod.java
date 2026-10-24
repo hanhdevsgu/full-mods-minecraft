@@ -2037,11 +2037,82 @@ public class MacroRecorderMod {
      * - Khi có người chơi khác chen đứng trước mặt che bảng (tia trúng ENTITY):
      *   Tự động nhả chuột phải vanilla và sử dụng processRightClickBlock trực tiếp lên bảng sell.
      */
+    /**
+     * Tự động chuyển hotbar sang ô an toàn (ô chứa đồ farm hoặc ô trống),
+     * TUYỆT ĐỐI KHÔNG cầm kiếm, rìu, cung, công cụ khi bán đồ:
+     * - Tránh kích hoạt mcMMO "YOU READY YOUR SWORD"
+     * - Tránh Impact KillAura/Aimbot tự động snap vào người chơi khác
+     * - Đảm bảo chuột phải tương tác chuẩn xác vào bảng bán đồ!
+     */
+    private void switchToSafeSellSlot(Minecraft mc) {
+        if (mc == null || mc.player == null) return;
+        int current = mc.player.inventory.currentItem;
+        ItemStack held = mc.player.inventory.mainInventory.get(current);
+
+        int farmId = ConfigHelper.getFarmItemId();
+        if (!isWeaponOrTool(held)) {
+            if (held.isEmpty() || (farmId > 0 && Item.getIdFromItem(held.getItem()) == farmId)) {
+                return;
+            }
+        }
+
+        // 1. Tìm ô hotbar (0..8) đang chứa đúng đồ farm (mía / thuốc súng)
+        if (farmId > 0) {
+            for (int i = 0; i < 9; i++) {
+                ItemStack stack = mc.player.inventory.mainInventory.get(i);
+                if (!stack.isEmpty() && Item.getIdFromItem(stack.getItem()) == farmId) {
+                    mc.player.inventory.currentItem = i;
+                    System.out.println("[MacroRecorder] Tự động chuyển sang ô hotbar #" + (i + 1) + " (" + stack.getDisplayName() + ") để bán đồ an toàn!");
+                    return;
+                }
+            }
+        }
+
+        // 2. Nếu hotbar chưa có đồ farm, tìm ô trống bất kỳ trên hotbar
+        for (int i = 0; i < 9; i++) {
+            ItemStack stack = mc.player.inventory.mainInventory.get(i);
+            if (stack.isEmpty()) {
+                mc.player.inventory.currentItem = i;
+                System.out.println("[MacroRecorder] Đang cầm vũ khí! Tự động chuyển sang ô trống hotbar #" + (i + 1) + " để bán đồ.");
+                return;
+            }
+        }
+
+        // 3. Nếu hotbar không có ô trống, tìm ô không phải vũ khí/công cụ
+        for (int i = 0; i < 9; i++) {
+            ItemStack stack = mc.player.inventory.mainInventory.get(i);
+            if (!isWeaponOrTool(stack)) {
+                mc.player.inventory.currentItem = i;
+                return;
+            }
+        }
+    }
+
+    private boolean isWeaponOrTool(ItemStack stack) {
+        if (stack == null || stack.isEmpty()) return false;
+        Item item = stack.getItem();
+        return item instanceof net.minecraft.item.ItemSword 
+                || item instanceof net.minecraft.item.ItemTool 
+                || item instanceof net.minecraft.item.ItemBow 
+                || item instanceof net.minecraft.item.ItemShears;
+    }
+
+    /**
+     * Bán đồ 100% như người thật:
+     * - Khi không có ai che VÀ tâm ngắm đang chỉ ĐÚNG VÀO BẢNG SELL: đè chuột phải vanilla (KeyBinding useItem).
+     * - TUYỆT ĐỐI KHÔNG đè chuột phải khi tâm ngắm lệch sang khối khác, tường, item frame, hay bảng khác (tránh mua nhầm cà rốt)!
+     * - Khi có người chơi khác chen đứng trước mặt che bảng (tia trúng ENTITY):
+     *   Tự động nhả chuột phải vanilla và sử dụng processRightClickBlock trực tiếp lên bảng sell.
+     */
     private void performSellClick(Minecraft mc) {
         if (mc == null || mc.player == null || mc.world == null) {
             releaseUseItemKey();
             return;
         }
+
+        // Tuyệt đối không cầm kiếm/vũ khí khi bán đồ
+        switchToSafeSellSlot(mc);
+
         BlockPos targetSignPos = SignAimHandler.targetSignPos;
         if (targetSignPos == null) {
             releaseUseItemKey();
@@ -2066,6 +2137,10 @@ public class MacroRecorderMod {
                 }
                 // Tâm ngắm chuẩn xác trên bảng Sell -> đè chuột phải vanilla
                 holdUseItemKey();
+                // Cơ chế vung tay (Arm swing) liên tục như người thật đang click chuột phải bán đồ:
+                if (mc.player != null && (!mc.player.isSwingInProgress || mc.player.swingProgressInt >= 3)) {
+                    mc.player.swingArm(EnumHand.MAIN_HAND);
+                }
             } else if (mc.objectMouseOver.typeOfHit == RayTraceResult.Type.ENTITY) {
                 // Người chơi khác đứng che trước mặt: nhả chuột phải vanilla để không bấm vào họ hoặc item frame
                 releaseUseItemKey();
@@ -2080,7 +2155,7 @@ public class MacroRecorderMod {
                     double dz = (targetSignPos.getZ() + 0.5) - eyeZ;
                     // Cự ly với tay tối đa trong tầm 4.5 block (4.5^2 = 20.25)
                     if (dx * dx + dy * dy + dz * dz <= 20.25) {
-                        Vec3d hitVec = new Vec3d(targetSignPos.getX() + 0.5, targetSignPos.getY() + 0.8, targetSignPos.getZ() + 0.5);
+                        Vec3d hitVec = new Vec3d(targetSignPos.getX() + 0.5, targetSignPos.getY() + 0.5, targetSignPos.getZ() + 0.5);
                         if (mc.playerController != null) {
                             mc.playerController.processRightClickBlock(mc.player, mc.world, targetSignPos, EnumFacing.UP, hitVec, EnumHand.MAIN_HAND);
                             mc.player.swingArm(EnumHand.MAIN_HAND);
@@ -3111,6 +3186,7 @@ public class MacroRecorderMod {
         }
 
         reloadConfig();
+        switchToSafeSellSlot(mc);
         int cfgFarmId = ConfigHelper.getFarmItemId();
         if (cfgFarmId > 0) {
             SignAimHandler.setupTarget(String.valueOf(cfgFarmId), false, false);
@@ -3208,6 +3284,7 @@ public class MacroRecorderMod {
 
     private void resetAndStartSellMacro() {
         reloadConfig();
+        switchToSafeSellSlot(mc);
 
         vaultsSoldThisSession = 0;
         sellVaultNumber = 1;

@@ -44,14 +44,12 @@ public class CommandAimSell extends CommandBase {
         if (mc.player == null) return;
 
         if (args.length == 0) {
-            // Gõ /aimsell: Mặc định là thuốc súng (gunpowder)
-            // Nếu đang bật ghim thuốc súng -> Tắt ghim
-            // Nếu đang tắt hoặc đang ghim item khác -> Bật ghim thuốc súng
-            if (SignAimHandler.isAimLockActive && SignAimHandler.isGunpowderTarget(SignAimHandler.lastItemTarget)) {
+            String eff = SignAimHandler.getEffectiveTarget();
+            if (SignAimHandler.isAimLockActive) {
                 SignAimHandler.stopAimLock(mc);
                 mc.player.sendMessage(new TextComponentString(TextFormatting.RED + "[AutoAim] Đã TẮT ghim camera."));
             } else {
-                SignAimHandler.startAimLock("gunpowder");
+                SignAimHandler.setupTarget(eff, true);
             }
             return;
         }
@@ -60,23 +58,35 @@ public class CommandAimSell extends CommandBase {
         String cleaned = rawInput.replaceAll("[<>\\[\\]]", "").trim();
         String sub = cleaned.toLowerCase();
 
+        // Xử lý /aimsell reset hoặc /aimsell default: đưa về thuốc súng
+        if (sub.equals("reset") || sub.equals("default") || sub.equals("gunpowder")) {
+            SignAimHandler.resetToDefaultTarget();
+            mc.player.sendMessage(new TextComponentString(TextFormatting.GREEN + 
+                "[AutoAim] Đã đưa mục tiêu về mặc định: Thuốc súng (Gunpowder) [ID: 289]"));
+            if (SignAimHandler.isAimLockActive) {
+                SignAimHandler.setupTarget("gunpowder", true);
+            }
+            return;
+        }
+
         // Xử lý /aimsell lock hoặc /aimsell toggle
         if (sub.equals("lock") || sub.equals("toggle")) {
-            if (SignAimHandler.isAimLockActive && SignAimHandler.isGunpowderTarget(SignAimHandler.lastItemTarget)) {
+            String eff = SignAimHandler.getEffectiveTarget();
+            if (SignAimHandler.isAimLockActive) {
                 SignAimHandler.stopAimLock(mc);
                 mc.player.sendMessage(new TextComponentString(TextFormatting.RED + "[AutoAim] Đã TẮT ghim camera."));
             } else {
-                SignAimHandler.startAimLock("gunpowder");
+                SignAimHandler.setupTarget(eff, true);
             }
             return;
         } else if (sub.startsWith("lock ") || sub.startsWith("toggle ")) {
             String targetItem = cleaned.substring(cleaned.indexOf(' ')).trim();
-            SignAimHandler.toggleAimLock(targetItem);
+            SignAimHandler.setupTarget(targetItem, true);
             return;
         }
 
         if (sub.equals("on") || sub.equals("start")) {
-            SignAimHandler.startAimLock("gunpowder");
+            SignAimHandler.setupTarget(SignAimHandler.getEffectiveTarget(), true);
         } else if (sub.equals("off") || sub.equals("stop") || sub.equals("unlock")) {
             SignAimHandler.stopAimLock(mc);
             mc.player.sendMessage(new TextComponentString(TextFormatting.RED + "[AutoAim] Đã TẮT ghim camera."));
@@ -104,15 +114,16 @@ public class CommandAimSell extends CommandBase {
             }
         } else if (sub.equals("help")) {
             mc.player.sendMessage(new TextComponentString(TextFormatting.GOLD + "=== LỆNH AUTO-AIM GHIM BẢNG SELL ==="));
-            mc.player.sendMessage(new TextComponentString(TextFormatting.YELLOW + "/aimsell" + TextFormatting.WHITE + " - Bật/Tắt ghim bảng Thuốc súng (mặc định)"));
-            mc.player.sendMessage(new TextComponentString(TextFormatting.YELLOW + "/aimsell <ID_ITEM>" + TextFormatting.WHITE + " - Ghim bảng theo ID (vd: /aimsell 42 hoặc /aimsell <42> bán Khối sắt)"));
-            mc.player.sendMessage(new TextComponentString(TextFormatting.YELLOW + "/aimsell <Tên_Item>" + TextFormatting.WHITE + " - Ghim bảng theo tên (vd: /aimsell gunpowder, /aimsell iron_block)"));
+            mc.player.sendMessage(new TextComponentString(TextFormatting.YELLOW + "/aimsell" + TextFormatting.WHITE + " - Bật/Tắt ghim bảng (mặc định thuốc súng, hoặc item đã setup)"));
+            mc.player.sendMessage(new TextComponentString(TextFormatting.YELLOW + "/aimsell <ID_ITEM>" + TextFormatting.WHITE + " - Setup trước bảng bán (vd: /aimsell 42 hoặc /aimsell <42> bán Khối sắt)"));
+            mc.player.sendMessage(new TextComponentString(TextFormatting.YELLOW + "/aimsell <Tên_Item>" + TextFormatting.WHITE + " - Setup trước bảng bán theo tên (vd: /aimsell gunpowder, /aimsell iron_block)"));
+            mc.player.sendMessage(new TextComponentString(TextFormatting.YELLOW + "/aimsell reset" + TextFormatting.WHITE + " - Khôi phục mục tiêu về mặc định Thuốc súng [ID: 289]"));
             mc.player.sendMessage(new TextComponentString(TextFormatting.YELLOW + "/aimsell off" + TextFormatting.WHITE + " - Tắt ghim camera"));
             mc.player.sendMessage(new TextComponentString(TextFormatting.YELLOW + "/aimsell click" + TextFormatting.WHITE + " - Click phải vào bảng đang ghim"));
             mc.player.sendMessage(new TextComponentString(TextFormatting.YELLOW + "/aimsell debug" + TextFormatting.WHITE + " - Quét danh sách các bảng xung quanh"));
         } else {
-            // Ghim item bất kỳ (theo ID như 42, <42> hoặc tên)
-            SignAimHandler.startAimLock(cleaned);
+            // Setup ghim item bất kỳ (theo ID như 42, <42> hoặc tên)
+            SignAimHandler.setupTarget(cleaned, true);
         }
     }
 }

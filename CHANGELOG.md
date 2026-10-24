@@ -1,5 +1,17 @@
 # CHANGELOG - AutoAimSellSign 1.12.2
 
+## [1.4.39] - 2026-10-24
+### Feature & Polish (Pre-Setup Target /aimsell 42 & Persistent Auto-Aim On F4 #goto)
+- **Hỗ trợ Setup mục tiêu trước (`/aimsell <ID/Item>`)**:
+  - Người chơi có thể đứng ở bất kỳ đâu (ở nhà, đảo farm, chưa tới shop) và gõ trước ví dụ `/aimsell 42` (hoặc `/aimsell <42>`, `/aimsell iron_block`).
+  - Mod ghi nhận mục tiêu đã setup trước, tự động đồng bộ `ConfigHelper.farmItemId = 42` để lọc đúng item khi rút `/pv` và bán.
+  - Khi bật F4 (`#goto` tới quầy bán đồ), camera không bị giật hay xung đột giữa đường; ngay khi nhân vật bước vào phạm vi quầy bán, hệ thống tự động khóa tâm và chỉa thẳng góc nhìn vào bảng **Khối sắt [ID: 42]**.
+- **Mặc định tuyệt đối là Thuốc súng (Gunpowder [ID: 289]) nếu không setup gì**:
+  - `DEFAULT_FARM_ITEM_ID = 289`: Nếu người chơi không setup bất kỳ mục tiêu nào, toàn bộ chu trình F4 và AutoAim mặc định 100% luôn luôn là **Thuốc súng**.
+  - Lệnh `/aimsell reset` hoặc `/aimsell default`: Cho phép khôi phục nhanh mục tiêu về thuốc súng bất kỳ lúc nào.
+- **Tách biệt Alias Khối và Thỏi / Đá quý**:
+  - Loại bỏ các từ khóa chung chung như `"iron"`, `"gold"`, `"diamond"`, `"emerald"` khỏi các ID dạng khối (`42`, `41`, `57`, `133`) để tránh bắt nhầm sang bảng bán thỏi sắt/vàng khi đặt gần nhau.
+
 ## [1.4.38] - 2026-10-24
 ### Feature & Bugfix (Fix Duplicate Mod Crash & Support /aimsell Default Gunpowder & Custom Item ID)
 - **Khắc phục triệt để lỗi xung đột trùng Mod ID (`macrorecorder`)**:

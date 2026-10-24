@@ -31,8 +31,8 @@ public class ConfigHelper {
 
     // ===== Gia tri mac dinh (giu nguyen y het hang so cu truoc khi doi sang JSON) =====
     public static final int DEFAULT_VAULTS = 10;
-    // ID vat pham dung de farm (F3+H trong Minecraft 1.12.2). Mac dinh: REEDS = 338.
-    public static final int DEFAULT_FARM_ITEM_ID = 338;
+    // ID vat pham dung de farm (F3+H trong Minecraft 1.12.2). Mac dinh: THUOC SUNG (GUNPOWDER) = 289.
+    public static final int DEFAULT_FARM_ITEM_ID = 289;
     public static final float DEFAULT_MOVE_DELAY_SECONDS = 0.4f;
     // Delay giua cac lan windowClick khi lay/bo item. 0 = toc do sieu nhanh hien tai.
     // Don vi milliseconds de nguoi dung co the tu cam nhan va chinh trong F8.

@@ -32,11 +32,32 @@ public class SignAimHandler {
     // Trạng thái ghim camera theo thời gian thực (AimLock)
     public static boolean isAimLockActive = false;
     public static BlockPos targetSignPos = null;
+    public static String configuredTarget = "gunpowder";
+    public static boolean hasUserConfiguredTarget = false;
     public static String lastItemTarget = "gunpowder";
     public static int targetItemId = 289;
     public static String targetDisplayName = "Thuốc súng (Gunpowder) [ID: 289]";
     public static final List<String> targetAliases = new ArrayList<String>();
     public static double yOffset = 0.0;
+
+    public static String getEffectiveTarget() {
+        if (hasUserConfiguredTarget && configuredTarget != null && !configuredTarget.trim().isEmpty()) {
+            return configuredTarget;
+        }
+        return "gunpowder";
+    }
+
+    public static void resetToDefaultTarget() {
+        hasUserConfiguredTarget = false;
+        configuredTarget = "gunpowder";
+        lastItemTarget = "gunpowder";
+        targetItemId = 289;
+        targetDisplayName = "Thuốc súng (Gunpowder) [ID: 289]";
+        resolveTarget("gunpowder");
+        try {
+            com.zorotool.macrorecorder.ConfigHelper.setFarmItemId(289);
+        } catch (Exception ignored) {}
+    }
 
     // Vị trí gốc đứng bán (anchor) để chỉ bước lại khi bị đẩy lùi khỏi điểm này
     public static Vec3d anchorPos = null;
@@ -234,7 +255,6 @@ public class SignAimHandler {
                 targetAliases.add("cục sắt");
                 targetAliases.add("cuc sat");
                 targetAliases.add("block of iron");
-                targetAliases.add("iron");
                 break;
             case 265:
                 targetAliases.add("iron_ingot");
@@ -252,7 +272,7 @@ public class SignAimHandler {
                 targetAliases.add("khoi vang");
                 targetAliases.add("vàng khối");
                 targetAliases.add("vang khoi");
-                targetAliases.add("gold");
+                targetAliases.add("block of gold");
                 break;
             case 266:
                 targetAliases.add("gold_ingot");
@@ -266,7 +286,7 @@ public class SignAimHandler {
                 targetAliases.add("diamond block");
                 targetAliases.add("khối kim cương");
                 targetAliases.add("khoi kim cuong");
-                targetAliases.add("diamond");
+                targetAliases.add("block of diamond");
                 break;
             case 264:
                 targetAliases.add("diamond");
@@ -280,7 +300,7 @@ public class SignAimHandler {
                 targetAliases.add("emerald block");
                 targetAliases.add("khối ngọc lục bảo");
                 targetAliases.add("khoi ngoc luc bao");
-                targetAliases.add("emerald");
+                targetAliases.add("block of emerald");
                 break;
             case 388:
                 targetAliases.add("emerald");
@@ -292,7 +312,7 @@ public class SignAimHandler {
                 targetAliases.add("redstone block");
                 targetAliases.add("khối đá đỏ");
                 targetAliases.add("khoi da do");
-                targetAliases.add("redstone");
+                targetAliases.add("block of redstone");
                 break;
             case 331:
                 targetAliases.add("redstone");
@@ -304,7 +324,7 @@ public class SignAimHandler {
                 targetAliases.add("coal block");
                 targetAliases.add("khối than");
                 targetAliases.add("khoi than");
-                targetAliases.add("coal");
+                targetAliases.add("block of coal");
                 break;
             case 263:
                 targetAliases.add("coal");
@@ -630,41 +650,60 @@ public class SignAimHandler {
         player.sendMessage(new TextComponentString(TextFormatting.YELLOW + "[AutoAim Debug] Tìm thấy " + count + " bảng."));
     }
 
-    public static void startAimLock(String itemTarget) {
+    public static void setupTarget(String input, boolean verbose) {
         Minecraft mc = Minecraft.getMinecraft();
-        if (mc.player == null) return;
-
-        if (itemTarget == null || itemTarget.trim().isEmpty()) {
-            itemTarget = "gunpowder";
+        if (input == null || input.trim().isEmpty()) {
+            input = "gunpowder";
         }
-        resolveTarget(itemTarget);
+        String clean = input.replaceAll("[<>\\[\\]]", "").trim();
+        if (clean.isEmpty()) {
+            clean = "gunpowder";
+        }
+        hasUserConfiguredTarget = true;
+        configuredTarget = clean;
+        resolveTarget(clean);
+
+        if (targetItemId > 0) {
+            try {
+                com.zorotool.macrorecorder.ConfigHelper.setFarmItemId(targetItemId);
+            } catch (Exception ignored) {}
+        }
+
+        isAimLockActive = true;
+        outOfRangeTicks = 0;
+        stuckTicks = 0;
+        isWarmupActive = false;
 
         boolean found = findTargetSign(lastItemTarget);
         if (found) {
-            isAimLockActive = true;
-            outOfRangeTicks = 0;
-            stuckTicks = 0;
-            isWarmupActive = false;
-
-            // Lưu lại vị trí đứng bán ban đầu làm anchor
             if (mc.player != null) {
                 anchorPos = new Vec3d(mc.player.posX, mc.player.posY, mc.player.posZ);
             }
-
-            // Đảm bảo game tiếp tục chạy ngầm khi Alt-Tab làm việc khác (F3 + P off)
             if (mc.gameSettings != null) {
                 mc.gameSettings.pauseOnLostFocus = false;
             }
-
-            // Tắt sprint ngay khi bật để giữ thanh feed
-            mc.player.setSprinting(false);
-            mc.player.sendMessage(new TextComponentString(TextFormatting.GREEN + 
-                "[AutoAim] ĐÃ BẬT GHIM BẢNG [Sell] " + targetDisplayName));
-            mc.player.sendMessage(new TextComponentString(TextFormatting.AQUA + 
-                "-> Camera ghim vào bảng mượt như người thật. Bạn thoải mái đè chuột phải để bán đồ!"));
-            mc.player.sendMessage(new TextComponentString(TextFormatting.GOLD + 
-                "-> Tự bước lại quầy nếu bị đẩy. Chuột hoàn toàn tự do, không bị chiếm chuột."));
+            if (mc.player != null) {
+                mc.player.setSprinting(false);
+                if (verbose) {
+                    mc.player.sendMessage(new TextComponentString(TextFormatting.GREEN + 
+                        "[AutoAim] ĐÃ BẬT GHIM BẢNG [Sell] " + targetDisplayName));
+                    mc.player.sendMessage(new TextComponentString(TextFormatting.AQUA + 
+                        "-> Camera ghim vào bảng mượt như người thật. Bạn thoải mái đè chuột phải để bán đồ!"));
+                }
+            }
+        } else {
+            targetSignPos = null;
+            if (mc.player != null && verbose) {
+                mc.player.sendMessage(new TextComponentString(TextFormatting.YELLOW + 
+                    "[AutoAim] ĐÃ SETUP TRƯỚC: " + targetDisplayName));
+                mc.player.sendMessage(new TextComponentString(TextFormatting.AQUA + 
+                    "-> Khi bấm F4 (#goto tới quầy), camera sẽ tự động chỉa và ghim đúng vào bảng " + targetDisplayName + "!"));
+            }
         }
+    }
+
+    public static void startAimLock(String itemTarget) {
+        setupTarget(itemTarget, false);
     }
 
     public static void toggleAimLock(String itemTarget) {
@@ -958,6 +997,15 @@ public class SignAimHandler {
 
         if (targetSignPos == null) {
             if (isAutoWalking) stopAutoWalk(mc);
+            if (player.ticksExisted % 5 == 0) {
+                if (findTargetSign(getEffectiveTarget())) {
+                    if (mc.player != null) {
+                        anchorPos = new Vec3d(mc.player.posX, mc.player.posY, mc.player.posZ);
+                        mc.player.sendMessage(new TextComponentString(TextFormatting.GREEN + 
+                            "[AutoAim] Đã tới quầy! Tự động chỉa và ghim vào bảng: " + targetDisplayName));
+                    }
+                }
+            }
             return;
         }
 

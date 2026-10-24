@@ -1329,8 +1329,7 @@ public class MacroRecorderMod {
                     if (afterShopLookCommand != null && !afterShopLookCommand.isEmpty()) {
                         executeClientCommand(afterShopLookCommand);
                     }
-                    int farmId = ConfigHelper.getFarmItemId();
-                    String target = (farmId == 338) ? "reeds" : (farmId == 289 ? "gunpowder" : String.valueOf(farmId));
+                    String target = SignAimHandler.getEffectiveTarget();
                     SignAimHandler.startAimLock(target);
                     System.out.println("[MacroRecorder] (F4) Đã thoát góc chết về lại sát quầy bán đồ! Tiếp tục bán...");
                     notSellingTimer = 0;
@@ -1493,20 +1492,20 @@ public class MacroRecorderMod {
     private boolean isFarmItem(ItemStack stack) {
         if (stack == null || stack.isEmpty())
             return false;
-        int configuredId = ConfigHelper.getFarmItemId();
-        Item configured = Item.getItemById(configuredId);
-        if (configured != null && stack.getItem() == configured)
-            return true;
-        // Fallback an toàn: nếu đang ghim bảng thuốc súng hoặc target là gunpowder
-        if (SignAimHandler.isGunpowderTarget(SignAimHandler.lastItemTarget) && stack.getItem() == Items.GUNPOWDER) {
+        String eff = SignAimHandler.getEffectiveTarget();
+        if (SignAimHandler.isGunpowderTarget(eff) && stack.getItem() == Items.GUNPOWDER) {
             return true;
         }
-        if (SignAimHandler.isReedsTarget(SignAimHandler.lastItemTarget) && stack.getItem() == Items.REEDS) {
+        if (SignAimHandler.isReedsTarget(eff) && stack.getItem() == Items.REEDS) {
             return true;
         }
         if (SignAimHandler.targetItemId > 0 && Item.getIdFromItem(stack.getItem()) == SignAimHandler.targetItemId) {
             return true;
         }
+        int configuredId = ConfigHelper.getFarmItemId();
+        Item configured = Item.getItemById(configuredId);
+        if (configured != null && stack.getItem() == configured)
+            return true;
         return false;
     }
 
@@ -2898,8 +2897,7 @@ public class MacroRecorderMod {
 
         // KÍCH HOẠT AUTO-AIM:
         try {
-            int farmId = ConfigHelper.getFarmItemId();
-            String target = (farmId == 338) ? "reeds" : (farmId == 289 ? "gunpowder" : String.valueOf(farmId));
+            String target = SignAimHandler.getEffectiveTarget();
             SignAimHandler.startAimLock(target);
             System.out.println("[MacroRecorder] >>> (F4) Tự động kích hoạt AutoAim ghim bảng Sell (" + target + ")");
         } catch (Exception e) {
@@ -3015,8 +3013,7 @@ public class MacroRecorderMod {
         hudSessionStartMillis = System.currentTimeMillis();
         if (sellMacroRunning) {
             try {
-                int farmId = ConfigHelper.getFarmItemId();
-                String target = (farmId == 338) ? "reeds" : (farmId == 289 ? "gunpowder" : String.valueOf(farmId));
+                String target = SignAimHandler.getEffectiveTarget();
                 SignAimHandler.startAimLock(target);
             } catch (Exception ignored) {
             }

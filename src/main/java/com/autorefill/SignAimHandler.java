@@ -17,8 +17,6 @@ import net.minecraft.util.text.TextComponentString;
 import net.minecraft.util.text.TextFormatting;
 import net.minecraft.network.play.client.CPacketPlayerTryUseItemOnBlock;
 import net.minecraftforge.client.event.InputUpdateEvent;
-import net.minecraftforge.client.event.PlayerSPPushOutOfBlocksEvent;
-import net.minecraftforge.event.entity.living.LivingEvent;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.common.gameevent.TickEvent;
 
@@ -1151,7 +1149,13 @@ public class SignAimHandler {
         Minecraft mc = Minecraft.getMinecraft();
         if (mc.world == null || mc.player == null || mc.playerController == null || targetSignPos == null) return false;
 
-        // Chỉ cần cự ly tới bảng <= 6 block (distSq <= 36.0) và không chỉa vào Buy Sign
+        // TUYỆT ĐỐI KHÔNG CLICK NẾU TÂM NGẮM ĐANG TRÚNG VÀO NGƯỜI CHƠI KHÁC!
+        // Tránh tương tác spam chuột phải vào player khác làm server kick văng ra lobby:
+        if (mc.objectMouseOver != null && mc.objectMouseOver.typeOfHit == RayTraceResult.Type.ENTITY) {
+            return false;
+        }
+
+        // Chỉ cần cự ly tới bảng <= 6 block (distSq <= 36.0)
         if (mc.player.getDistanceSq(targetSignPos) > 36.0) {
             return false;
         }
@@ -1163,7 +1167,7 @@ public class SignAimHandler {
             hitVec = mc.objectMouseOver.hitVec;
         }
 
-        // 1. Gửi gói tin CPacketPlayerTryUseItemOnBlock trực tiếp lên bảng (bỏ qua mọi entity người chơi đứng che chắn)
+        // 1. Gửi gói tin CPacketPlayerTryUseItemOnBlock trực tiếp lên bảng
         if (mc.player.connection != null) {
             mc.player.connection.sendPacket(new CPacketPlayerTryUseItemOnBlock(
                 targetSignPos, 
@@ -1187,42 +1191,6 @@ public class SignAimHandler {
         return true;
     }
 
-    /**
-     * KHÁNG ĐẨY 100% (ANTI-PUSH / NO-PUSH):
-     * Khi đứng tại quầy bán đồ, triệt tiêu toàn bộ lực xô đẩy từ người chơi khác,
-     * cố định vị trí đứng không bị đẩy ra ngoài hành lang hoặc rơi vào portal ra lobby!
-     */
-    @SubscribeEvent
-    public void onLivingUpdate(LivingEvent.LivingUpdateEvent event) {
-        if (event.getEntityLiving() != Minecraft.getMinecraft().player) return;
-        Minecraft mc = Minecraft.getMinecraft();
-        if (mc.player == null) return;
-
-        // Khi AimLock đang bật và có vị trí anchorPos tại quầy bán (Shop Y ≈ 151):
-        if (isAimLockActive && anchorPos != null && Math.abs(mc.player.posY - 151.0) <= 4.0) {
-            // Triệt tiêu gia tốc xô đẩy
-            if (mc.player.onGround) {
-                mc.player.motionX = 0;
-                mc.player.motionZ = 0;
-            }
-            // Nếu bị lực va chạm đẩy lệch vị trí: kéo ngay lập tức về tâm anchorPos
-            double dx = mc.player.posX - anchorPos.x;
-            double dz = mc.player.posZ - anchorPos.z;
-            if (dx * dx + dz * dz > 0.01) { // lệch quá 0.1 block
-                mc.player.setPosition(anchorPos.x, mc.player.posY, anchorPos.z);
-                mc.player.motionX = 0;
-                mc.player.motionZ = 0;
-            }
-        }
-    }
-
-    @SubscribeEvent
-    public void onPushOutOfBlocks(PlayerSPPushOutOfBlocksEvent event) {
-        if (isAimLockActive) {
-            event.setCanceled(true);
-        }
-    }
-
     @SubscribeEvent
     public void onRenderTick(TickEvent.RenderTickEvent event) {
         if (event.phase != TickEvent.Phase.START) return;
@@ -1231,78 +1199,18 @@ public class SignAimHandler {
     }
 
     /**
-     * Kiểm tra xem có người chơi khác đang đứng chắn ngay phía trước mặt/hướng về quầy không
-     * -> Nếu chỗ đó có người đứng rồi thì thôi, không đứng chỗ đó nữa (người thật không chen lấn)
-     */
-    private static boolean isAnotherPlayerBlocking(Minecraft mc, EntityPlayerSP player) {
-        if (mc.world == null || player == null || targetSignPos == null) return false;
-        double toSignX = (targetSignPos.getX() + 0.5) - player.posX;
-        double toSignZ = (targetSignPos.getZ() + 0.5) - player.posZ;
-        for (net.minecraft.entity.player.EntityPlayer other : mc.world.playerEntities) {
-            if (other == null || other == player) continue;
-            double d = player.getDistance(other);
-            if (d < 1.3) {
-                double dx = other.posX - player.posX;
-                double dz = other.posZ - player.posZ;
-                double dot = dx * toSignX + dz * toSignZ;
-                if (dot > 0) {
-                    return true; // Có người chơi đang đứng chắn phía trước
-                }
-            }
-        }
-        return false;
-    }
-
-    /**
-     * Can thiệp trực tiếp vào Input movement của Minecraft để tự động di chuyển mượt mà
-     * TUYỆT ĐỐI KHÔNG SPRINT -> KHÔNG TIÊU HAO ĐỘ ĐÓI (FEED)
+     * Ở khu vực quầy shop: TUYỆT ĐỐI KHÔNG can thiệp phím di chuyển,
+     * để người chơi đứng yên tự nhiên 100%, người khác đẩy chỉ dịch chuyển bình thường,
+     * không bao giờ bị server kick văng ra lobby.
      */
     @SubscribeEvent
     public void onInputUpdate(InputUpdateEvent event) {
         if (!isAimLockActive || targetSignPos == null) return;
-
         Minecraft mc = Minecraft.getMinecraft();
-        if (mc.player == null || mc.currentScreen != null) return; // Không can thiệp nếu đang mở GUI/Chat
-        if (Math.abs(mc.player.posY - 151.0) > 4.0) return; // Chỉ can thiệp khi ở quầy Shop (Y xấp xỉ 151)
-
-        if (isAutoWalking && !isWarmupActive && targetSignPos != null && mc.player != null) {
-            // Nếu đã ngắm trúng hoặc đang chỉa mặt vào bảng bán: tuyệt đối đứng yên
-            if (isAimingAtSign(mc) || isFacingTargetSign(mc)) {
-                if (isAutoWalking) stopAutoWalk(mc);
-                return;
-            }
-
-            EntityPlayerSP player = mc.player;
-            double dx = player.posX - (targetSignPos.getX() + 0.5);
-            double dz = player.posZ - (targetSignPos.getZ() + 0.5);
-            double distXZ = Math.sqrt(dx * dx + dz * dz);
-
-            if (distXZ > 2.2) {
-                // Nếu bị đẩy lùi khỏi quầy: bước xích lại gần quầy
-                double toSignX = (targetSignPos.getX() + 0.5) - player.posX;
-                double toSignZ = (targetSignPos.getZ() + 0.5) - player.posZ;
-                float moveAngle = (float) (MathHelper.atan2(toSignZ, toSignX) * (180.0D / Math.PI)) - 90.0F;
-                float diff = MathHelper.wrapDegrees(moveAngle - player.rotationYaw);
-
-                if (Math.abs(diff) <= 60.0F) {
-                    event.getMovementInput().moveForward = 0.8F;
-                    event.getMovementInput().forwardKeyDown = true;
-                    event.getMovementInput().moveStrafe = 0.0F;
-                } else if (diff > 60.0F && diff < 120.0F) {
-                    event.getMovementInput().moveForward = 0.2F;
-                    event.getMovementInput().moveStrafe = -0.8F;
-                } else if (diff < -60.0F && diff > -120.0F) {
-                    event.getMovementInput().moveForward = 0.2F;
-                    event.getMovementInput().moveStrafe = 0.8F;
-                } else {
-                    event.getMovementInput().moveForward = -0.8F;
-                }
-            }
-
-            mc.player.setSprinting(false);
-            if (mc.gameSettings != null) {
-                KeyBinding.setKeyBindState(mc.gameSettings.keyBindSprint.getKeyCode(), false);
-            }
+        if (mc.player == null) return;
+        if (Math.abs(mc.player.posY - 151.0) <= 4.0) {
+            if (isAutoWalking) stopAutoWalk(mc);
+            return;
         }
     }
 

@@ -85,15 +85,25 @@ public class TooltipDumpHandler {
     }
 
     private void handleAutoAnswerTimer(Minecraft mc) {
-        // CHỈ chạy khi được kích hoạt từ Macro F4 lúc tương tác NPC QuickPeek
-        if (!active) {
+        if (mc == null || mc.player == null) {
             trackedContainer = null;
             return;
         }
 
-        // CHỈ chạy khi đang ở Shop (Y xấp xỉ 150 - 151)
-        if (mc == null || mc.player == null || (Math.abs(mc.player.posY - 150.0) > 4.0 && Math.abs(mc.player.posY - 151.0) > 4.0)) {
+        // Tự động kích hoạt khi đang ở khu vực Shop (Y xấp xỉ 150 - 151) và có GUI mở ra:
+        boolean inShopAltitude = Math.abs(mc.player.posY - 150.0) <= 4.0 || Math.abs(mc.player.posY - 151.0) <= 4.0;
+        if (!inShopAltitude) {
             deactivate();
+            return;
+        }
+
+        // Tự động kích hoạt nếu người chơi hoặc bot mở GUI tại Shop:
+        if (!active && mc.currentScreen instanceof GuiContainer) {
+            activateForNpc();
+        }
+
+        if (!active) {
+            trackedContainer = null;
             return;
         }
 

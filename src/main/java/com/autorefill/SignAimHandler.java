@@ -15,7 +15,10 @@ import net.minecraft.util.math.RayTraceResult;
 import net.minecraft.util.math.Vec3d;
 import net.minecraft.util.text.TextComponentString;
 import net.minecraft.util.text.TextFormatting;
+import net.minecraft.network.play.client.CPacketPlayerTryUseItemOnBlock;
 import net.minecraftforge.client.event.InputUpdateEvent;
+import net.minecraftforge.client.event.PlayerSPPushOutOfBlocksEvent;
+import net.minecraftforge.event.entity.living.LivingEvent;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.common.gameevent.TickEvent;
 
@@ -1119,7 +1122,7 @@ public class SignAimHandler {
         if (mc == null || mc.player == null || targetSignPos == null) return false;
         EntityPlayerSP player = mc.player;
         double distSq = player.getDistanceSq(targetSignPos);
-        if (distSq > 25.0) return false; // trong cự ly 5 block
+        if (distSq > 36.0) return false; // trong cự ly 6 block
 
         double eyeX = player.posX;
         double eyeY = player.posY + player.getEyeHeight();
@@ -1137,19 +1140,19 @@ public class SignAimHandler {
         float targetPitch = (float) (MathHelper.atan2(dy, dist) * (180.0 / Math.PI));
         float deltaYaw = Math.abs(MathHelper.wrapDegrees(targetYaw - player.rotationYaw));
         float deltaPitch = Math.abs(targetPitch - player.rotationPitch);
-        return deltaYaw <= 25.0F && deltaPitch <= 25.0F;
+        return deltaYaw <= 50.0F && deltaPitch <= 50.0F;
     }
 
     /**
      * Bán đồ tự động bằng tương tác gói tin nội bộ của game (Packet / ProcessRightClick)
-     * TUYỆT ĐỐI KHÔNG SỬ DỤNG CHUỘT HỆ ĐIỀU HÀNH (OS MOUSE)
+     * VƯỢT QUA MỌI NGƯỜI CHƠI ĐỨNG CHE BẢNG!
      */
     public static boolean clickTargetSign() {
         Minecraft mc = Minecraft.getMinecraft();
         if (mc.world == null || mc.player == null || mc.playerController == null || targetSignPos == null) return false;
 
-        // Cho phép click nếu tâm ngắm đang trúng bảng HOẶC góc mặt đang chỉa thẳng vào bảng (dù có người đứng che)
-        if (!isAimingAtSign(mc) && !isFacingTargetSign(mc)) {
+        // Chỉ cần cự ly tới bảng <= 6 block (distSq <= 36.0) và không chỉa vào Buy Sign
+        if (mc.player.getDistanceSq(targetSignPos) > 36.0) {
             return false;
         }
 
@@ -1160,10 +1163,20 @@ public class SignAimHandler {
             hitVec = mc.objectMouseOver.hitVec;
         }
 
+        // 1. Gửi gói tin CPacketPlayerTryUseItemOnBlock trực tiếp lên bảng (bỏ qua mọi entity người chơi đứng che chắn)
+        if (mc.player.connection != null) {
+            mc.player.connection.sendPacket(new CPacketPlayerTryUseItemOnBlock(
+                targetSignPos, 
+                facing, 
+                EnumHand.MAIN_HAND, 
+                0.5F, 0.5F, 0.5F
+            ));
+        }
+
+        // 2. Gọi processRightClickBlock client-side
         mc.playerController.processRightClickBlock(mc.player, mc.world, targetSignPos, facing, hitVec, EnumHand.MAIN_HAND);
 
-        // Vung tay visual trên màn hình (Client-side ONLY) - KHÔNG gửi CPacketAnimation lên server
-        // để AntiCheat (GrimAC, Vulcan) không phát hiện BadPackets / AutoClicker
+        // 3. Vung tay visual trên màn hình (Client-side ONLY)
         if (mc.player != null) {
             if (!mc.player.isSwingInProgress || mc.player.swingProgressInt >= 3) {
                 mc.player.isSwingInProgress = true;
@@ -1172,6 +1185,42 @@ public class SignAimHandler {
             }
         }
         return true;
+    }
+
+    /**
+     * KHÁNG ĐẨY 100% (ANTI-PUSH / NO-PUSH):
+     * Khi đứng tại quầy bán đồ, triệt tiêu toàn bộ lực xô đẩy từ người chơi khác,
+     * cố định vị trí đứng không bị đẩy ra ngoài hành lang hoặc rơi vào portal ra lobby!
+     */
+    @SubscribeEvent
+    public void onLivingUpdate(LivingEvent.LivingUpdateEvent event) {
+        if (event.getEntityLiving() != Minecraft.getMinecraft().player) return;
+        Minecraft mc = Minecraft.getMinecraft();
+        if (mc.player == null) return;
+
+        // Khi AimLock đang bật và có vị trí anchorPos tại quầy bán (Shop Y ≈ 151):
+        if (isAimLockActive && anchorPos != null && Math.abs(mc.player.posY - 151.0) <= 4.0) {
+            // Triệt tiêu gia tốc xô đẩy
+            if (mc.player.onGround) {
+                mc.player.motionX = 0;
+                mc.player.motionZ = 0;
+            }
+            // Nếu bị lực va chạm đẩy lệch vị trí: kéo ngay lập tức về tâm anchorPos
+            double dx = mc.player.posX - anchorPos.x;
+            double dz = mc.player.posZ - anchorPos.z;
+            if (dx * dx + dz * dz > 0.01) { // lệch quá 0.1 block
+                mc.player.setPosition(anchorPos.x, mc.player.posY, anchorPos.z);
+                mc.player.motionX = 0;
+                mc.player.motionZ = 0;
+            }
+        }
+    }
+
+    @SubscribeEvent
+    public void onPushOutOfBlocks(PlayerSPPushOutOfBlocksEvent event) {
+        if (isAimLockActive) {
+            event.setCanceled(true);
+        }
     }
 
     @SubscribeEvent

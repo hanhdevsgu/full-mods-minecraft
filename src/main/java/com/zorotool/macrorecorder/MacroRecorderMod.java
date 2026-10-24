@@ -954,24 +954,25 @@ public class MacroRecorderMod {
                 return false;
 
             case WAITING_NPC_GUI:
-                // Chi coi la thanh cong khi GUI shop/quiz dang mo la GUI dang dung
-                // (GuiChest + ContainerChest).
-                if (mc.currentScreen instanceof GuiChest) {
-                    GuiChest chestGui = (GuiChest) mc.currentScreen;
-                    if (chestGui.inventorySlots instanceof ContainerChest) {
-                        ContainerChest chest = (ContainerChest) chestGui.inventorySlots;
-                        String title = chest.getLowerChestInventory().getDisplayName().getUnformattedText();
-                        System.out.println("[MacroRecorder] Đã mở GUI NPC/shop: " + title);
-                        com.example.quizpeek.TooltipDumpHandler.setAnswerClicked(false);
-                        com.example.quizpeek.TooltipDumpHandler.armForNextNpcGui();
-                        waitTimer = 0;
-                        npcJumpActive = false;
-                        state = MacroState.WAITING_AFTER_SHOP_CLICK_DELAY;
-                        if (mc.gameSettings != null) {
-                            KeyBinding.setKeyBindState(mc.gameSettings.keyBindJump.getKeyCode(), false);
-                        }
-                        return false;
+                // Chi coi la thanh cong khi GUI shop/quiz dang mo la GuiContainer
+                if (mc.currentScreen instanceof GuiContainer) {
+                    GuiContainer containerGui = (GuiContainer) mc.currentScreen;
+                    String title = "GUI";
+                    if (containerGui.inventorySlots instanceof ContainerChest) {
+                        try {
+                            title = ((ContainerChest) containerGui.inventorySlots).getLowerChestInventory().getDisplayName().getUnformattedText();
+                        } catch (Exception ignored) {}
                     }
+                    System.out.println("[MacroRecorder] Đã mở GUI NPC/shop: " + title);
+                    com.example.quizpeek.TooltipDumpHandler.setAnswerClicked(false);
+                    com.example.quizpeek.TooltipDumpHandler.armForNextNpcGui();
+                    waitTimer = 0;
+                    npcJumpActive = false;
+                    state = MacroState.WAITING_AFTER_SHOP_CLICK_DELAY;
+                    if (mc.gameSettings != null) {
+                        KeyBinding.setKeyBindState(mc.gameSettings.keyBindJump.getKeyCode(), false);
+                    }
+                    return false;
                 }
 
                 // Nếu đang trong cú nhảy: đợi đáp đất xong mới cho phép thử tiếp
@@ -1125,14 +1126,18 @@ public class MacroRecorderMod {
                     }
                     return true;
                 }
-                // Đè chuột phải người thật:
+                // Đè chuột phải người thật hoặc bắn packet trực tiếp:
                 // Nếu đang nhìn vào bảng Buy hoặc bảng phía dưới: TUYỆT ĐỐI KHÔNG CLICK!
                 boolean lookingAtBuySign1E = SignAimHandler.isLookingAtAnyBuySign(mc);
-                boolean canSell1E = !lookingAtBuySign1E && (SignAimHandler.isAimingAtSign(mc) || SignAimHandler.isFacingTargetSign(mc));
+                boolean canSell1E = !lookingAtBuySign1E && (SignAimHandler.targetSignPos != null);
 
                 if (canSell1E) {
-                    holdUseItemKey();
-                    // Đảm bảo click tới bảng kể cả khi có người che:
+                    if (SignAimHandler.isAimingAtSign(mc)) {
+                        holdUseItemKey();
+                    } else {
+                        releaseUseItemKey(); // Tránh bấm chuột phải vào người chơi đang che
+                    }
+                    // Đảm bảo click tới bảng kể cả khi có người che kín trước mặt:
                     if (mc.player != null && mc.player.ticksExisted % 2 == 0) {
                         SignAimHandler.clickTargetSign();
                     }
@@ -1273,14 +1278,18 @@ public class MacroRecorderMod {
                     }
                     return true;
                 }
-                // Đè chuột phải người thật:
+                // Đè chuột phải người thật hoặc bắn packet trực tiếp:
                 // Nếu đang nhìn vào bảng Buy hoặc bảng phía dưới: TUYỆT ĐỐI KHÔNG CLICK!
                 boolean lookingAtBuySign = SignAimHandler.isLookingAtAnyBuySign(mc);
-                boolean canSell = !lookingAtBuySign && (SignAimHandler.isAimingAtSign(mc) || SignAimHandler.isFacingTargetSign(mc));
+                boolean canSell = !lookingAtBuySign && (SignAimHandler.targetSignPos != null);
 
                 if (canSell) {
-                    holdUseItemKey();
-                    // Đảm bảo click tới bảng kể cả khi có người che:
+                    if (SignAimHandler.isAimingAtSign(mc)) {
+                        holdUseItemKey();
+                    } else {
+                        releaseUseItemKey(); // Tránh bấm chuột phải vào người chơi đang che
+                    }
+                    // Đảm bảo click tới bảng kể cả khi có người che kín trước mặt:
                     if (mc.player != null && mc.player.ticksExisted % 2 == 0) {
                         SignAimHandler.clickTargetSign();
                     }
@@ -2138,41 +2147,35 @@ public class MacroRecorderMod {
 
     private boolean rightClickNpc() {
         try {
+            if (mc.player == null || mc.world == null) return false;
             RayTraceResult trace = mc.objectMouseOver;
             Entity target = null;
 
-            // BINH THUONG: raytrace dang trung truc tiep NPC -> click NPC ngay.
-            // KHONG dung findLookedAtEntity() tong quat vi no co the bat nham
-            // player/entity khac va lam xuat hien animation danh tay.
+            // 1. Nếu tâm ngắm đang trúng bất kỳ entity nào (bao gồm cả Citizens NPC vốn là EntityPlayer!):
             if (trace != null && trace.typeOfHit == RayTraceResult.Type.ENTITY
                     && trace.entityHit != null
-                    && !(trace.entityHit instanceof EntityPlayer)) {
+                    && trace.entityHit != mc.player) {
                 target = trace.entityHit;
             }
-            // DAC BIET CHI CHAY KHI CO NGUOI CHE NPC:
-            // objectMouseOver phai dang trung MOT PLAYER, sau do moi tim NPC
-            // nam PHIA SAU player do tren cung tia nhin. Neu khong co player
-            // che thi tuyet doi khong chay logic VillagerHood dac biet.
-            else if (trace != null && trace.typeOfHit == RayTraceResult.Type.ENTITY
-                    && trace.entityHit instanceof EntityPlayer) {
-                target = findNpcBehindBlockingPlayer((EntityPlayer) trace.entityHit, npcReachDistance);
-                if (target != null) {
-                    System.out.println(
-                            "[MacroRecorder] Phát hiện người chơi đang che NPC -> tương tác với NPC phía sau.");
-                }
-            }
 
-            // Fallback khi nhảy lên hoặc raytrace trượt: quét entity không phải player dọc
-            // tia nhìn
+            // 2. Fallback: quét entity dọc tia nhìn trong phạm vi reach (loại trừ chính bản thân mc.player)
             if (target == null) {
                 target = findLookedAtEntity(npcReachDistance);
             }
 
-            if (target == null)
-                return false;
+            // 3. Fallback tiếp: tìm entity gần nhất trong bán kính 4.5 block quanh người chơi
+            if (target == null) {
+                target = findClosestNpcEntity(4.5D);
+            }
 
-            // Tao hitVec dung vao NPC muc tieu. Khi NPC bi nguoi che, hitVec
-            // duoc tinh truc tiep tren bounding box NPC thay vi click vao player.
+            if (target == null) {
+                System.out.println("[MacroRecorder] Không tìm thấy NPC nào quanh vị trí này để click!");
+                return false;
+            }
+
+            System.out.println("[MacroRecorder] Tương tác NPC: " + target.getName() + " (" + target.getClass().getSimpleName() + ")");
+
+            // Tạo hitVec đúng vào NPC mục tiêu
             RayTraceResult targetTrace = null;
             if (trace != null && trace.typeOfHit == RayTraceResult.Type.ENTITY && trace.entityHit == target) {
                 targetTrace = trace;
@@ -2192,15 +2195,31 @@ public class MacroRecorderMod {
             net.minecraft.util.EnumActionResult result = mc.playerController.interactWithEntity(mc.player, target,
                     targetTrace, EnumHand.MAIN_HAND);
             if (result != net.minecraft.util.EnumActionResult.SUCCESS) {
-                // VillagerHood/custom NPC đôi khi cần overload khong hitVec.
                 result = mc.playerController.interactWithEntity(mc.player, target, EnumHand.MAIN_HAND);
             }
-            return result == net.minecraft.util.EnumActionResult.SUCCESS;
+            mc.player.swingArm(EnumHand.MAIN_HAND);
+            return true;
         } catch (Exception e) {
             System.out.println("[MacroRecorder] Lỗi khi click NPC: " + e);
             e.printStackTrace();
             return false;
         }
+    }
+
+    private Entity findClosestNpcEntity(double reachDistance) {
+        if (mc.player == null || mc.world == null) return null;
+        List<Entity> list = mc.world.getEntitiesWithinAABBExcludingEntity(mc.player, mc.player.getEntityBoundingBox().grow(reachDistance));
+        Entity closest = null;
+        double closestDistSq = reachDistance * reachDistance;
+        for (Entity e : list) {
+            if (e == null || e == mc.player || !e.canBeCollidedWith()) continue;
+            double d = mc.player.getDistanceSq(e);
+            if (d < closestDistSq) {
+                closestDistSq = d;
+                closest = e;
+            }
+        }
+        return closest;
     }
 
     /**
@@ -2872,7 +2891,22 @@ public class MacroRecorderMod {
             return;
         }
 
-        // Nếu chưa ở quầy, gửi #goto và chờ tới nơi
+        // Nếu có cấu hình goto tới NPC shop và chưa ở quầy bán:
+        // Tự động chạy tới NPC shop để giải quiz trước!
+        if (shopGotoCommand != null && !shopGotoCommand.trim().isEmpty()) {
+            System.out.println("[MacroRecorder] >>> (F4) Bắt đầu: Gửi " + shopGotoCommand + " tới NPC shop giải quiz trước...");
+            executeClientCommand(shopGotoCommand);
+            state = MacroState.WAITING_LOOK_DELAY;
+            isRunning = true;
+            preStartActive = false;
+            waitTimer = 0;
+            if (mc != null && mc.player != null) {
+                mc.player.sendMessage(new TextComponentString("§b[Macro] ▶ (F4) Di chuyển tới NPC shop giải quiz..."));
+            }
+            return;
+        }
+
+        // Nếu không cài đặt goto NPC: gửi #goto afterShopGotoCommand và chờ tới quầy
         preStartActive = true;
         executeClientCommand(afterShopGotoCommand);
         System.out.println("[MacroRecorder] ========================================");

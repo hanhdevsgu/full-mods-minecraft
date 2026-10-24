@@ -44,28 +44,34 @@ public class CommandAimSell extends CommandBase {
         if (mc.player == null) return;
 
         if (args.length == 0) {
-            // Gõ /aimsell: Bật / Tắt ghim camera vào bảng Sell Gunpowder
-            SignAimHandler.toggleAimLock("gunpowder");
+            // Gõ /aimsell: Mặc định là thuốc súng (gunpowder)
+            // Nếu đang bật ghim thuốc súng -> Tắt ghim
+            // Nếu đang tắt hoặc đang ghim item khác -> Bật ghim thuốc súng
+            if (SignAimHandler.isAimLockActive && SignAimHandler.isGunpowderTarget(SignAimHandler.lastItemTarget)) {
+                SignAimHandler.stopAimLock(mc);
+                mc.player.sendMessage(new TextComponentString(TextFormatting.RED + "[AutoAim] Đã TẮT ghim camera."));
+            } else {
+                SignAimHandler.startAimLock("gunpowder");
+            }
             return;
         }
 
-        String sub = args[0].toLowerCase();
+        String rawInput = String.join(" ", args).trim();
+        String cleaned = rawInput.replaceAll("[<>\\[\\]]", "").trim();
+        String sub = cleaned.toLowerCase();
 
         // Xử lý /aimsell lock hoặc /aimsell toggle
         if (sub.equals("lock") || sub.equals("toggle")) {
-            if (args.length >= 2) {
-                String subState = args[1].toLowerCase();
-                if (subState.equals("off") || subState.equals("stop") || subState.equals("unlock")) {
-                    SignAimHandler.stopAimLock(mc);
-                    mc.player.sendMessage(new TextComponentString(TextFormatting.RED + "[AutoAim] Đã TẮT ghim camera."));
-                    return;
-                } else if (subState.equals("on") || subState.equals("start")) {
-                    SignAimHandler.startAimLock("gunpowder");
-                    return;
-                }
+            if (SignAimHandler.isAimLockActive && SignAimHandler.isGunpowderTarget(SignAimHandler.lastItemTarget)) {
+                SignAimHandler.stopAimLock(mc);
+                mc.player.sendMessage(new TextComponentString(TextFormatting.RED + "[AutoAim] Đã TẮT ghim camera."));
+            } else {
+                SignAimHandler.startAimLock("gunpowder");
             }
-            // Mặc định /aimsell lock là bật / tắt toggle
-            SignAimHandler.toggleAimLock("gunpowder");
+            return;
+        } else if (sub.startsWith("lock ") || sub.startsWith("toggle ")) {
+            String targetItem = cleaned.substring(cleaned.indexOf(' ')).trim();
+            SignAimHandler.toggleAimLock(targetItem);
             return;
         }
 
@@ -84,23 +90,29 @@ public class CommandAimSell extends CommandBase {
         } else if (sub.equals("up")) {
             SignAimHandler.yOffset += 0.15;
             mc.player.sendMessage(new TextComponentString(TextFormatting.YELLOW + "[AutoAim] Độ lệch Y: " + String.format("%.2f", SignAimHandler.yOffset)));
-        } else if (sub.equals("offset") && args.length >= 2) {
-            try {
-                SignAimHandler.yOffset = Double.parseDouble(args[1]);
-                mc.player.sendMessage(new TextComponentString(TextFormatting.YELLOW + "[AutoAim] Đã đặt độ lệch Y = " + SignAimHandler.yOffset));
-            } catch (Exception e) {
-                mc.player.sendMessage(new TextComponentString(TextFormatting.RED + "Số không hợp lệ!"));
+        } else if (sub.startsWith("offset")) {
+            String[] parts = cleaned.split("\\s+");
+            if (parts.length >= 2) {
+                try {
+                    SignAimHandler.yOffset = Double.parseDouble(parts[1]);
+                    mc.player.sendMessage(new TextComponentString(TextFormatting.YELLOW + "[AutoAim] Đã đặt độ lệch Y = " + SignAimHandler.yOffset));
+                } catch (Exception e) {
+                    mc.player.sendMessage(new TextComponentString(TextFormatting.RED + "Số không hợp lệ!"));
+                }
+            } else {
+                mc.player.sendMessage(new TextComponentString(TextFormatting.YELLOW + "[AutoAim] Độ lệch Y hiện tại: " + String.format("%.2f", SignAimHandler.yOffset)));
             }
         } else if (sub.equals("help")) {
             mc.player.sendMessage(new TextComponentString(TextFormatting.GOLD + "=== LỆNH AUTO-AIM GHIM BẢNG SELL ==="));
-            mc.player.sendMessage(new TextComponentString(TextFormatting.YELLOW + "/aimsell" + TextFormatting.WHITE + " hoặc " + TextFormatting.YELLOW + "/aimsell lock" + TextFormatting.WHITE + " - Bật/Tắt ghim camera"));
-            mc.player.sendMessage(new TextComponentString(TextFormatting.YELLOW + "/aimsell on / off" + TextFormatting.WHITE + " - Bật hoặc Tắt ghim camera"));
-            mc.player.sendMessage(new TextComponentString(TextFormatting.YELLOW + "/aimsell <tên_item>" + TextFormatting.WHITE + " - Ghim bảng item khác (vd: /aimsell tnt)"));
+            mc.player.sendMessage(new TextComponentString(TextFormatting.YELLOW + "/aimsell" + TextFormatting.WHITE + " - Bật/Tắt ghim bảng Thuốc súng (mặc định)"));
+            mc.player.sendMessage(new TextComponentString(TextFormatting.YELLOW + "/aimsell <ID_ITEM>" + TextFormatting.WHITE + " - Ghim bảng theo ID (vd: /aimsell 42 hoặc /aimsell <42> bán Khối sắt)"));
+            mc.player.sendMessage(new TextComponentString(TextFormatting.YELLOW + "/aimsell <Tên_Item>" + TextFormatting.WHITE + " - Ghim bảng theo tên (vd: /aimsell gunpowder, /aimsell iron_block)"));
+            mc.player.sendMessage(new TextComponentString(TextFormatting.YELLOW + "/aimsell off" + TextFormatting.WHITE + " - Tắt ghim camera"));
             mc.player.sendMessage(new TextComponentString(TextFormatting.YELLOW + "/aimsell click" + TextFormatting.WHITE + " - Click phải vào bảng đang ghim"));
             mc.player.sendMessage(new TextComponentString(TextFormatting.YELLOW + "/aimsell debug" + TextFormatting.WHITE + " - Quét danh sách các bảng xung quanh"));
         } else {
-            // Ghim item bất kỳ (nếu không phải các lệnh trên)
-            SignAimHandler.startAimLock(sub);
+            // Ghim item bất kỳ (theo ID như 42, <42> hoặc tên)
+            SignAimHandler.startAimLock(cleaned);
         }
     }
 }

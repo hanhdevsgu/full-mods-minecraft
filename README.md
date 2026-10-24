@@ -33,21 +33,36 @@ Mod hỗ trợ tự động bán tại biển Shop (Sell Sign), tự động l�
 
 ---
 
-## 📖 Hướng Dẫn Cài Đặt
+## ⚡ Lệnh Điều Khiển Auto-Aim Bán Đồ
+- `/aimsell`: Bật / Tắt ghim camera vào bảng Sell **Thuốc súng (Gunpowder [ID: 289])** (Mặc định).
+- `/aimsell <ID_ITEM>` hoặc `/aimsell <Tên>`: Ghim bảng Sell theo ID hoặc tên vật phẩm:
+  - Ví dụ: `/aimsell 42` hoặc `/aimsell <42>` -> Tự động tìm và ghim bảng bán **Khối sắt (Iron Block)**.
+  - Ví dụ: `/aimsell 289` -> Bán **Thuốc súng (Gunpowder)**.
+  - Ví dụ: `/aimsell 338` -> Bán **Mía (Sugar Cane)**.
+  - Hỗ trợ mọi ID trong Minecraft 1.12.2 và tên tiếng Việt/Anh thông dụng (sắt, vàng, kim cương, đá đỏ, than, v.v.).
+- `/aimsell off`: Tắt ghim camera.
+- `/aimsell click`: Click phải vào bảng đang ghim.
+- `/aimsell debug`: Quét và hiển thị thông tin các bảng xung quanh.
+
+---
+
+## 📖 Hướng Dẫn Cài Đặt (Khắc Phục Lỗi Trùng Mod)
+
+> [!NOTE]
+> File `AutoAimSellSign-1.12.2-1.0.jar` là bản **All-In-One (tất cả trong một)** đã tích hợp sẵn toàn bộ MacroRecorder, QuizPeek, AutoRefill và AutoAim. Vì vậy, **tuyệt đối không bỏ file `modid1.0.jar` cũ vào thư mục mods** để tránh bị lỗi trùng mod ID Forge.
 
 1. Nhấn tổ hợp phím `Windows + R`, gõ `%appdata%\.minecraft\mods` và nhấn **Enter**.
-2. Tải file ZIP combo 3 mods ở link bên dưới.
-3. Giải nén file ZIP và copy toàn bộ 3 file `.jar` vào thư mục `mods`:
-   - `modid1.0.jar`
-   - `Impact-4.9.1-1.12.2.jar`
+2. Nếu có file `modid1.0.jar` cũ trong thư mục, hãy xóa bỏ file đó.
+3. Tải file ZIP combo ở link bên dưới, giải nén và copy vào thư mục `mods`:
    - `AutoAimSellSign-1.12.2-1.0.jar`
+   - `Impact-4.9.1-1.12.2.jar`
 4. Khởi động Minecraft phiên bản **Forge 1.12.2** và vào server trải nghiệm.
 
 ---
 
 ## 📥 Tải Xuống Trọn Bộ (Download 1 Click)
 
-Kéo xuống đây và click vào đường dẫn bên dưới để tải trực tiếp file zip trọn bộ 3 mods:
+Kéo xuống đây và click vào đường dẫn bên dưới để tải trực tiếp file zip trọn bộ:
 
-### 👉 [⚡ TẢI VỀ COMBO 3 MODS (Combo-3-Mods-AutoAimSellSign.zip)](https://github.com/hanhdevsgu/full-mods-minecraft/releases/download/aimsigntool-latest/Combo-3-Mods-AutoAimSellSign.zip)
-*(Click 1 cái tải ngay file ZIP chứa đầy đủ: `modid1.0.jar` + `Impact-4.9.1-1.12.2.jar` + `AutoAimSellSign-1.12.2-1.0.jar`)*
+### 👉 [⚡ TẢI VỀ COMBO MODS (Combo-3-Mods-AutoAimSellSign.zip)](https://github.com/hanhdevsgu/full-mods-minecraft/releases/download/aimsigntool-latest/Combo-3-Mods-AutoAimSellSign.zip)
+*(File ZIP sạch chứa đầy đủ `AutoAimSellSign-1.12.2-1.0.jar` + `Impact-4.9.1-1.12.2.jar`, không bị trùng modid, tải về bỏ vào mods là chơi ngay)*

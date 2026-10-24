@@ -14,7 +14,7 @@
   "dependencies": []
 },
 {
-  "modid": "macrorecorder",
+  "modid": "aimmacrorecorder",
   "name": "Macro Recorder",
   "description": "Mod tu dong shift-click va gui lenh chat theo chuoi, tich hop ban mia F4 FastUse.",
   "version": "1.0",

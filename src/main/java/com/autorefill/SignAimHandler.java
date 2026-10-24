@@ -21,6 +21,11 @@ import net.minecraftforge.fml.common.gameevent.TickEvent;
 
 import java.util.ArrayList;
 import java.util.List;
+import net.minecraft.block.Block;
+import net.minecraft.init.Blocks;
+import net.minecraft.item.Item;
+import net.minecraft.item.ItemStack;
+import net.minecraft.util.ResourceLocation;
 
 public class SignAimHandler {
 
@@ -28,8 +33,10 @@ public class SignAimHandler {
     public static boolean isAimLockActive = false;
     public static BlockPos targetSignPos = null;
     public static String lastItemTarget = "gunpowder";
+    public static int targetItemId = 289;
+    public static String targetDisplayName = "Thuốc súng (Gunpowder) [ID: 289]";
+    public static final List<String> targetAliases = new ArrayList<String>();
     public static double yOffset = 0.0;
-
 
     // Vị trí gốc đứng bán (anchor) để chỉ bước lại khi bị đẩy lùi khỏi điểm này
     public static Vec3d anchorPos = null;
@@ -46,10 +53,6 @@ public class SignAimHandler {
     private static double lastCheckZ = 0;
 
     // Cự ly chuẩn tự nhiên:
-    // Đứng bán lý tưởng: ~1.8 block
-    // Cự ly chuẩn tự nhiên:
-    // Đứng bán lý tưởng: ~1.7 block
-    // Cho phép bị đẩy lùi tự nhiên tới: ~2.4 block
     private static final double TRIGGER_WALK_DIST_XZ = 2.4; 
     private static final double IDEAL_SELL_DIST_XZ = 1.7;   
 
@@ -62,14 +65,337 @@ public class SignAimHandler {
         if (target == null) return false;
         String t = target.toLowerCase().trim();
         return t.equals("gunpowder") || t.equals("thuoc sung") || t.equals("thuốc súng") 
-            || t.equals("thuocsung") || t.equals("powder");
+            || t.equals("thuocsung") || t.equals("powder") || t.equals("289");
     }
 
     public static boolean isReedsTarget(String target) {
         if (target == null) return false;
         String t = target.toLowerCase().trim();
         return t.equals("reeds") || t.equals("reed") || t.equals("sugar_cane") 
-            || t.equals("sugarcane") || t.equals("sugar cane") || t.equals("mia") || t.equals("mía");
+            || t.equals("sugarcane") || t.equals("sugar cane") || t.equals("mia") || t.equals("mía") || t.equals("338");
+    }
+
+    public static void resolveTarget(String input) {
+        targetAliases.clear();
+        if (input == null || input.trim().isEmpty()) {
+            input = "gunpowder";
+        }
+        String clean = input.replaceAll("[<>\\[\\]]", "").trim();
+        if (clean.isEmpty()) {
+            clean = "gunpowder";
+        }
+        lastItemTarget = clean.toLowerCase();
+
+        int parsedId = -1;
+        int parsedMeta = -1;
+
+        if (clean.matches("^\\d+(:\\d+)?$")) {
+            if (clean.contains(":")) {
+                String[] parts = clean.split(":");
+                try {
+                    parsedId = Integer.parseInt(parts[0]);
+                    parsedMeta = Integer.parseInt(parts[1]);
+                } catch (Exception ignored) {}
+            } else {
+                try {
+                    parsedId = Integer.parseInt(clean);
+                } catch (Exception ignored) {}
+            }
+        } else {
+            String lower = clean.toLowerCase();
+            if (isGunpowderTarget(lower)) {
+                parsedId = 289;
+            } else if (isReedsTarget(lower)) {
+                parsedId = 338;
+            } else if (lower.equals("sat") || lower.equals("sắt") || lower.equals("khoi sat") || lower.equals("khối sắt") || lower.equals("iron_block") || lower.equals("iron block")) {
+                parsedId = 42;
+            } else if (lower.equals("thoi sat") || lower.equals("thỏi sắt") || lower.equals("iron_ingot") || lower.equals("iron ingot") || lower.equals("iron")) {
+                parsedId = 265;
+            } else if (lower.equals("vang") || lower.equals("vàng") || lower.equals("khoi vang") || lower.equals("khối vàng") || lower.equals("gold_block") || lower.equals("gold block")) {
+                parsedId = 41;
+            } else if (lower.equals("thoi vang") || lower.equals("thỏi vàng") || lower.equals("gold_ingot") || lower.equals("gold ingot") || lower.equals("gold")) {
+                parsedId = 266;
+            } else if (lower.equals("kim cuong") || lower.equals("kim cương") || lower.equals("diamond")) {
+                parsedId = 264;
+            } else if (lower.equals("khoi kim cuong") || lower.equals("khối kim cương") || lower.equals("diamond_block") || lower.equals("diamond block")) {
+                parsedId = 57;
+            } else if (lower.equals("tnt") || lower.equals("thuoc no") || lower.equals("thuốc nổ")) {
+                parsedId = 46;
+            } else {
+                try {
+                    Item regItem = Item.getByNameOrId(clean);
+                    if (regItem != null) {
+                        parsedId = Item.getIdFromItem(regItem);
+                    } else {
+                        Block regBlock = Block.getBlockFromName(clean);
+                        if (regBlock != null) {
+                            parsedId = Block.getIdFromBlock(regBlock);
+                        }
+                    }
+                } catch (Exception ignored) {}
+            }
+        }
+
+        targetItemId = parsedId;
+        String nameResult = clean;
+
+        if (parsedId > 0) {
+            targetAliases.add(String.valueOf(parsedId));
+            if (parsedMeta >= 0) {
+                targetAliases.add(parsedId + ":" + parsedMeta);
+            }
+            try {
+                Item item = Item.getItemById(parsedId);
+                if (item != null) {
+                    if (item.getRegistryName() != null) {
+                        String path = item.getRegistryName().getResourcePath().toLowerCase();
+                        targetAliases.add(path);
+                        targetAliases.add(path.replace('_', ' '));
+                        targetAliases.add(path.replace("_", ""));
+                    }
+                    ItemStack stack = new ItemStack(item, 1, parsedMeta >= 0 ? parsedMeta : 0);
+                    String disp = stack.getDisplayName();
+                    if (disp != null && !disp.isEmpty()) {
+                        nameResult = disp;
+                        targetAliases.add(disp.toLowerCase());
+                    }
+                }
+            } catch (Exception ignored) {}
+
+            try {
+                Block block = Block.getBlockById(parsedId);
+                if (block != null && block != Blocks.AIR) {
+                    if (block.getRegistryName() != null) {
+                        String path = block.getRegistryName().getResourcePath().toLowerCase();
+                        targetAliases.add(path);
+                        targetAliases.add(path.replace('_', ' '));
+                        targetAliases.add(path.replace("_", ""));
+                    }
+                    String loc = block.getLocalizedName();
+                    if (loc != null && !loc.isEmpty()) {
+                        targetAliases.add(loc.toLowerCase());
+                    }
+                }
+            } catch (Exception ignored) {}
+
+            populateCommonAliases(parsedId);
+        }
+
+        targetAliases.add(clean.toLowerCase());
+        targetAliases.add(clean.toLowerCase().replace('_', ' '));
+
+        if (parsedId == 42) {
+            targetDisplayName = "Khối sắt (Iron Block) [ID: 42]";
+        } else if (parsedId == 289) {
+            targetDisplayName = "Thuốc súng (Gunpowder) [ID: 289]";
+        } else if (parsedId == 338) {
+            targetDisplayName = "Mía (Sugar Cane) [ID: 338]";
+        } else if (parsedId == 265) {
+            targetDisplayName = "Thỏi sắt (Iron Ingot) [ID: 265]";
+        } else if (parsedId == 41) {
+            targetDisplayName = "Khối vàng (Gold Block) [ID: 41]";
+        } else if (parsedId == 266) {
+            targetDisplayName = "Thỏi vàng (Gold Ingot) [ID: 266]";
+        } else if (parsedId == 57) {
+            targetDisplayName = "Khối kim cương (Diamond Block) [ID: 57]";
+        } else if (parsedId == 264) {
+            targetDisplayName = "Kim cương (Diamond) [ID: 264]";
+        } else if (parsedId == 133) {
+            targetDisplayName = "Khối ngọc lục bảo (Emerald Block) [ID: 133]";
+        } else if (parsedId == 388) {
+            targetDisplayName = "Ngọc lục bảo (Emerald) [ID: 388]";
+        } else if (parsedId == 152) {
+            targetDisplayName = "Khối đá đỏ (Redstone Block) [ID: 152]";
+        } else if (parsedId == 331) {
+            targetDisplayName = "Đá đỏ (Redstone) [ID: 331]";
+        } else if (parsedId == 173) {
+            targetDisplayName = "Khối than (Coal Block) [ID: 173]";
+        } else if (parsedId == 263) {
+            targetDisplayName = "Than (Coal) [ID: 263]";
+        } else if (parsedId == 46) {
+            targetDisplayName = "Thuốc nổ (TNT) [ID: 46]";
+        } else if (parsedId > 0) {
+            targetDisplayName = nameResult + " [ID: " + parsedId + "]";
+        } else {
+            targetDisplayName = clean.toUpperCase();
+        }
+    }
+
+    private static void populateCommonAliases(int id) {
+        switch (id) {
+            case 42:
+                targetAliases.add("iron_block");
+                targetAliases.add("iron block");
+                targetAliases.add("ironblock");
+                targetAliases.add("khối sắt");
+                targetAliases.add("khoi sat");
+                targetAliases.add("sắt khối");
+                targetAliases.add("sat khoi");
+                targetAliases.add("cục sắt");
+                targetAliases.add("cuc sat");
+                targetAliases.add("block of iron");
+                targetAliases.add("iron");
+                break;
+            case 265:
+                targetAliases.add("iron_ingot");
+                targetAliases.add("iron ingot");
+                targetAliases.add("thỏi sắt");
+                targetAliases.add("thoi sat");
+                targetAliases.add("sắt thỏi");
+                targetAliases.add("sat thoi");
+                targetAliases.add("iron");
+                break;
+            case 41:
+                targetAliases.add("gold_block");
+                targetAliases.add("gold block");
+                targetAliases.add("khối vàng");
+                targetAliases.add("khoi vang");
+                targetAliases.add("vàng khối");
+                targetAliases.add("vang khoi");
+                targetAliases.add("gold");
+                break;
+            case 266:
+                targetAliases.add("gold_ingot");
+                targetAliases.add("gold ingot");
+                targetAliases.add("thỏi vàng");
+                targetAliases.add("thoi vang");
+                targetAliases.add("gold");
+                break;
+            case 57:
+                targetAliases.add("diamond_block");
+                targetAliases.add("diamond block");
+                targetAliases.add("khối kim cương");
+                targetAliases.add("khoi kim cuong");
+                targetAliases.add("diamond");
+                break;
+            case 264:
+                targetAliases.add("diamond");
+                targetAliases.add("kim cương");
+                targetAliases.add("kim cuong");
+                targetAliases.add("viên kim cương");
+                targetAliases.add("vien kim cuong");
+                break;
+            case 133:
+                targetAliases.add("emerald_block");
+                targetAliases.add("emerald block");
+                targetAliases.add("khối ngọc lục bảo");
+                targetAliases.add("khoi ngoc luc bao");
+                targetAliases.add("emerald");
+                break;
+            case 388:
+                targetAliases.add("emerald");
+                targetAliases.add("ngọc lục bảo");
+                targetAliases.add("ngoc luc bao");
+                break;
+            case 152:
+                targetAliases.add("redstone_block");
+                targetAliases.add("redstone block");
+                targetAliases.add("khối đá đỏ");
+                targetAliases.add("khoi da do");
+                targetAliases.add("redstone");
+                break;
+            case 331:
+                targetAliases.add("redstone");
+                targetAliases.add("đá đỏ");
+                targetAliases.add("da do");
+                break;
+            case 173:
+                targetAliases.add("coal_block");
+                targetAliases.add("coal block");
+                targetAliases.add("khối than");
+                targetAliases.add("khoi than");
+                targetAliases.add("coal");
+                break;
+            case 263:
+                targetAliases.add("coal");
+                targetAliases.add("than");
+                targetAliases.add("than đá");
+                targetAliases.add("than da");
+                break;
+            case 289:
+                targetAliases.add("gunpowder");
+                targetAliases.add("thuốc súng");
+                targetAliases.add("thuoc sung");
+                targetAliases.add("thuocsung");
+                targetAliases.add("powder");
+                break;
+            case 338:
+                targetAliases.add("reeds");
+                targetAliases.add("reed");
+                targetAliases.add("sugar_cane");
+                targetAliases.add("sugar cane");
+                targetAliases.add("sugarcane");
+                targetAliases.add("mía");
+                targetAliases.add("mia");
+                break;
+            case 46:
+                targetAliases.add("tnt");
+                targetAliases.add("thuốc nổ");
+                targetAliases.add("thuoc no");
+                break;
+            case 81:
+                targetAliases.add("cactus");
+                targetAliases.add("xương rồng");
+                targetAliases.add("xuong rong");
+                break;
+            case 86:
+                targetAliases.add("pumpkin");
+                targetAliases.add("bí ngô");
+                targetAliases.add("bi ngo");
+                break;
+            case 103:
+            case 360:
+                targetAliases.add("melon");
+                targetAliases.add("dưa hấu");
+                targetAliases.add("dua hau");
+                targetAliases.add("miếng dưa hấu");
+                targetAliases.add("mieng dua hau");
+                break;
+            case 372:
+                targetAliases.add("nether_wart");
+                targetAliases.add("nether wart");
+                targetAliases.add("bướu địa ngục");
+                targetAliases.add("buou dia nguc");
+                break;
+            case 369:
+                targetAliases.add("blaze_rod");
+                targetAliases.add("blaze rod");
+                targetAliases.add("que quỷ lửa");
+                targetAliases.add("que quy lua");
+                break;
+            case 352:
+                targetAliases.add("bone");
+                targetAliases.add("xương");
+                targetAliases.add("xuong");
+                break;
+            case 368:
+                targetAliases.add("ender_pearl");
+                targetAliases.add("ender pearl");
+                targetAliases.add("ngọc ender");
+                targetAliases.add("ngoc ender");
+                break;
+            case 341:
+                targetAliases.add("slimeball");
+                targetAliases.add("slime ball");
+                targetAliases.add("bóng slime");
+                targetAliases.add("bong slime");
+                break;
+            case 391:
+                targetAliases.add("carrot");
+                targetAliases.add("cà rốt");
+                targetAliases.add("ca rot");
+                break;
+            case 392:
+                targetAliases.add("potato");
+                targetAliases.add("khoai tây");
+                targetAliases.add("khoai tay");
+                break;
+            case 296:
+                targetAliases.add("wheat");
+                targetAliases.add("lúa mì");
+                targetAliases.add("lua mi");
+                break;
+        }
     }
 
     /**
@@ -114,7 +440,9 @@ public class SignAimHandler {
         for (int i = 0; i < 4; i++) {
             String raw = cleanText(sign.signText[i].getUnformattedText()).toLowerCase();
             sb.append(" ").append(raw);
-            if (raw.contains("sell") || raw.contains("[sell]") || raw.contains("bán") || raw.contains("[bán]") || raw.contains("s ") || raw.startsWith("s ")) {
+            if (raw.contains("sell") || raw.contains("[sell]") || raw.contains("bán") || raw.contains("[bán]") 
+                || raw.startsWith("s ") || raw.contains(" s ") || raw.endsWith(" s") || raw.equals("s")
+                || raw.contains("s:") || raw.contains(":s")) {
                 hasSell = true;
             }
         }
@@ -124,16 +452,26 @@ public class SignAimHandler {
             return true;
         }
 
-        String combined = sb.toString();
-        if (isGunpowderTarget(itemTarget)) {
-            return combined.contains("gunpowder") || combined.contains("thuoc sung") 
-                || combined.contains("thuốc súng") || combined.contains("thuocsung") || combined.contains("powder");
-        } else if (isReedsTarget(itemTarget)) {
-            return combined.contains("reeds") || combined.contains("reed") || combined.contains("sugar")
-                || combined.contains("cane") || combined.contains("mia") || combined.contains("mía");
-        } else {
-            return combined.contains(itemTarget.toLowerCase());
+        String cleanedTarget = itemTarget.replaceAll("[<>\\[\\]]", "").trim();
+        if (targetAliases.isEmpty() || !lastItemTarget.equalsIgnoreCase(cleanedTarget)) {
+            resolveTarget(cleanedTarget);
         }
+
+        String combined = sb.toString();
+        for (String alias : targetAliases) {
+            if (alias == null || alias.trim().isEmpty()) continue;
+            String a = alias.toLowerCase().trim();
+            if (a.matches("^\\d+$")) {
+                if (combined.matches(".*(^|[^0-9$])" + a + "(:\\d+)?([^0-9]|$).*")) {
+                    return true;
+                }
+            } else {
+                if (combined.contains(a)) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     public static boolean isSignVisible(EntityPlayerSP player, BlockPos pos) {
@@ -164,8 +502,7 @@ public class SignAimHandler {
         if (itemTarget == null || itemTarget.trim().isEmpty()) {
             itemTarget = "gunpowder";
         }
-        itemTarget = itemTarget.trim().toLowerCase();
-        lastItemTarget = itemTarget;
+        resolveTarget(itemTarget);
 
         List<TileEntitySign> matchedSigns = new ArrayList<TileEntitySign>();
         double maxDistSq = 256.0; // 16 block
@@ -176,14 +513,14 @@ public class SignAimHandler {
                 double distSq = player.getDistanceSq(sign.getPos());
                 if (distSq > maxDistSq) continue;
 
-                if (isMatchingSellSign(sign, itemTarget)) {
+                if (isMatchingSellSign(sign, lastItemTarget)) {
                     matchedSigns.add(sign);
                 }
             }
         }
 
         // Nếu không tìm thấy bảng khớp từ khóa và itemTarget là "any" thì mới tìm bất kỳ bảng sell nào
-        if (matchedSigns.isEmpty() && (itemTarget.equals("any") || itemTarget.equals("all"))) {
+        if (matchedSigns.isEmpty() && (lastItemTarget.equals("any") || lastItemTarget.equals("all"))) {
             for (TileEntity te : mc.world.loadedTileEntityList) {
                 if (te instanceof TileEntitySign) {
                     TileEntitySign sign = (TileEntitySign) te;
@@ -198,9 +535,8 @@ public class SignAimHandler {
         }
 
         if (matchedSigns.isEmpty()) {
-            String name = isGunpowderTarget(itemTarget) ? "Thuốc súng (Gunpowder)" : (isReedsTarget(itemTarget) ? "Mía (Sugar Cane)" : itemTarget);
             player.sendMessage(new TextComponentString(TextFormatting.RED + 
-                "[AutoAim] Không tìm thấy bảng Sell cho '" + name + "' trong khu vực xung quanh!"));
+                "[AutoAim] Không tìm thấy bảng Sell cho '" + targetDisplayName + "' trong khu vực xung quanh!"));
             return false;
         }
 
@@ -301,7 +637,7 @@ public class SignAimHandler {
         if (itemTarget == null || itemTarget.trim().isEmpty()) {
             itemTarget = "gunpowder";
         }
-        lastItemTarget = itemTarget.trim().toLowerCase();
+        resolveTarget(itemTarget);
 
         boolean found = findTargetSign(lastItemTarget);
         if (found) {
@@ -322,9 +658,8 @@ public class SignAimHandler {
 
             // Tắt sprint ngay khi bật để giữ thanh feed
             mc.player.setSprinting(false);
-            String displayName = isGunpowderTarget(lastItemTarget) ? "THUỐC SÚNG (Gunpowder)" : lastItemTarget.toUpperCase();
             mc.player.sendMessage(new TextComponentString(TextFormatting.GREEN + 
-                "[AutoAim] ĐÃ BẬT GHIM BẢNG [Sell] " + displayName));
+                "[AutoAim] ĐÃ BẬT GHIM BẢNG [Sell] " + targetDisplayName));
             mc.player.sendMessage(new TextComponentString(TextFormatting.AQUA + 
                 "-> Camera ghim vào bảng mượt như người thật. Bạn thoải mái đè chuột phải để bán đồ!"));
             mc.player.sendMessage(new TextComponentString(TextFormatting.GOLD + 

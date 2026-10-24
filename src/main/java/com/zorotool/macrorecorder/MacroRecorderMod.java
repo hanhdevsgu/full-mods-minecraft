@@ -61,7 +61,7 @@ import java.util.List;
 
 @Mod(modid = MacroRecorderMod.MODID, version = MacroRecorderMod.VERSION)
 public class MacroRecorderMod {
-    public static final String MODID = "macrorecorder";
+    public static final String MODID = "aimmacrorecorder";
     public static final String VERSION = "1.0";
 
     // An toan: timeout cho GUI mo (tick), so buoc xu ly toi da gop trong 1 tick,
@@ -1330,7 +1330,7 @@ public class MacroRecorderMod {
                         executeClientCommand(afterShopLookCommand);
                     }
                     int farmId = ConfigHelper.getFarmItemId();
-                    String target = (farmId == 338) ? "reeds" : "gunpowder";
+                    String target = (farmId == 338) ? "reeds" : (farmId == 289 ? "gunpowder" : String.valueOf(farmId));
                     SignAimHandler.startAimLock(target);
                     System.out.println("[MacroRecorder] (F4) Đã thoát góc chết về lại sát quầy bán đồ! Tiếp tục bán...");
                     notSellingTimer = 0;
@@ -1502,6 +1502,9 @@ public class MacroRecorderMod {
             return true;
         }
         if (SignAimHandler.isReedsTarget(SignAimHandler.lastItemTarget) && stack.getItem() == Items.REEDS) {
+            return true;
+        }
+        if (SignAimHandler.targetItemId > 0 && Item.getIdFromItem(stack.getItem()) == SignAimHandler.targetItemId) {
             return true;
         }
         return false;
@@ -2896,7 +2899,7 @@ public class MacroRecorderMod {
         // KÍCH HOẠT AUTO-AIM:
         try {
             int farmId = ConfigHelper.getFarmItemId();
-            String target = (farmId == 338) ? "reeds" : "gunpowder";
+            String target = (farmId == 338) ? "reeds" : (farmId == 289 ? "gunpowder" : String.valueOf(farmId));
             SignAimHandler.startAimLock(target);
             System.out.println("[MacroRecorder] >>> (F4) Tự động kích hoạt AutoAim ghim bảng Sell (" + target + ")");
         } catch (Exception e) {
@@ -3013,7 +3016,7 @@ public class MacroRecorderMod {
         if (sellMacroRunning) {
             try {
                 int farmId = ConfigHelper.getFarmItemId();
-                String target = (farmId == 338) ? "reeds" : "gunpowder";
+                String target = (farmId == 338) ? "reeds" : (farmId == 289 ? "gunpowder" : String.valueOf(farmId));
                 SignAimHandler.startAimLock(target);
             } catch (Exception ignored) {
             }

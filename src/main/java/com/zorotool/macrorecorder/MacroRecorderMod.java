@@ -253,6 +253,7 @@ public class MacroRecorderMod {
     private int sellClickCooldown = 0; // Cooldown giữa các lần click bán (1 click / 2 ticks = 10 clicks/s an toàn
                                        // chống AntiCheat)
     private int notSellingTimer = 0; // Đếm số tick không ngắm được bảng khi bán để tự #goto quay lại nếu bị đẩy xa
+    private int pushAwayTicks = 0; // Đếm số tick bị người khác đẩy lệch khỏi quầy để phản ứng ngay tức thì
     private int homeYStableTicks = 0; // Đếm số tick Y ổn định khác 151 để đảm bảo đã về nhà và load chunk chặt chẽ
     private SellState stateBeforeRecovery = SellState.SELLING_1E_ITEMS;
 
@@ -1190,22 +1191,41 @@ public class MacroRecorderMod {
                     releaseUseItemKey();
                 }
 
-                // Nếu tiền vẫn đang được cộng gần đây (< 3.0s):
-                // BÁN VẪN ĐANG DIỄN RA TỐT -> TUYỆT ĐỐI KHÔNG DỪNG LẠI!
-                if (System.currentTimeMillis() - lastSellMoneyTime < 3000L) {
+                // PHÁT HIỆN BỊ ĐẨY XA TỨC THÌ (INSTANT PUSH RECOVERY):
+                if (isPushedAwayFromCounterOrSign()) {
+                    pushAwayTicks++;
+                    // Bị đẩy lệch liên tục 4 ticks (0.2s) -> GỬI #GOTO BƯỚC LẠI QUẦY BÁN NGAY LẬP TỨC:
+                    if (pushAwayTicks >= 4) {
+                        System.out.println("[MacroRecorder] (F4) Phát hiện bị đẩy lệch khỏi quầy/ngoài tầm bán! Gửi " + afterShopGotoCommand + " bước lại ngay...");
+                        releaseUseItemKey();
+                        executeClientCommand(afterShopGotoCommand);
+                        stateBeforeRecovery = SellState.SELLING_1E_ITEMS;
+                        sellState = SellState.RECOVERING_TO_COUNTER;
+                        sellWaitTimer = 0;
+                        pushAwayTicks = 0;
+                        notSellingTimer = 0;
+                        return false;
+                    }
+                } else {
+                    pushAwayTicks = 0;
+                }
+
+                // Nếu tiền vẫn đang được cộng gần đây (< 2.0s):
+                if (System.currentTimeMillis() - lastSellMoneyTime < 2000L) {
                     notSellingTimer = 0;
                 } else {
                     notSellingTimer++;
                 }
 
-                // Chỉ khi quá 80 ticks (~4 giây) liên tục HOÀN TOÀN KHÔNG CỘNG TIỀN VÀ MẤT TẦM BÁN:
-                if (notSellingTimer >= 80) {
-                    System.out.println("[MacroRecorder] (F4) Quá 4s không thấy server cộng tiền! Gửi " + afterShopGotoCommand + " để Baritone bước lại quầy bán...");
+                // Nếu quá 30 ticks (1.5s) không cộng tiền -> bước lại quầy ngay:
+                if (notSellingTimer >= 30) {
+                    System.out.println("[MacroRecorder] (F4) Quá 1.5s không thấy server cộng tiền! Gửi " + afterShopGotoCommand + " để Baritone bước lại quầy bán...");
                     releaseUseItemKey();
                     executeClientCommand(afterShopGotoCommand);
                     stateBeforeRecovery = SellState.SELLING_1E_ITEMS;
                     sellState = SellState.RECOVERING_TO_COUNTER;
                     sellWaitTimer = 0;
+                    pushAwayTicks = 0;
                     notSellingTimer = 0;
                     lastSellMoneyTime = System.currentTimeMillis();
                     return false;
@@ -1337,23 +1357,42 @@ public class MacroRecorderMod {
                     releaseUseItemKey();
                 }
 
-                // Nếu tiền vẫn đang được cộng gần đây (< 3.0s):
-                // BÁN VẪN ĐANG DIỄN RA TỐT -> TUYỆT ĐỐI KHÔNG DỪNG LẠI!
-                if (System.currentTimeMillis() - lastSellMoneyTime < 3000L) {
+                // PHÁT HIỆN BỊ ĐẨY XA TỨC THÌ (INSTANT PUSH RECOVERY):
+                if (isPushedAwayFromCounterOrSign()) {
+                    pushAwayTicks++;
+                    // Bị đẩy lệch liên tục 4 ticks (0.2s) -> GỬI #GOTO BƯỚC LẠI QUẦY BÁN NGAY LẬP TỨC:
+                    if (pushAwayTicks >= 4) {
+                        System.out.println("[MacroRecorder] (F4) Phát hiện bị đẩy lệch khỏi quầy/ngoài tầm bán! Gửi " + afterShopGotoCommand + " bước lại ngay...");
+                        releaseUseItemKey();
+                        executeClientCommand(afterShopGotoCommand);
+                        stateBeforeRecovery = SellState.SELLING_ITEMS;
+                        sellState = SellState.RECOVERING_TO_COUNTER;
+                        sellWaitTimer = 0;
+                        pushAwayTicks = 0;
+                        notSellingTimer = 0;
+                        return false;
+                    }
+                } else {
+                    pushAwayTicks = 0;
+                }
+
+                // Nếu tiền vẫn đang được cộng gần đây (< 2.0s):
+                if (System.currentTimeMillis() - lastSellMoneyTime < 2000L) {
                     notSellingTimer = 0;
                 } else {
                     notSellingTimer++;
                 }
 
-                // Chỉ khi quá 80 ticks (~4 giây) liên tục HOÀN TOÀN KHÔNG CỘNG TIỀN VÀ MẤT TẦM BÁN:
-                if (notSellingTimer >= 80) {
-                    System.out.println("[MacroRecorder] (F4) Sell không cộng tiền hoặc bị che khuất tầm nhìn ("
+                // Nếu quá 30 ticks (1.5s) không cộng tiền -> bước lại quầy ngay:
+                if (notSellingTimer >= 30) {
+                    System.out.println("[MacroRecorder] (F4) Sell không cộng tiền ("
                             + notSellingTimer + " ticks)! Gửi " + afterShopGotoCommand + " để Baritone bước lại quầy bán...");
                     releaseUseItemKey();
                     executeClientCommand(afterShopGotoCommand);
                     stateBeforeRecovery = SellState.SELLING_ITEMS;
                     sellState = SellState.RECOVERING_TO_COUNTER;
                     sellWaitTimer = 0;
+                    pushAwayTicks = 0;
                     notSellingTimer = 0;
                     lastSellMoneyTime = System.currentTimeMillis();
                     return false;
@@ -1371,11 +1410,23 @@ public class MacroRecorderMod {
                     double ddz = mc.player.posZ - (counterTarget.getZ() + 0.5);
                     distSqToCenter = ddx * ddx + ddz * ddz;
                 }
-                boolean atCenter = distSqToCenter <= 0.64; // Cự ly sát tâm quầy <= 0.8 block
-                boolean canAimAgain = SignAimHandler.isAimingAtSign(mc) && !SignAimHandler.isLookingAtAnyBuySign(mc);
+                boolean atCenter = distSqToCenter <= 0.81; // Cự ly sát tâm quầy <= 0.9 block
 
-                // Đợi ít nhất 8 ticks để Baritone kịp xuất phát di chuyển thoát góc chết / người che
-                if (sellWaitTimer >= 8 && (atCenter || canAimAgain || sellWaitTimer >= 60)) {
+                // Kiểm tra khoảng cách tới bảng bán:
+                boolean inReachOfSign = true;
+                if (SignAimHandler.targetSignPos != null && mc.player != null) {
+                    double eyeX = mc.player.posX;
+                    double eyeY = mc.player.posY + mc.player.getEyeHeight();
+                    double eyeZ = mc.player.posZ;
+                    double sx = (SignAimHandler.targetSignPos.getX() + 0.5) - eyeX;
+                    double sy = (SignAimHandler.targetSignPos.getY() + 0.5) - eyeY;
+                    double sz = (SignAimHandler.targetSignPos.getZ() + 0.5) - eyeZ;
+                    inReachOfSign = (sx * sx + sy * sy + sz * sz) <= 15.21; // <= 3.9 block
+                }
+
+                // TUYỆT ĐỐI KHÔNG DỪNG SỚM GIỮA ĐƯỜNG!
+                // Chỉ dừng khi ĐÃ VỀ TẬN NƠI (atCenter && inReachOfSign) hoặc sau tối đa 60 ticks (3s):
+                if (sellWaitTimer >= 6 && ((atCenter && inReachOfSign) || sellWaitTimer >= 60)) {
                     executeClientCommand("#stop");
                     if (mc.gameSettings != null) {
                         KeyBinding.setKeyBindState(mc.gameSettings.keyBindForward.getKeyCode(), false);
@@ -1390,9 +1441,10 @@ public class MacroRecorderMod {
                     }
                     String target = SignAimHandler.getEffectiveTarget();
                     SignAimHandler.startAimLock(target);
-                    System.out.println("[MacroRecorder] (F4) Đã thoát góc chết về lại sát quầy bán đồ! Tiếp tục bán...");
+                    System.out.println("[MacroRecorder] (F4) Đã bước về lại đúng vị trí quầy bán! Tiếp tục bán...");
                     notSellingTimer = 0;
                     sellWaitTimer = 0;
+                    pushAwayTicks = 0;
                     lastSellMoneyTime = System.currentTimeMillis();
                     sellState = stateBeforeRecovery;
                 }
@@ -1648,16 +1700,37 @@ public class MacroRecorderMod {
         return horizontalMatch;
     }
 
-    private boolean isPushedFarFromCounter() {
+    private boolean isPushedAwayFromCounterOrSign() {
         if (mc == null || mc.player == null)
             return false;
+
+        // 1. Kiểm tra cự ly tới bảng bán (tầm reach click của người chơi trong Minecraft là 4.5m)
+        BlockPos signPos = SignAimHandler.targetSignPos;
+        if (signPos != null) {
+            double eyeX = mc.player.posX;
+            double eyeY = mc.player.posY + mc.player.getEyeHeight();
+            double eyeZ = mc.player.posZ;
+            double dx = (signPos.getX() + 0.5) - eyeX;
+            double dy = (signPos.getY() + 0.5) - eyeY;
+            double dz = (signPos.getZ() + 0.5) - eyeZ;
+            double distSqToSign = dx * dx + dy * dy + dz * dz;
+            // Nếu khoảng cách mắt tới bảng > 3.9m (sq > 15.21) -> Đã bị đẩy ngoài tầm với:
+            if (distSqToSign > 15.21) {
+                return true;
+            }
+        }
+
+        // 2. Kiểm tra cự ly tới vị trí đứng quầy chuẩn (afterShopGotoCommand)
         BlockPos target = parseGotoPos(afterShopGotoCommand);
-        if (target == null)
-            return false;
-        double dx = mc.player.posX - (target.getX() + 0.5);
-        double dz = mc.player.posZ - (target.getZ() + 0.5);
-        // Chỉ khi bị đẩy xa khỏi quầy bán quá 3.0 block (dx*dx + dz*dz > 9.0)
-        return (dx * dx + dz * dz) > 9.0;
+        if (target != null) {
+            double dx = mc.player.posX - (target.getX() + 0.5);
+            double dz = mc.player.posZ - (target.getZ() + 0.5);
+            // Nếu bị đẩy lệch khỏi tâm quầy > 1.0 block (sq > 1.0) -> Phát hiện ngay:
+            if ((dx * dx + dz * dz) > 1.0) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private boolean isInventoryFull() {

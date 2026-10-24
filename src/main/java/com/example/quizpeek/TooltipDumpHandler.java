@@ -91,8 +91,8 @@ public class TooltipDumpHandler {
             return;
         }
 
-        // CHỈ chạy khi đang ở Shop (Y == 150)
-        if (mc == null || mc.player == null || Math.abs(mc.player.posY - 150.0) >= 2.0) {
+        // CHỈ chạy khi đang ở Shop (Y xấp xỉ 150 - 151)
+        if (mc == null || mc.player == null || (Math.abs(mc.player.posY - 150.0) > 4.0 && Math.abs(mc.player.posY - 151.0) > 4.0)) {
             deactivate();
             return;
         }
@@ -107,6 +107,10 @@ public class TooltipDumpHandler {
                 autoAnswerRetryTicksLeft = AUTO_ANSWER_MAX_RETRY_TICKS;
                 LOGGER.info("QuizPeek: GUI NPC shop mới -> delay {} tick ({}s), reset retry.",
                         autoAnswerDelayTicks, TimingConfig.getInstance().getDelaySeconds());
+                if (mc.player != null) {
+                    mc.player.sendMessage(new TextComponentString(TextFormatting.YELLOW + 
+                        "[QuizPeek] Đã mở GUI NPC! Đang quét đáp án (chờ " + TimingConfig.getInstance().getDelaySeconds() + "s)..."));
+                }
             } else if (!autoAnswerDone && autoAnswerDelayTicks > 0) {
                 autoAnswerDelayTicks--;
                 if (autoAnswerDelayTicks == 0) attemptAutoClickWithRetry(mc);
@@ -126,6 +130,9 @@ public class TooltipDumpHandler {
         if (success) {
             autoAnswerDone = true;
             LOGGER.info("QuizPeek: đã click đáp án đúng.");
+            if (mc.player != null) {
+                mc.player.sendMessage(new TextComponentString(TextFormatting.GREEN + "[QuizPeek] ✔ ĐÃ CLICK ĐÁP ÁN ĐÚNG!"));
+            }
             deactivate();
             return;
         }
@@ -137,7 +144,7 @@ public class TooltipDumpHandler {
             if (mc.player != null) {
                 mc.player.sendMessage(new TextComponentString(
                         TextFormatting.RED + "[QuizPeek] Đã thử " + AUTO_ANSWER_MAX_RETRY_TICKS +
-                                " tick nhưng vẫn không click được đáp án đúng."));
+                                " tick nhưng vẫn không click được đáp án đúng (kiểm tra quizpeek_answers.json)."));
             }
         }
     }
@@ -186,19 +193,54 @@ public class TooltipDumpHandler {
         return true;
     }
 
+    private List<Slot> findInteractiveAnswerSlots(Container container) {
+        List<Slot> slots = new ArrayList<>();
+        // Ưu tiên slot chuẩn 21, 22, 23
+        boolean defaultSlotsValid = true;
+        for (int sn : TARGET_SLOTS) {
+            if (sn < 0 || sn >= container.inventorySlots.size()) {
+                defaultSlotsValid = false;
+                break;
+            }
+            Slot s = container.getSlot(sn);
+            if (s == null || !s.getHasStack() || s.getStack().isEmpty()) {
+                defaultSlotsValid = false;
+                break;
+            }
+            slots.add(s);
+        }
+        if (defaultSlotsValid && slots.size() == 3) {
+            return slots;
+        }
+
+        // Nếu slot 21, 22, 23 không có đồ -> Quét tất cả các slot có item trong phần kho trên (upper chest)
+        slots.clear();
+        int maxSlotsToCheck = Math.min(54, container.inventorySlots.size());
+        if (container instanceof net.minecraft.inventory.ContainerChest) {
+            maxSlotsToCheck = ((net.minecraft.inventory.ContainerChest) container).getLowerChestInventory().getSizeInventory();
+        }
+        for (int i = 0; i < maxSlotsToCheck; i++) {
+            Slot s = container.getSlot(i);
+            if (s != null && s.getHasStack() && !s.getStack().isEmpty()) {
+                slots.add(s);
+            }
+        }
+        return slots;
+    }
+
     private List<String> getTargetSlotTooltipsCleaned() {
         Minecraft mc = Minecraft.getMinecraft();
         if (mc.player == null || !(mc.currentScreen instanceof GuiContainer)) return null;
         Container container = mc.player.openContainer;
         if (container == null) return null;
 
+        List<Slot> answerSlots = findInteractiveAnswerSlots(container);
+        if (answerSlots.isEmpty()) return null;
+
         List<String> result = new ArrayList<>();
-        for (int slotNumber : TARGET_SLOTS) {
-            if (slotNumber < 0 || slotNumber >= container.inventorySlots.size()) return null;
-            Slot slot = container.getSlot(slotNumber);
-            if (slot == null) return null;
+        for (Slot slot : answerSlots) {
             ItemStack stack = slot.getStack();
-            if (stack.isEmpty()) return null;
+            if (stack.isEmpty()) continue;
             List<String> tooltip = stack.getTooltip(mc.player, ITooltipFlag.TooltipFlags.NORMAL);
             String full = String.join("", tooltip);
             String cleaned = TextFormatting.getTextWithoutFormattingCodes(full).trim();
@@ -214,10 +256,9 @@ public class TooltipDumpHandler {
         if (container == null) return false;
 
         String cleanAnswer = removeAccent(correctAnswer).toLowerCase().trim();
-        for (int slotNumber : TARGET_SLOTS) {
-            if (slotNumber < 0 || slotNumber >= container.inventorySlots.size()) continue;
-            Slot slot = container.getSlot(slotNumber);
-            if (slot == null) continue;
+        List<Slot> answerSlots = findInteractiveAnswerSlots(container);
+
+        for (Slot slot : answerSlots) {
             ItemStack stack = slot.getStack();
             if (stack.isEmpty()) continue;
 
@@ -227,8 +268,8 @@ public class TooltipDumpHandler {
                     .toLowerCase().trim();
             if (cleanTooltip.contains(cleanAnswer)) {
                 try {
-                    mc.playerController.windowClick(container.windowId, slotNumber, 0, ClickType.PICKUP, mc.player);
-                    LOGGER.info("QuizPeek: clicked slot {} for correct answer '{}'", slotNumber, correctAnswer);
+                    mc.playerController.windowClick(container.windowId, slot.slotNumber, 0, ClickType.PICKUP, mc.player);
+                    LOGGER.info("QuizPeek: clicked slot {} for correct answer '{}'", slot.slotNumber, correctAnswer);
                     return true;
                 } catch (Exception e) {
                     LOGGER.error("QuizPeek click error", e);

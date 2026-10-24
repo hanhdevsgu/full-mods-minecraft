@@ -730,10 +730,19 @@ public class SignAimHandler {
      * Tìm bảng phù hợp gần nhất khi khởi động ghim
      */
     public static boolean findTargetSign(String itemTarget) {
+        return findTargetSign(itemTarget, false);
+    }
+
+    public static boolean findTargetSign(String itemTarget, boolean verbose) {
         Minecraft mc = Minecraft.getMinecraft();
         if (mc.world == null || mc.player == null) return false;
 
         EntityPlayerSP player = mc.player;
+        // Chỉ quét tìm bảng Sell khi người chơi ở quầy Shop (Y xấp xỉ 151)
+        if (Math.abs(player.posY - 151.0) > 4.0) {
+            return false;
+        }
+
         if (itemTarget == null || itemTarget.trim().isEmpty()) {
             itemTarget = "gunpowder";
         }
@@ -770,8 +779,10 @@ public class SignAimHandler {
         }
 
         if (matchedSigns.isEmpty()) {
-            player.sendMessage(new TextComponentString(TextFormatting.RED + 
-                "[AutoAim] Không tìm thấy bảng Sell cho '" + targetDisplayName + "' trong khu vực xung quanh!"));
+            if (verbose) {
+                player.sendMessage(new TextComponentString(TextFormatting.RED + 
+                    "[AutoAim] Không tìm thấy bảng Sell cho '" + targetDisplayName + "' trong khu vực xung quanh!"));
+            }
             return false;
         }
 
@@ -896,7 +907,7 @@ public class SignAimHandler {
             stuckTicks = 0;
             isWarmupActive = false;
 
-            boolean found = findTargetSign(lastItemTarget);
+            boolean found = findTargetSign(lastItemTarget, verbose);
             if (found) {
                 if (mc.player != null) {
                     anchorPos = new Vec3d(mc.player.posX, mc.player.posY, mc.player.posZ);
@@ -968,6 +979,8 @@ public class SignAimHandler {
      */
     private static void updateCameraSmooth(Minecraft mc, float partialTicks) {
         if (!isAimLockActive || targetSignPos == null || mc.player == null || mc.world == null) return;
+        // Chỉ hoạt động khi người chơi ở khu vực Shop (Y xấp xỉ 151)
+        if (Math.abs(mc.player.posY - 151.0) > 4.0) return;
         // Nếu đang mở menu màn hình (ESC, chat, hòm đồ) -> không can thiệp góc nhìn
         if (mc.currentScreen != null) return;
 
@@ -1186,7 +1199,8 @@ public class SignAimHandler {
         if (!isAimLockActive || targetSignPos == null) return;
 
         Minecraft mc = Minecraft.getMinecraft();
-        if (mc.currentScreen != null) return; // Không can thiệp nếu đang mở GUI/Chat
+        if (mc.player == null || mc.currentScreen != null) return; // Không can thiệp nếu đang mở GUI/Chat
+        if (Math.abs(mc.player.posY - 151.0) > 4.0) return; // Chỉ can thiệp khi ở quầy Shop (Y xấp xỉ 151)
 
         if (isAutoWalking && !isWarmupActive && targetSignPos != null && mc.player != null) {
             // Nếu đã ngắm trúng hoặc đang chỉa mặt vào bảng bán: tuyệt đối đứng yên
@@ -1239,6 +1253,11 @@ public class SignAimHandler {
         if (mc.currentScreen != null) return; // Tạm dừng nếu đang mở chat/menu
 
         EntityPlayerSP player = mc.player;
+        // Chỉ hoạt động khi người chơi ở quầy Shop (Y xấp xỉ 151)
+        if (Math.abs(player.posY - 151.0) > 4.0) {
+            if (isAutoWalking) stopAutoWalk(mc);
+            return;
+        }
 
         // Quét tự động chuyển bảng mỗi 5 tick (0.25s) khi người chơi bước sang bảng khác
         if (player.ticksExisted % 5 == 0) {

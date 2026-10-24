@@ -528,198 +528,121 @@ public class InventoryHandler {
      * 3. Chuột không dính item, chặn đứng lỗi tự vứt item (TỰ Q ITEM)
      * 4. Nhả phím W,A,S,D,Shift,Space triệt tiêu hoàn toàn kẹt phím
      */
+    /**
+     * NẠP TNT VÀO MÁY PHÂN PHÁT BẰNG QUICK_MOVE (SHIFT-CLICK) SIÊU TỐC ĐỘ (0-TICK NHƯ RƯƠNG):
+     * 1. 0 delay, xử lý ngay tại frame 0 (onDrawScreen)
+     * 2. Chỉ chuyển bằng QuickMove y hệt cơ chế lấy đồ rương
+     * 3. Trừ đúng số lượng trong inventory mới được đóng GUI & biến thành block kim cương
+     * 4. Máy đã có trong BlockStateManager thì tuyệt đối không nạp thêm (chống nạp đè 128)
+     */
     private static void checkAndProcessDispenser(Minecraft mc, GuiScreenEvent.DrawScreenEvent.Pre drawEvent) {
         if (!waitingDispenserProcess || mc.player == null) return;
         if (!(mc.player.openContainer instanceof ContainerDispenser)) return;
 
         ContainerDispenser dispenser = (ContainerDispenser) mc.player.openContainer;
 
-        // Chờ server đồng bộ danh sách slot (tối đa 5 tick = 250ms) để biết chính xác số TNT đã có trong máy
-        if (!serverWindowSynced && dispenserWaitTicks < 5) {
+        // 1. Nếu máy này ĐÃ ĐƯỢC ĐÁNH DẤU NẠP ĐẦY TRƯỚC ĐÓ (trong BlockStateManager):
+        // Tuyệt đối không nạp thêm lần thứ 2 để tránh 128 viên!
+        if (activeDispenserPos != null && BlockStateManager.isDispenserFilled(mc.player.dimension, activeDispenserPos)) {
+            resetDispenserState();
+            if (ModConfig.autoCloseDispenser) {
+                closeScreenCleanly(mc);
+                if (drawEvent != null) drawEvent.setCanceled(true);
+            }
             return;
         }
 
-        int curDispenser = serverWindowSynced ? serverDispenserTntCount : countTntInDispenser(dispenser);
-        int curPlayer36 = countTntIn36Slots(mc.player);
+        // 2. Nếu máy phân phát đã có sẵn đủ số lượng TNT:
+        int inDispenser = countTntInDispenser(dispenser);
         int targetAmount = ModConfig.dispenserTargetAmount;
-
-        // GIAI ĐOẠN 1: GỬI PACKET NẠP TNT
-        if (!dispenserPacketsSent) {
-            // 1. Máy phân phát ĐÃ ĐỦ ĐỊNH MỨC SẴN TỪ TRƯỚC (Ví dụ: đã có 64/64 TNT):
-            if (curDispenser >= targetAmount && targetAmount > 0) {
-                if (activeDispenserPos != null) {
-                    BlockStateManager.setDispenserFilled(mc.player.dimension, activeDispenserPos, curDispenser);
-                }
-                resetDispenserState();
-                if (ModConfig.autoCloseDispenser) {
-                    closeScreenCleanly(mc);
-                    if (drawEvent != null) drawEvent.setCanceled(true);
-                }
-                return;
+        if (inDispenser >= targetAmount && targetAmount > 0) {
+            if (activeDispenserPos != null) {
+                BlockStateManager.setDispenserFilled(mc.player.dimension, activeDispenserPos, inDispenser);
             }
-
-            // 2. Tính số lượng cần nạp thêm
-            int needed = targetAmount - curDispenser;
-            if (needed <= 0) {
-                resetDispenserState();
-                if (ModConfig.autoCloseDispenser) {
-                    closeScreenCleanly(mc);
-                    if (drawEvent != null) drawEvent.setCanceled(true);
-                }
-                return;
+            resetDispenserState();
+            if (ModConfig.autoCloseDispenser) {
+                closeScreenCleanly(mc);
+                if (drawEvent != null) drawEvent.setCanceled(true);
             }
-
-            // 3. Người chơi KHÔNG CÓ VIÊN TNT NÀO trong 36 ô túi đồ:
-            if (curPlayer36 <= 0) {
-                // TUYỆT ĐỐI KHÔNG BIẾN THÀNH BLOCK KIM CƯƠNG!
-                resetDispenserState();
-                if (ModConfig.autoCloseDispenser) {
-                    closeScreenCleanly(mc);
-                    if (drawEvent != null) drawEvent.setCanceled(true);
-                }
-                return;
-            }
-
-            int toTransfer = Math.min(needed, curPlayer36);
-            if (toTransfer <= 0) {
-                resetDispenserState();
-                if (ModConfig.autoCloseDispenser) {
-                    closeScreenCleanly(mc);
-                    if (drawEvent != null) drawEvent.setCanceled(true);
-                }
-                return;
-            }
-
-            dispenserInitialTnt36 = curPlayer36;
-            dispenserExpectedFinalTnt36 = curPlayer36 - toTransfer;
-            dispenserTargetAmount = targetAmount;
-            dispenserCurDispenser = curDispenser;
-            dispenserTransferred = toTransfer;
-
-            // Nạp đúng toTransfer viên TNT vào máy phân phát
-            executeDispenserTransfer(mc, dispenser, toTransfer);
-
-            // Dọn chuột ngay lập tức: tuyệt đối không bao giờ để item trên con trỏ chuột
-            ensureMouseCursorClean(mc, dispenser);
-
-            dispenserPacketsSent = true;
-            dispenserWaitTicks = 0;
-            // Chạy tiếp ngay xuống Giai đoạn 2 để kiểm tra hoàn tất tức thì trong frame này (0-tick)
+            return;
         }
 
-        // GIAI ĐOẠN 2: KIỂM TRA CHẮC CHẮN 100%
-        // CHỈ KHI NÀO TNT TRONG 36 Ô TÚI ĐỒ THỰC SỰ GIẢM ĐÚNG SỐ LƯỢNG MỚI ĐƯỢC PHÉP ĐÓNG GUI VÀ BIẾN THÀNH BLOCK KIM CƯƠNG!
-        if (dispenserPacketsSent) {
-            ensureMouseCursorClean(mc, dispenser);
-            boolean cursorClean = mc.player.inventory.getItemStack().isEmpty();
-
-            int nowPlayer36 = countTntIn36Slots(mc.player);
-
-            // Điều kiện hoàn thành 100% THEO YÊU CẦU CỦA USER:
-            // 1. Con trỏ chuột hoàn toàn trống
-            // 2. TNT trong túi đồ THỰC SỰ GIẢM và ĐẠT ĐÚNG MỐC KỲ VỌNG:
-            boolean tntStrictlyReduced = (nowPlayer36 < dispenserInitialTnt36 && nowPlayer36 == dispenserExpectedFinalTnt36);
-
-            if (cursorClean && tntStrictlyReduced) {
-                // CHÍNH XÁC LÚC NÀY MỚI BIẾN THÀNH BLOCK KIM CƯƠNG:
-                if (activeDispenserPos != null) {
-                    int finalCount = dispenserCurDispenser + dispenserTransferred;
-                    BlockStateManager.setDispenserFilled(mc.player.dimension, activeDispenserPos, Math.max(finalCount, dispenserTargetAmount));
-                }
-
-                // CHÍNH XÁC LÚC NÀY MỚI ĐƯỢC PHÉP ĐÓNG GUI:
-                resetDispenserState();
-                if (ModConfig.autoCloseDispenser) {
-                    closeScreenCleanly(mc);
-                    if (drawEvent != null) drawEvent.setCanceled(true);
-                }
-                return;
+        // 3. Kiểm tra số TNT trong 36 ô túi đồ của người chơi:
+        int curPlayer36 = countTntIn36Slots(mc.player);
+        if (curPlayer36 <= 0) {
+            // Không có TNT trong túi đồ -> TUYỆT ĐỐI KHÔNG BIẾN THÀNH BLOCK KIM CƯƠNG!
+            resetDispenserState();
+            if (ModConfig.autoCloseDispenser) {
+                closeScreenCleanly(mc);
+                if (drawEvent != null) drawEvent.setCanceled(true);
             }
+            return;
+        }
 
-            // Timeout an toàn (15 ticks = 750ms): nếu mạng lag
-            if (dispenserWaitTicks >= 15) {
-                ensureMouseCursorClean(mc, dispenser);
-                // CHỈ KHI túi đồ đã giảm đúng mốc mới đánh dấu hoàn thành:
-                if (nowPlayer36 < dispenserInitialTnt36 && nowPlayer36 == dispenserExpectedFinalTnt36 && activeDispenserPos != null) {
-                    BlockStateManager.setDispenserFilled(mc.player.dimension, activeDispenserPos, dispenserCurDispenser + dispenserTransferred);
-                }
-                resetDispenserState();
-                if (ModConfig.autoCloseDispenser) {
-                    closeScreenCleanly(mc);
-                    if (drawEvent != null) drawEvent.setCanceled(true);
-                }
+        int needed = (inDispenser > 0) ? (targetAmount - inDispenser) : targetAmount;
+        int toTransfer = Math.min(needed, curPlayer36);
+        if (toTransfer <= 0) {
+            resetDispenserState();
+            if (ModConfig.autoCloseDispenser) {
+                closeScreenCleanly(mc);
+                if (drawEvent != null) drawEvent.setCanceled(true);
+            }
+            return;
+        }
+
+        // ==========================================================
+        // 4. BỎ TNT BẰNG QUICK_MOVE SIÊU TỐC ĐỘ (0 DELAY NHƯ RƯƠNG)
+        // ==========================================================
+        int initialTnt36 = curPlayer36;
+        int expectedFinalTnt36 = curPlayer36 - toTransfer;
+
+        executeQuickMoveDispenser(mc, dispenser, toTransfer);
+        ensureMouseCursorClean(mc, dispenser);
+
+        // ==========================================================
+        // 5. KIỂM TRA TRỪ INVENTORY NGAY LẬP TỨC:
+        // ==========================================================
+        int nowPlayer36 = countTntIn36Slots(mc.player);
+        if (nowPlayer36 < initialTnt36 && nowPlayer36 == expectedFinalTnt36) {
+            // ĐÃ TRỪ ĐÚNG SỐ LƯỢNG TRONG INVENTORY -> BIẾN THÀNH KIM CƯƠNG & ĐÓNG GUI!
+            if (activeDispenserPos != null) {
+                BlockStateManager.setDispenserFilled(mc.player.dimension, activeDispenserPos, toTransfer);
+            }
+            resetDispenserState();
+            if (ModConfig.autoCloseDispenser) {
+                closeScreenCleanly(mc);
+                if (drawEvent != null) drawEvent.setCanceled(true);
+            }
+            return;
+        }
+
+        // Dự phòng an toàn: nếu client chưa kịp trừ tức thì trong microsecond này (chờ tối đa 2 ticks):
+        dispenserWaitTicks++;
+        if (dispenserWaitTicks >= 2) {
+            ensureMouseCursorClean(mc, dispenser);
+            int finalPlayer36 = countTntIn36Slots(mc.player);
+            if (finalPlayer36 < initialTnt36 && activeDispenserPos != null) {
+                BlockStateManager.setDispenserFilled(mc.player.dimension, activeDispenserPos, toTransfer);
+            }
+            resetDispenserState();
+            if (ModConfig.autoCloseDispenser) {
+                closeScreenCleanly(mc);
+                if (drawEvent != null) drawEvent.setCanceled(true);
             }
         }
     }
 
     /**
-     * THUẬT TOÁN NẠP TNT SIÊU TỐC ĐỘ, 0 DELAY, KHÔNG DÍNH CHUỘT
+     * THUẬT TOÁN ĐẨY TNT BẰNG QUICK_MOVE (SHIFT-CLICK) SIÊU TỐC ĐỘ, 0 DELAY NHƯ RƯƠNG
      */
-    private static void executeDispenserTransfer(Minecraft mc, ContainerDispenser dispenser, int toTransfer) {
+    private static void executeQuickMoveDispenser(Minecraft mc, ContainerDispenser dispenser, int toTransfer) {
         EntityPlayer player = mc.player;
         int windowId = dispenser.windowId;
         int remaining = toTransfer;
         java.util.Set<Integer> visitedPlayerSlots = new java.util.HashSet<>();
 
-        // BƯỚC 1: Làm đầy các ô dispenser đang có TNT dở dang (< 64)
-        for (int di = 0; di < 9 && remaining > 0; di++) {
-            Slot ds = dispenser.getSlot(di);
-            if (ds.getHasStack() && Item.getIdFromItem(ds.getStack().getItem()) == TNT_ID) {
-                int inSlot = ds.getStack().getCount();
-                if (inSlot < 64) {
-                    int space = 64 - inSlot;
-                    int take = Math.min(remaining, space);
-
-                    for (int pi = 9; pi < 45 && take > 0; pi++) {
-                        if (visitedPlayerSlots.contains(pi)) continue;
-                        Slot ps = dispenser.getSlot(pi);
-                        if (ps.getHasStack() && Item.getIdFromItem(ps.getStack().getItem()) == TNT_ID) {
-                            int pCount = ps.getStack().getCount();
-                            if (pCount <= take) {
-                                mc.playerController.windowClick(windowId, pi, 0, ClickType.QUICK_MOVE, player);
-                                visitedPlayerSlots.add(pi);
-                                take -= pCount;
-                                remaining -= pCount;
-                            } else if (take == 32 && pCount == 64) {
-                                mc.playerController.windowClick(windowId, pi, 1, ClickType.PICKUP, player);
-                                mc.playerController.windowClick(windowId, di, 0, ClickType.PICKUP, player);
-                                remaining -= 32;
-                                take = 0;
-                                break;
-                            } else if (inSlot + take == 64) {
-                                mc.playerController.windowClick(windowId, pi, 0, ClickType.PICKUP, player);
-                                mc.playerController.windowClick(windowId, di, 0, ClickType.PICKUP, player);
-                                mc.playerController.windowClick(windowId, pi, 0, ClickType.PICKUP, player);
-                                remaining -= take;
-                                take = 0;
-                                break;
-                            } else {
-                                mc.playerController.windowClick(windowId, pi, 0, ClickType.PICKUP, player);
-                                for (int d = 0; d < take; d++) {
-                                    mc.playerController.windowClick(windowId, di, 1, ClickType.PICKUP, player);
-                                }
-                                mc.playerController.windowClick(windowId, pi, 0, ClickType.PICKUP, player);
-                                remaining -= take;
-                                take = 0;
-                                break;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // BƯỚC 2: Chuyển các stack nguyên (64 viên) bằng QUICK_MOVE (Shift-Click), nhanh nhất và không chạm con trỏ chuột!
+        // 1. Chuyển các stack nguyên (64 viên) bằng QUICK_MOVE (Shift-Click 0-tick):
         while (remaining >= 64) {
-            int emptyDispSlot = -1;
-            for (int di = 0; di < 9; di++) {
-                if (!dispenser.getSlot(di).getHasStack()) {
-                    emptyDispSlot = di;
-                    break;
-                }
-            }
-            if (emptyDispSlot == -1) break;
-
             int fullPlayerSlot = -1;
             for (int pi = 9; pi < 45; pi++) {
                 if (visitedPlayerSlots.contains(pi)) continue;
@@ -735,6 +658,7 @@ public class InventoryHandler {
                 visitedPlayerSlots.add(fullPlayerSlot);
                 remaining -= 64;
             } else {
+                // Nếu không có ô nguyên 64, chuyển ô TNT bất kỳ
                 int anyPlayerSlot = -1;
                 for (int pi = 9; pi < 45; pi++) {
                     if (visitedPlayerSlots.contains(pi)) continue;
@@ -752,7 +676,7 @@ public class InventoryHandler {
             }
         }
 
-        // BƯỚC 3: Nạp phần lẻ còn lại (ĐẶC BIỆT: 32 viên trong mốc 96 = 1 st 32):
+        // 2. Chuyển phần lẻ còn lại (ví dụ 32 viên khi setup 96):
         if (remaining > 0) {
             int targetDi = -1;
             for (int di = 0; di < 9; di++) {
@@ -763,7 +687,7 @@ public class InventoryHandler {
             }
 
             if (targetDi != -1) {
-                // Ưu tiên 1: Tìm ô có đúng số lượng == remaining để Shift-Click (0-tick, an toàn tuyệt đối)
+                // Tìm ô có đúng số lượng lẻ để Shift-Click
                 int exactPi = -1;
                 for (int pi = 9; pi < 45; pi++) {
                     if (visitedPlayerSlots.contains(pi)) continue;
@@ -778,67 +702,21 @@ public class InventoryHandler {
                     mc.playerController.windowClick(windowId, exactPi, 0, ClickType.QUICK_MOVE, player);
                     visitedPlayerSlots.add(exactPi);
                     remaining = 0;
-                } else {
-                    int bestPi = -1;
+                } else if (remaining == 32) {
+                    // Nếu cần 32 viên: nhặt 1/2 stack 64 (chuột phải) rồi đặt vào ô dispenser (chuột trái)
+                    int stack64Pi = -1;
                     for (int pi = 9; pi < 45; pi++) {
                         if (visitedPlayerSlots.contains(pi)) continue;
                         Slot ps = dispenser.getSlot(pi);
-                        if (ps.getHasStack() && Item.getIdFromItem(ps.getStack().getItem()) == TNT_ID) {
-                            if (ps.getStack().getCount() >= remaining) {
-                                bestPi = pi;
-                                break;
-                            }
+                        if (ps.getHasStack() && Item.getIdFromItem(ps.getStack().getItem()) == TNT_ID && ps.getStack().getCount() == 64) {
+                            stack64Pi = pi;
+                            break;
                         }
                     }
-                    if (bestPi == -1) {
-                        for (int pi = 9; pi < 45; pi++) {
-                            if (visitedPlayerSlots.contains(pi)) continue;
-                            Slot ps = dispenser.getSlot(pi);
-                            if (ps.getHasStack() && Item.getIdFromItem(ps.getStack().getItem()) == TNT_ID) {
-                                bestPi = pi;
-                                break;
-                            }
-                        }
-                    }
-
-                    if (bestPi != -1) {
-                        Slot pSlot = dispenser.getSlot(bestPi);
-                        int pCount = pSlot.getStack().getCount();
-
-                        if (pCount <= remaining) {
-                            mc.playerController.windowClick(windowId, bestPi, 0, ClickType.QUICK_MOVE, player);
-                            visitedPlayerSlots.add(bestPi);
-                            remaining -= pCount;
-                        } else if (remaining == 32 && pCount == 64) {
-                            // Chuột phải: nhấc đúng 32 lên chuột
-                            mc.playerController.windowClick(windowId, bestPi, 1, ClickType.PICKUP, player);
-                            // Chuột trái: đặt trọn vẹn 32 vào dispenser
-                            mc.playerController.windowClick(windowId, targetDi, 0, ClickType.PICKUP, player);
-                            remaining = 0;
-                        } else if (pCount / 2 == remaining) {
-                            mc.playerController.windowClick(windowId, bestPi, 1, ClickType.PICKUP, player);
-                            mc.playerController.windowClick(windowId, targetDi, 0, ClickType.PICKUP, player);
-                            remaining = 0;
-                        } else if (remaining <= 32) {
-                            mc.playerController.windowClick(windowId, bestPi, 1, ClickType.PICKUP, player);
-                            for (int d = 0; d < remaining; d++) {
-                                mc.playerController.windowClick(windowId, targetDi, 1, ClickType.PICKUP, player);
-                            }
-                            mc.playerController.windowClick(windowId, bestPi, 0, ClickType.PICKUP, player);
-                            remaining = 0;
-                        } else {
-                            if (pCount >= 64) {
-                                mc.playerController.windowClick(windowId, bestPi, 1, ClickType.PICKUP, player);
-                                mc.playerController.windowClick(windowId, targetDi, 0, ClickType.PICKUP, player);
-                                int leftover = remaining - 32;
-                                mc.playerController.windowClick(windowId, bestPi, 0, ClickType.PICKUP, player);
-                                for (int d = 0; d < leftover; d++) {
-                                    mc.playerController.windowClick(windowId, targetDi, 1, ClickType.PICKUP, player);
-                                }
-                                mc.playerController.windowClick(windowId, bestPi, 0, ClickType.PICKUP, player);
-                            }
-                            remaining = 0;
-                        }
+                    if (stack64Pi != -1) {
+                        mc.playerController.windowClick(windowId, stack64Pi, 1, ClickType.PICKUP, player);
+                        mc.playerController.windowClick(windowId, targetDi, 0, ClickType.PICKUP, player);
+                        remaining = 0;
                     }
                 }
             }

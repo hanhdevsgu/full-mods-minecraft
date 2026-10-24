@@ -89,6 +89,13 @@ public class BlockStateManager {
         ServerSyncHandler.broadcastToServer(pos, dim, "DISPENSER_FILLED", count);
     }
 
+    public static boolean isDispenserFilled(int dim, BlockPos pos) {
+        if (pos == null) return false;
+        String key = makeKey(dim, pos);
+        BlockRecord rec = trackedBlocks.get(key);
+        return rec != null && rec.state == BlockState.DISPENSER_FILLED;
+    }
+
     public static void remove(int dim, BlockPos pos) {
         String key = makeKey(dim, pos);
         if (trackedBlocks.remove(key) != null) {

@@ -1142,52 +1142,14 @@ public class SignAimHandler {
     }
 
     /**
-     * Bán đồ tự động bằng tương tác gói tin nội bộ của game (Packet / ProcessRightClick)
-     * VƯỢT QUA MỌI NGƯỜI CHƠI ĐỨNG CHE BẢNG!
+     * Bán đồ tự động 100% NHƯ NGƯỜI THẬT:
+     * Sử dụng phím chuột phải chuẩn của Minecraft (KeyBinding useItem),
+     * TUYỆT ĐỐI KHÔNG can thiệp bắn packet thủ công để không bao giờ bị server diss/kick ra lobby!
      */
     public static boolean clickTargetSign() {
         Minecraft mc = Minecraft.getMinecraft();
-        if (mc.world == null || mc.player == null || mc.playerController == null || targetSignPos == null) return false;
-
-        // TUYỆT ĐỐI KHÔNG CLICK NẾU TÂM NGẮM ĐANG TRÚNG VÀO NGƯỜI CHƠI KHÁC!
-        // Tránh tương tác spam chuột phải vào player khác làm server kick văng ra lobby:
-        if (mc.objectMouseOver != null && mc.objectMouseOver.typeOfHit == RayTraceResult.Type.ENTITY) {
-            return false;
-        }
-
-        // Chỉ cần cự ly tới bảng <= 6 block (distSq <= 36.0)
-        if (mc.player.getDistanceSq(targetSignPos) > 36.0) {
-            return false;
-        }
-
-        EnumFacing facing = EnumFacing.UP;
-        Vec3d hitVec = new Vec3d(targetSignPos.getX() + 0.5, targetSignPos.getY() + 0.5, targetSignPos.getZ() + 0.5);
-        if (mc.objectMouseOver != null && mc.objectMouseOver.typeOfHit == RayTraceResult.Type.BLOCK && targetSignPos.equals(mc.objectMouseOver.getBlockPos())) {
-            facing = mc.objectMouseOver.sideHit;
-            hitVec = mc.objectMouseOver.hitVec;
-        }
-
-        // 1. Gửi gói tin CPacketPlayerTryUseItemOnBlock trực tiếp lên bảng
-        if (mc.player.connection != null) {
-            mc.player.connection.sendPacket(new CPacketPlayerTryUseItemOnBlock(
-                targetSignPos, 
-                facing, 
-                EnumHand.MAIN_HAND, 
-                0.5F, 0.5F, 0.5F
-            ));
-        }
-
-        // 2. Gọi processRightClickBlock client-side
-        mc.playerController.processRightClickBlock(mc.player, mc.world, targetSignPos, facing, hitVec, EnumHand.MAIN_HAND);
-
-        // 3. Vung tay visual trên màn hình (Client-side ONLY)
-        if (mc.player != null) {
-            if (!mc.player.isSwingInProgress || mc.player.swingProgressInt >= 3) {
-                mc.player.isSwingInProgress = true;
-                mc.player.swingProgressInt = -1;
-                mc.player.swingingHand = EnumHand.MAIN_HAND;
-            }
-        }
+        if (mc == null || mc.gameSettings == null) return false;
+        KeyBinding.setKeyBindState(mc.gameSettings.keyBindUseItem.getKeyCode(), true);
         return true;
     }
 

@@ -1126,21 +1126,13 @@ public class MacroRecorderMod {
                     }
                     return true;
                 }
-                // Đè chuột phải người thật hoặc bắn packet trực tiếp:
-                // Nếu đang nhìn vào bảng Buy hoặc bảng phía dưới: TUYỆT ĐỐI KHÔNG CLICK!
+                // ĐÈ CHUỘT PHẢI 100% NHƯ NGƯỜI THẬT:
+                // Người thật đè giữ phím chuột phải liên tục khi đứng ở quầy bán,
+                // game vanilla tự động xử lý tương tác hợp lệ theo tick chuẩn,
+                // dù có người che hay đẩy cũng không bao giờ bị diss/kick ra lobby!
                 boolean lookingAtBuySign1E = SignAimHandler.isLookingAtAnyBuySign(mc);
-                boolean canSell1E = !lookingAtBuySign1E && (SignAimHandler.targetSignPos != null);
-
-                if (canSell1E) {
-                    if (SignAimHandler.isAimingAtSign(mc)) {
-                        holdUseItemKey();
-                    } else {
-                        releaseUseItemKey(); // Tránh bấm chuột phải vào người chơi đang che
-                    }
-                    // Đảm bảo click tới bảng kể cả khi có người che kín trước mặt:
-                    if (mc.player != null && mc.player.ticksExisted % 2 == 0) {
-                        SignAimHandler.clickTargetSign();
-                    }
+                if (!lookingAtBuySign1E && SignAimHandler.targetSignPos != null) {
+                    holdUseItemKey();
                 } else {
                     releaseUseItemKey();
                 }
@@ -1278,21 +1270,13 @@ public class MacroRecorderMod {
                     }
                     return true;
                 }
-                // Đè chuột phải người thật hoặc bắn packet trực tiếp:
-                // Nếu đang nhìn vào bảng Buy hoặc bảng phía dưới: TUYỆT ĐỐI KHÔNG CLICK!
+                // ĐÈ CHUỘT PHẢI 100% NHƯ NGƯỜI THẬT:
+                // Người thật đè giữ phím chuột phải liên tục khi đứng ở quầy bán,
+                // game vanilla tự động xử lý tương tác hợp lệ theo tick chuẩn,
+                // dù có người che hay đẩy cũng không bao giờ bị diss/kick ra lobby!
                 boolean lookingAtBuySign = SignAimHandler.isLookingAtAnyBuySign(mc);
-                boolean canSell = !lookingAtBuySign && (SignAimHandler.targetSignPos != null);
-
-                if (canSell) {
-                    if (SignAimHandler.isAimingAtSign(mc)) {
-                        holdUseItemKey();
-                    } else {
-                        releaseUseItemKey(); // Tránh bấm chuột phải vào người chơi đang che
-                    }
-                    // Đảm bảo click tới bảng kể cả khi có người che kín trước mặt:
-                    if (mc.player != null && mc.player.ticksExisted % 2 == 0) {
-                        SignAimHandler.clickTargetSign();
-                    }
+                if (!lookingAtBuySign && SignAimHandler.targetSignPos != null) {
+                    holdUseItemKey();
                 } else {
                     releaseUseItemKey();
                 }

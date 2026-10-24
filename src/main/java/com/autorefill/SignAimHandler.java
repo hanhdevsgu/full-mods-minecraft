@@ -734,13 +734,36 @@ public class SignAimHandler {
         return findTargetSign(itemTarget, false);
     }
 
+    public static boolean isPlayerAtShop(Minecraft mc) {
+        if (mc == null || mc.player == null) return false;
+        try {
+            String afterShopGoto = com.zorotool.macrorecorder.ConfigHelper.getAfterShopGotoCommand();
+            net.minecraft.util.math.BlockPos pos = com.zorotool.macrorecorder.MacroRecorderMod.parseGotoPos(afterShopGoto);
+            if (pos == null) {
+                String shopGoto = com.zorotool.macrorecorder.ConfigHelper.getShopGotoCommand();
+                pos = com.zorotool.macrorecorder.MacroRecorderMod.parseGotoPos(shopGoto);
+            }
+            if (pos != null) {
+                double dx = mc.player.posX - (pos.getX() + 0.5);
+                double dz = mc.player.posZ - (pos.getZ() + 0.5);
+                double distSq = dx * dx + dz * dz;
+                if (pos.getY() > -900) {
+                    double dy = mc.player.posY - (pos.getY() + 0.5);
+                    distSq += dy * dy;
+                }
+                return distSq <= 400.0;
+            }
+        } catch (Throwable ignored) {}
+        return Math.abs(mc.player.posY - 151.0) <= 6.0;
+    }
+
     public static boolean findTargetSign(String itemTarget, boolean verbose) {
         Minecraft mc = Minecraft.getMinecraft();
         if (mc.world == null || mc.player == null) return false;
 
         EntityPlayerSP player = mc.player;
-        // Chỉ quét tìm bảng Sell khi người chơi ở quầy Shop (Y xấp xỉ 151)
-        if (Math.abs(player.posY - 151.0) > 4.0) {
+        // Chỉ quét tìm bảng Sell khi người chơi ở quầy Shop
+        if (!isPlayerAtShop(mc)) {
             return false;
         }
 
@@ -904,7 +927,7 @@ public class SignAimHandler {
             }
 
             if (activateNow) {
-                boolean isAtShop = (mc.player != null && Math.abs(mc.player.posY - 151.0) <= 4.0);
+                boolean isAtShop = isPlayerAtShop(mc);
                 boolean found = isAtShop ? findTargetSign(lastItemTarget, verbose) : false;
                 if (found && isAtShop) {
                     isAimLockActive = true;
@@ -1012,8 +1035,8 @@ public class SignAimHandler {
      */
     private static void updateCameraSmooth(Minecraft mc, float partialTicks) {
         if (!isAimLockActive || targetSignPos == null || mc.player == null || mc.world == null) return;
-        // Chỉ hoạt động khi người chơi ở khu vực Shop (Y xấp xỉ 151)
-        if (Math.abs(mc.player.posY - 151.0) > 4.0) return;
+        // Chỉ hoạt động khi người chơi ở khu vực Shop
+        if (!isPlayerAtShop(mc)) return;
         // Nếu đang mở menu màn hình (ESC, chat, hòm đồ) -> không can thiệp góc nhìn
         if (mc.currentScreen != null) return;
 
@@ -1201,7 +1224,7 @@ public class SignAimHandler {
         if (!isAimLockActive || targetSignPos == null) return;
         Minecraft mc = Minecraft.getMinecraft();
         if (mc.player == null) return;
-        if (Math.abs(mc.player.posY - 151.0) <= 4.0) {
+        if (isPlayerAtShop(mc)) {
             if (isAutoWalking) stopAutoWalk(mc);
             return;
         }
@@ -1217,8 +1240,8 @@ public class SignAimHandler {
         if (mc.currentScreen != null) return; // Tạm dừng nếu đang mở chat/menu
 
         EntityPlayerSP player = mc.player;
-        // Chỉ hoạt động khi người chơi ở quầy Shop (Y xấp xỉ 151)
-        if (Math.abs(player.posY - 151.0) > 4.0) {
+        // Chỉ hoạt động khi người chơi ở quầy Shop
+        if (!isPlayerAtShop(mc)) {
             stopAimLock(mc);
             return;
         }

@@ -186,6 +186,9 @@ public class MacroRecorderMod {
                                          // lai F4
     private String afterShopLookCommand; // .look ve huong kho SAU khi #goto roi khu shop
     private String nextChestGotoCommand; // #goto toi ruong ke tiep
+    private String sethomeCommand; // lệnh /sethome farm cấu hình từ F8 (vd: /sethome, /sethome home)
+    private String shopCommand; // lệnh /shop
+    private String homeMiaCommand; // lệnh /home về nhà cấu hình từ F8 (vd: /home, /home home)
 
     // ===== HANG DOI NHIEU TAI KHOAN (phim U, xem GuiAccountOrder + ConfigHelper)
     // =====
@@ -267,6 +270,7 @@ public class MacroRecorderMod {
     private int targetVaultsToFill = -1; // Mục tiêu số kho cần bù khi về nhà (-1: mặc định full maxVaults)
     private volatile boolean teleportCompleteMessageReceived = false; // Nhận diện chat "Dịch chuyển hoàn tất"
     private Vec3d shopTeleportOriginPos = null; // Tọa độ lúc đứng ở shop để đo khoảng cách rời khỏi shop về nhà
+    private Vec3d farmTeleportOriginPos = null; // Tọa độ lúc đứng ở farm để đo khoảng cách đã tới shop sau /shop
     private long lastSellMoneyTime = 0L; // Thời điểm nhận được log cộng tiền bán gần nhất ($80 đã được cộng...)
     private long depositGuiCloseUntil = 0L; // Thời điểm đóng GUI kho /pv sau khi đẩy đồ xong (F8 itemTransferDelayMs)
     private boolean npcJumpActive = false; // Đang trong cú nhảy click NPC, đợi tiếp đất mới nhảy tiếp
@@ -432,6 +436,9 @@ public class MacroRecorderMod {
         this.afterShopGotoCommand = ConfigHelper.getAfterShopGotoCommand();
         this.afterShopLookCommand = ConfigHelper.getAfterShopLookCommand();
         this.nextChestGotoCommand = ConfigHelper.getNextChestGotoCommand();
+        this.sethomeCommand = ConfigHelper.getSethomeCommand();
+        this.shopCommand = ConfigHelper.getShopCommand();
+        this.homeMiaCommand = ConfigHelper.getHomeMiaCommand();
 
         this.accountOrder = ConfigHelper.getAccountOrder();
         this.queueDistanceThreshold = ConfigHelper.getQueueDistanceThreshold();
@@ -855,49 +862,46 @@ public class MacroRecorderMod {
                 return false;
 
             case OPENING_SHOP:
-                String shopCommand = ConfigHelper.getShopCommand();
-                if (!trySendCommand(shopCommand)) {
+                String sCmd = (shopCommand != null && !shopCommand.trim().isEmpty()) ? shopCommand : ConfigHelper.getShopCommand();
+                if (mc.player != null) {
+                    farmTeleportOriginPos = new Vec3d(mc.player.posX, mc.player.posY, mc.player.posZ);
+                }
+                if (!trySendCommand(sCmd)) {
                     return false;
                 }
                 teleportCompleteMessageReceived = false;
 
-                // Nếu cài delay = 0 ở GUI F8: Gửi /shop và /sethome CÙNG LÚC luôn!
+                String sHomeCmd = (sethomeCommand != null && !sethomeCommand.trim().isEmpty()) ? sethomeCommand : ConfigHelper.getSethomeCommand();
+                // Nếu cài delay = 0 ở GUI F8: Gửi /shop và /sethome (vd: /sethome home) CÙNG LÚC luôn!
                 if (shopToSethomeDelayTicks <= 0) {
-                    if (mc.player != null && Math.abs(mc.player.posY - 151.0) > 4.0) {
-                        String sethomeCommand = ConfigHelper.getSethomeCommand();
-                        trySendCommand(sethomeCommand);
-                        System.out.println("[MacroRecorder] (Delay = 0s) Đã gửi " + shopCommand + " và "
-                                + sethomeCommand + " CÙNG LÚC tại farm!");
+                    if (sHomeCmd != null && !sHomeCmd.trim().isEmpty()) {
+                        trySendCommand(sHomeCmd);
+                        System.out.println("[MacroRecorder] (Delay = 0s) Đã gửi " + sCmd + " và "
+                                + sHomeCmd + " CÙNG LÚC tại farm!");
                     }
                     waitTimer = 0;
                     state = MacroState.WAITING_SHOP_TELEPORT;
                     return false;
                 }
 
-                System.out.println("[MacroRecorder] Đã đạt mục tiêu (Full PV + Full 1E)! Gửi " + shopCommand
-                        + ", chờ delay " + (shopToSethomeDelayTicks / 20.0) + "s để /sethome tại farm...");
+                System.out.println("[MacroRecorder] Đã đạt mục tiêu (Full PV + Full 1E)! Gửi " + sCmd
+                        + ", chờ delay " + (shopToSethomeDelayTicks / 20.0) + "s để gửi lệnh: " + sHomeCmd + " tại farm...");
                 waitTimer = 0;
                 state = MacroState.WAITING_SETHOME_DELAY;
                 return false;
 
             case WAITING_SETHOME_DELAY:
                 waitTimer++;
-                // Đợi theo config shopToSethomeDelayTicks (tối đa 80 ticks / 4s để kịp trước khi dịch chuyển hoàn tất ở giây thứ 5)
                 int targetDelay = Math.min(shopToSethomeDelayTicks, 80);
                 if (waitTimer < targetDelay) {
                     return false;
                 }
-                // Kiểm tra Y hiện tại khác 151 (vẫn đang đứng ở farm trước khi bị teleport đến shop Y=151/Truce territory)
-                if (mc.player != null && Math.abs(mc.player.posY - 151.0) > 4.0) {
-                    String sethomeCommand = ConfigHelper.getSethomeCommand();
-                    if (!trySendCommand(sethomeCommand)) {
+                String sHome = (sethomeCommand != null && !sethomeCommand.trim().isEmpty()) ? sethomeCommand : ConfigHelper.getSethomeCommand();
+                if (sHome != null && !sHome.trim().isEmpty()) {
+                    if (!trySendCommand(sHome)) {
                         return false;
                     }
-                    System.out.println("[MacroRecorder] Đang chờ /shop dịch chuyển (Y=" + (int) mc.player.posY
-                            + " != 151), đã gửi " + sethomeCommand + " thành công tại farm!");
-                } else {
-                    System.out.println("[MacroRecorder] Y=" + (mc.player != null ? (int) mc.player.posY : 0)
-                            + " (gần 151 hoặc đã tới Truce territory), bỏ qua /sethome để tránh lỗi!");
+                    System.out.println("[MacroRecorder] Đang chờ /shop dịch chuyển, đã gửi lệnh: " + sHome + " thành công tại farm!");
                 }
                 waitTimer = 0;
                 state = MacroState.WAITING_SHOP_TELEPORT;
@@ -908,15 +912,30 @@ public class MacroRecorderMod {
                 BlockPos shopDest = parseGotoPos(shopGotoCommand);
                 boolean arrivedAtShop = false;
                 if (mc.player != null) {
-                    if (Math.abs(mc.player.posY - 150.0) <= 2.0 || Math.abs(mc.player.posY - 151.0) <= 2.0) {
-                        arrivedAtShop = true;
-                    }
                     if (shopDest != null) {
                         double dx = mc.player.posX - (shopDest.getX() + 0.5);
                         double dz = mc.player.posZ - (shopDest.getZ() + 0.5);
                         if ((dx * dx + dz * dz) <= 10000.0) {
+                            if (farmTeleportOriginPos != null) {
+                                double fDx = mc.player.posX - farmTeleportOriginPos.x;
+                                double fDy = mc.player.posY - farmTeleportOriginPos.y;
+                                double fDz = mc.player.posZ - farmTeleportOriginPos.z;
+                                if ((fDx * fDx + fDy * fDy + fDz * fDz) > 64.0 || Math.abs(fDy) > 4.0) {
+                                    arrivedAtShop = true;
+                                }
+                            } else {
+                                arrivedAtShop = true;
+                            }
+                        }
+                    } else if (farmTeleportOriginPos != null) {
+                        double fDx = mc.player.posX - farmTeleportOriginPos.x;
+                        double fDy = mc.player.posY - farmTeleportOriginPos.y;
+                        double fDz = mc.player.posZ - farmTeleportOriginPos.z;
+                        if ((fDx * fDx + fDy * fDy + fDz * fDz) > 64.0 || Math.abs(fDy) > 4.0) {
                             arrivedAtShop = true;
                         }
+                    } else if (Math.abs(mc.player.posY - 150.0) <= 2.0 || Math.abs(mc.player.posY - 151.0) <= 2.0) {
+                        arrivedAtShop = true;
                     }
                 }
                 if (arrivedAtShop || teleportCompleteMessageReceived) {
@@ -1439,8 +1458,9 @@ public class MacroRecorderMod {
 
             case SENDING_HOME:
                 releaseUseItemKey();
-                String homeMiaCommand = ConfigHelper.getHomeMiaCommand();
-                if (!trySendCommand(homeMiaCommand)) {
+                stopNudgeForward();
+                String hCmd = (homeMiaCommand != null && !homeMiaCommand.trim().isEmpty()) ? homeMiaCommand : ConfigHelper.getHomeMiaCommand();
+                if (!trySendCommand(hCmd)) {
                     return false;
                 }
                 try {
@@ -1449,11 +1469,13 @@ public class MacroRecorderMod {
                 }
                 SignAimHandler.isWarmupActive = true;
                 SignAimHandler.stopAutoWalk(mc);
-                shopY = (int) mc.player.posY;
-                shopTeleportOriginPos = new Vec3d(mc.player.posX, mc.player.posY, mc.player.posZ);
+                if (mc.player != null) {
+                    shopY = (int) mc.player.posY;
+                    shopTeleportOriginPos = new Vec3d(mc.player.posX, mc.player.posY, mc.player.posZ);
+                }
                 teleportCompleteMessageReceived = false;
-                System.out.println("[MacroRecorder] (F4) Đã gửi " + homeMiaCommand + " (Shop X="
-                        + (int) shopTeleportOriginPos.x + ", Y=" + shopY + ", Z=" + (int) shopTeleportOriginPos.z
+                System.out.println("[MacroRecorder] (F4) Đã gửi lệnh về nhà: " + hCmd + " (Vị trí shop X="
+                        + (shopTeleportOriginPos != null ? (int) shopTeleportOriginPos.x : 0) + ", Y=" + shopY + ", Z=" + (shopTeleportOriginPos != null ? (int) shopTeleportOriginPos.z : 0)
                         + "), chờ server đếm 5s về nhà...");
                 sellWaitTimer = 0;
                 homeYStableTicks = 0;
@@ -1473,27 +1495,40 @@ public class MacroRecorderMod {
                     KeyBinding.setKeyBindState(mc.gameSettings.keyBindSprint.getKeyCode(), false);
                 }
 
-                // Chờ đúng 7 giây (140 ticks) theo yêu cầu:
-                // Server đếm ngược 5 giây + 2 giây load chunk map.
+                // Chờ đủ 7 giây (140 ticks) theo quy định server:
                 if (sellWaitTimer >= 140) {
-                    boolean isStillAtShop = (mc.player != null && Math.abs(mc.player.posY - 151.0) <= 2.0);
-                    if (!isStillAtShop) {
+                    boolean hasLeftShop = false;
+                    if (teleportCompleteMessageReceived) {
+                        hasLeftShop = true;
+                    } else if (mc.player != null && shopTeleportOriginPos != null) {
+                        double dX = mc.player.posX - shopTeleportOriginPos.x;
+                        double dY = mc.player.posY - shopTeleportOriginPos.y;
+                        double dZ = mc.player.posZ - shopTeleportOriginPos.z;
+                        double distSqFromShop = dX * dX + dY * dY + dZ * dZ;
+                        // Xác nhận đã rời khỏi vị trí quầy shop (khoảng cách 3D > 8m hoặc lệch Y > 4m):
+                        if (distSqFromShop > 64.0 || Math.abs(dY) > 4.0) {
+                            hasLeftShop = true;
+                        }
+                    }
+
+                    if (hasLeftShop) {
                         try {
                             SignAimHandler.stopAimLock(mc);
                         } catch (Exception ignored) {
                         }
-                        System.out.println("[MacroRecorder] (Home) Đã qua 7s, Y hiện tại (" + (mc.player != null ? (int) mc.player.posY : 0)
-                                + ") khác 151 -> Đã về nhà thành công! Tắt AutoAim hoàn toàn, chuẩn bị xả rác và lấy đồ...");
+                        String curHome = (homeMiaCommand != null && !homeMiaCommand.trim().isEmpty()) ? homeMiaCommand : ConfigHelper.getHomeMiaCommand();
+                        System.out.println("[MacroRecorder] (Home) Đã qua 7s, xác nhận đã rời khỏi shop -> Về nhà thành công bằng lệnh: " + curHome
+                                + "! Tắt AutoAim hoàn toàn, chuẩn bị xả rác và lấy đồ...");
                         sellWaitTimer = 0;
                         homeYStableTicks = 0;
                         teleportCompleteMessageReceived = false;
                         sellState = SellState.WAITING_HOME_SETTLE;
                         return false;
                     } else {
-                        // Sau 7s mà Y vẫn là 151 (vẫn ở shop) -> retry gửi lại lệnh /home
-                        String cmd = ConfigHelper.getHomeMiaCommand();
-                        System.out.println("[MacroRecorder] (Home) Đã qua 7s nhưng Y vẫn là 151 (chưa về được nhà), retry gửi lại " + cmd + "...");
-                        trySendCommand(cmd);
+                        // Sau 7s mà vị trí vẫn chưa rời khỏi shop (do lag hoặc server huỷ) -> retry gửi lại lệnh home
+                        String retryCmd = (homeMiaCommand != null && !homeMiaCommand.trim().isEmpty()) ? homeMiaCommand : ConfigHelper.getHomeMiaCommand();
+                        System.out.println("[MacroRecorder] (Home) Đã qua 7s nhưng vẫn ở vị trí shop, retry gửi lại: " + retryCmd + "...");
+                        trySendCommand(retryCmd);
                         sellWaitTimer = 0;
                         homeYStableTicks = 0;
                     }
@@ -1594,7 +1629,7 @@ public class MacroRecorderMod {
         }
     }
 
-    private BlockPos parseGotoPos(String command) {
+    public static BlockPos parseGotoPos(String command) {
         if (command == null)
             return null;
         String[] parts = command.trim().split("\\s+");
@@ -3351,7 +3386,7 @@ public class MacroRecorderMod {
         macroPaused = false;
         hudSessionStartMillis = System.currentTimeMillis();
         executeClientCommand("#resume");
-        if (sellMacroRunning && mc != null && mc.player != null && Math.abs(mc.player.posY - 151.0) <= 4.0) {
+        if (sellMacroRunning && mc != null && mc.player != null && (SignAimHandler.isPlayerAtShop(mc) || Math.abs(mc.player.posY - 151.0) <= 6.0)) {
             try {
                 String target = SignAimHandler.getEffectiveTarget();
                 SignAimHandler.startAimLock(target);

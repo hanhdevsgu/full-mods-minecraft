@@ -150,6 +150,7 @@ public class GuiMacroConfig extends GuiScreen {
             saveConfig();
             this.mc.displayGuiScreen(null);
         } else if (keyCode == Keyboard.KEY_ESCAPE) {
+            saveConfig();
             this.mc.displayGuiScreen(null);
         }
     }

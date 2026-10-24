@@ -57,7 +57,7 @@ public class TooltipDumpHandler {
         if (INSTANCE != null) {
             INSTANCE.trackedContainer = null;
             INSTANCE.autoAnswerDelayTicks = -1;
-            INSTANCE.autoAnswerDone = false;
+            // Giữ nguyên autoAnswerDone để MacroRecorderMod nhận diện được click xong
             INSTANCE.autoAnswerRetryTicksLeft = 0;
         }
     }
@@ -139,47 +139,144 @@ public class TooltipDumpHandler {
         boolean success = tryAutoClickCorrectAnswer();
         if (success) {
             autoAnswerDone = true;
-            LOGGER.info("QuizPeek: đã click đáp án đúng.");
+            LOGGER.info("QuizPeek: đã click đáp án đúng thành công.");
             if (mc.player != null) {
                 mc.player.sendMessage(new TextComponentString(TextFormatting.GREEN + "[QuizPeek] ✔ ĐÃ CLICK ĐÁP ÁN ĐÚNG!"));
             }
-            deactivate();
+            active = false; // Dừng quét tiếp, GIỮ autoAnswerDone = true để MacroRecorderMod đọc được tín hiệu
             return;
         }
 
         autoAnswerRetryTicksLeft--;
         if (autoAnswerRetryTicksLeft <= 0) {
-            autoAnswerDone = true;
-            deactivate();
+            autoAnswerDone = true; // Cho qua để không bị kẹt nếu không tìm thấy đáp án
+            active = false;
             if (mc.player != null) {
                 mc.player.sendMessage(new TextComponentString(
-                        TextFormatting.RED + "[QuizPeek] Đã thử " + AUTO_ANSWER_MAX_RETRY_TICKS +
-                                " tick nhưng vẫn không click được đáp án đúng (kiểm tra quizpeek_answers.json)."));
+                        TextFormatting.YELLOW + "[QuizPeek] Đã thử " + AUTO_ANSWER_MAX_RETRY_TICKS +
+                                " tick nhưng không khớp đáp án. Tiếp tục di chuyển tới quầy bán..."));
             }
         }
     }
 
+    private String getCleanTooltip(ItemStack stack, Minecraft mc) {
+        if (stack == null || stack.isEmpty()) return "";
+        try {
+            List<String> tooltip = stack.getTooltip(mc.player, ITooltipFlag.TooltipFlags.NORMAL);
+            String full = String.join(" ", tooltip);
+            return removeAccent(TextFormatting.getTextWithoutFormattingCodes(full)).toLowerCase().trim();
+        } catch (Exception e) {
+            return "";
+        }
+    }
+
+    private boolean isAnswerMatchTooltip(String cleanTooltip, String answer) {
+        if (cleanTooltip == null || answer == null) return false;
+        String cleanAnswer = removeAccent(answer).toLowerCase().trim();
+        if (cleanTooltip.contains(cleanAnswer)) return true;
+        // Hỗ trợ trường hợp gõ nhầm 'n7' thành '7':
+        if (cleanAnswer.equalsIgnoreCase("n7") && cleanTooltip.contains("7")) return true;
+        if (cleanAnswer.startsWith("n") && cleanAnswer.length() > 1 && cleanTooltip.contains(cleanAnswer.substring(1))) return true;
+        return false;
+    }
+
     private boolean tryAutoClickCorrectAnswer() {
         Minecraft mc = Minecraft.getMinecraft();
-        if (mc.player == null) return false;
+        if (mc.player == null || !(mc.currentScreen instanceof GuiContainer)) return false;
+        Container container = mc.player.openContainer;
+        if (container == null) return false;
 
         List<AnswerSet> allSets = AnswerManager.getInstance().getSets();
         if (allSets == null || allSets.isEmpty()) return false;
 
-        List<String> slotTooltips = getTargetSlotTooltipsCleaned();
-        if (slotTooltips == null || slotTooltips.size() != 3) return false;
+        // 1. Ưu tiên kiểm tra 3 slot chuẩn TARGET_SLOTS {21, 22, 23}
+        List<Slot> primarySlots = new ArrayList<>();
+        for (int sn : TARGET_SLOTS) {
+            if (sn >= 0 && sn < container.inventorySlots.size()) {
+                Slot s = container.getSlot(sn);
+                if (s != null && s.getHasStack() && !s.getStack().isEmpty()) {
+                    primarySlots.add(s);
+                }
+            }
+        }
 
-        List<String> cleanSlotTooltips = slotTooltips.stream()
-                .map(s -> removeAccent(s).toLowerCase().trim())
-                .collect(Collectors.toList());
+        if (primarySlots.size() == 3) {
+            List<String> primaryTooltips = new ArrayList<>();
+            for (Slot slot : primarySlots) {
+                primaryTooltips.add(getCleanTooltip(slot.getStack(), mc));
+            }
+
+            for (AnswerSet set : allSets) {
+                if (set == null || set.getAnswers() == null || set.getAnswers().size() != 3) continue;
+                if (isSetMatch(primaryTooltips, set)) {
+                    LOGGER.info("QuizPeek: bộ {} khớp với 3 ô chuẩn (21, 22, 23).", set.getName());
+                    String correct = set.getCorrectAnswer();
+                    if (clickSlotMatchingAnswer(primarySlots, correct, container, mc)) {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        // 2. Fallback: quét tất cả các slot có item trong rương trên (upper chest)
+        List<Slot> allChestSlots = new ArrayList<>();
+        int maxSlotsToCheck = Math.min(54, container.inventorySlots.size());
+        if (container instanceof net.minecraft.inventory.ContainerChest) {
+            maxSlotsToCheck = ((net.minecraft.inventory.ContainerChest) container).getLowerChestInventory().getSizeInventory();
+        }
+        for (int i = 0; i < maxSlotsToCheck; i++) {
+            Slot s = container.getSlot(i);
+            if (s != null && s.getHasStack() && !s.getStack().isEmpty()) {
+                allChestSlots.add(s);
+            }
+        }
 
         for (AnswerSet set : allSets) {
             if (set == null || set.getAnswers() == null || set.getAnswers().size() != 3) continue;
-            if (isSetMatch(cleanSlotTooltips, set)) {
-                LOGGER.info("QuizPeek: bộ {} khớp với 3 ô.", set.getName());
+            List<Slot> matchedSlots = findSlotsMatchingSet(allChestSlots, set, mc);
+            if (matchedSlots != null && matchedSlots.size() == 3) {
+                LOGGER.info("QuizPeek: bộ {} khớp với {} slot trong rương.", set.getName(), matchedSlots.size());
                 String correct = set.getCorrectAnswer();
-                if (correct != null && !correct.isEmpty() && tryClickWithCorrectAnswerContains(correct)) {
+                if (clickSlotMatchingAnswer(matchedSlots, correct, container, mc)) {
                     return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private List<Slot> findSlotsMatchingSet(List<Slot> candidateSlots, AnswerSet set, Minecraft mc) {
+        List<Slot> matched = new ArrayList<>();
+        List<String> neededAnswers = new ArrayList<>(set.getAnswers());
+
+        for (Slot slot : candidateSlots) {
+            String tooltip = getCleanTooltip(slot.getStack(), mc);
+            for (int i = 0; i < neededAnswers.size(); i++) {
+                if (isAnswerMatchTooltip(tooltip, neededAnswers.get(i))) {
+                    matched.add(slot);
+                    neededAnswers.remove(i);
+                    break;
+                }
+            }
+            if (neededAnswers.isEmpty()) break;
+        }
+
+        return neededAnswers.isEmpty() ? matched : null;
+    }
+
+    private boolean clickSlotMatchingAnswer(List<Slot> slots, String correctAnswer, Container container, Minecraft mc) {
+        if (correctAnswer == null || slots == null) return false;
+        for (Slot slot : slots) {
+            String tooltip = getCleanTooltip(slot.getStack(), mc);
+            if (isAnswerMatchTooltip(tooltip, correctAnswer)) {
+                try {
+                    mc.playerController.windowClick(container.windowId, slot.slotNumber, 0, ClickType.PICKUP, mc.player);
+                    LOGGER.info("QuizPeek: Đã click vào slot {} (đáp án đúng '{}')", slot.slotNumber, correctAnswer);
+                    return true;
+                } catch (Exception e) {
+                    LOGGER.error("QuizPeek lỗi khi click slot: " + e.getMessage(), e);
+                    return false;
                 }
             }
         }
@@ -189,10 +286,9 @@ public class TooltipDumpHandler {
     private boolean isSetMatch(List<String> tooltips, AnswerSet set) {
         List<String> remaining = new ArrayList<>(tooltips);
         for (String answer : set.getAnswers()) {
-            String cleanAnswer = removeAccent(answer).toLowerCase().trim();
             boolean found = false;
             for (int i = 0; i < remaining.size(); i++) {
-                if (remaining.get(i).contains(cleanAnswer)) {
+                if (isAnswerMatchTooltip(remaining.get(i), answer)) {
                     found = true;
                     remaining.remove(i);
                     break;
@@ -201,93 +297,6 @@ public class TooltipDumpHandler {
             if (!found) return false;
         }
         return true;
-    }
-
-    private List<Slot> findInteractiveAnswerSlots(Container container) {
-        List<Slot> slots = new ArrayList<>();
-        // Ưu tiên slot chuẩn 21, 22, 23
-        boolean defaultSlotsValid = true;
-        for (int sn : TARGET_SLOTS) {
-            if (sn < 0 || sn >= container.inventorySlots.size()) {
-                defaultSlotsValid = false;
-                break;
-            }
-            Slot s = container.getSlot(sn);
-            if (s == null || !s.getHasStack() || s.getStack().isEmpty()) {
-                defaultSlotsValid = false;
-                break;
-            }
-            slots.add(s);
-        }
-        if (defaultSlotsValid && slots.size() == 3) {
-            return slots;
-        }
-
-        // Nếu slot 21, 22, 23 không có đồ -> Quét tất cả các slot có item trong phần kho trên (upper chest)
-        slots.clear();
-        int maxSlotsToCheck = Math.min(54, container.inventorySlots.size());
-        if (container instanceof net.minecraft.inventory.ContainerChest) {
-            maxSlotsToCheck = ((net.minecraft.inventory.ContainerChest) container).getLowerChestInventory().getSizeInventory();
-        }
-        for (int i = 0; i < maxSlotsToCheck; i++) {
-            Slot s = container.getSlot(i);
-            if (s != null && s.getHasStack() && !s.getStack().isEmpty()) {
-                slots.add(s);
-            }
-        }
-        return slots;
-    }
-
-    private List<String> getTargetSlotTooltipsCleaned() {
-        Minecraft mc = Minecraft.getMinecraft();
-        if (mc.player == null || !(mc.currentScreen instanceof GuiContainer)) return null;
-        Container container = mc.player.openContainer;
-        if (container == null) return null;
-
-        List<Slot> answerSlots = findInteractiveAnswerSlots(container);
-        if (answerSlots.isEmpty()) return null;
-
-        List<String> result = new ArrayList<>();
-        for (Slot slot : answerSlots) {
-            ItemStack stack = slot.getStack();
-            if (stack.isEmpty()) continue;
-            List<String> tooltip = stack.getTooltip(mc.player, ITooltipFlag.TooltipFlags.NORMAL);
-            String full = String.join("", tooltip);
-            String cleaned = TextFormatting.getTextWithoutFormattingCodes(full).trim();
-            result.add(cleaned);
-        }
-        return result;
-    }
-
-    private boolean tryClickWithCorrectAnswerContains(String correctAnswer) {
-        Minecraft mc = Minecraft.getMinecraft();
-        if (mc.player == null || !(mc.currentScreen instanceof GuiContainer)) return false;
-        Container container = mc.player.openContainer;
-        if (container == null) return false;
-
-        String cleanAnswer = removeAccent(correctAnswer).toLowerCase().trim();
-        List<Slot> answerSlots = findInteractiveAnswerSlots(container);
-
-        for (Slot slot : answerSlots) {
-            ItemStack stack = slot.getStack();
-            if (stack.isEmpty()) continue;
-
-            List<String> tooltip = stack.getTooltip(mc.player, ITooltipFlag.TooltipFlags.NORMAL);
-            String fullTooltip = String.join("", tooltip);
-            String cleanTooltip = removeAccent(TextFormatting.getTextWithoutFormattingCodes(fullTooltip))
-                    .toLowerCase().trim();
-            if (cleanTooltip.contains(cleanAnswer)) {
-                try {
-                    mc.playerController.windowClick(container.windowId, slot.slotNumber, 0, ClickType.PICKUP, mc.player);
-                    LOGGER.info("QuizPeek: clicked slot {} for correct answer '{}'", slot.slotNumber, correctAnswer);
-                    return true;
-                } catch (Exception e) {
-                    LOGGER.error("QuizPeek click error", e);
-                    return false;
-                }
-            }
-        }
-        return false;
     }
 
     public static boolean hasClickedAnswer() {

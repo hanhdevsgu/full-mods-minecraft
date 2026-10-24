@@ -493,8 +493,9 @@ public class MacroRecorderMod {
     @SubscribeEvent
     public void onEntityInteract(PlayerInteractEvent.EntityInteract event) {
         if (sellMacroRunning && (sellState == SellState.SELLING_ITEMS || sellState == SellState.SELLING_1E_ITEMS)) {
+            // Chặn không tương tác / mở menu người chơi đứng che bảng
             event.setCanceled(true);
-            releaseUseItemKey();
+            // TUYỆT ĐỐI KHÔNG nhả chuột phải! Vẫn đè chuột phải để bán qua người đó như bình thường
         }
     }
 
@@ -522,8 +523,13 @@ public class MacroRecorderMod {
 
         // 2. Kiểm tra log khi đang bán ở shop (SELLING_ITEMS hoặc SELLING_1E_ITEMS):
         if (sellMacroRunning && (sellState == SellState.SELLING_ITEMS || sellState == SellState.SELLING_1E_ITEMS)) {
-            // Log bán chuẩn: $80 đã được cộng vào tài khoản của bạn.
-            if (clean.contains("đã được cộng vào tài khoản") || clean.contains("cộng vào tài khoản")) {
+            // Nhận diện mọi định dạng server thông báo tiền được cộng vào tài khoản:
+            if (clean.contains("cộng vào tài khoản") || clean.contains("cong vao tai khoan")
+                    || clean.contains("đã được cộng") || clean.contains("da duoc cong")
+                    || clean.contains("nhận được $") || clean.contains("nhan duoc $")
+                    || (clean.contains("bán") && clean.contains("$")) || (clean.contains("ban") && clean.contains("$"))
+                    || (clean.contains("+") && clean.contains("$")) || clean.contains("+$")
+                    || clean.contains("đã bán thành công") || clean.contains("da ban thanh cong")) {
                 lastSellMoneyTime = System.currentTimeMillis();
                 return;
             }
@@ -1114,33 +1120,32 @@ public class MacroRecorderMod {
                     }
                     return true;
                 }
-                // Đè chuột phải người thật (khi tâm ngắm đang trúng bảng BÁN):
+                // Đè chuột phải người thật:
                 // Nếu đang nhìn vào bảng Buy hoặc bảng phía dưới: TUYỆT ĐỐI KHÔNG CLICK!
                 boolean lookingAtBuySign1E = SignAimHandler.isLookingAtAnyBuySign(mc);
-                boolean aimingAtSellSign1E = !lookingAtBuySign1E && SignAimHandler.isAimingAtSign(mc);
+                boolean canSell1E = !lookingAtBuySign1E && (SignAimHandler.isAimingAtSign(mc) || SignAimHandler.isFacingTargetSign(mc));
 
-                if (aimingAtSellSign1E) {
+                if (canSell1E) {
                     holdUseItemKey();
+                    // Đảm bảo click tới bảng kể cả khi có người che:
+                    if (mc.player != null && mc.player.ticksExisted % 2 == 0) {
+                        SignAimHandler.clickTargetSign();
+                    }
                 } else {
                     releaseUseItemKey();
                 }
 
-                // Nếu không ngắm được trúng bảng bán:
-                if (!aimingAtSellSign1E) {
-                    notSellingTimer++;
+                // Nếu tiền vẫn đang được cộng gần đây (< 3.0s):
+                // BÁN VẪN ĐANG DIỄN RA TỐT -> TUYỆT ĐỐI KHÔNG DỪNG LẠI!
+                if (System.currentTimeMillis() - lastSellMoneyTime < 3000L) {
+                    notSellingTimer = 0;
                 } else {
-                    // Dù đang ngắm trúng bảng, nhưng nếu bị kẹt/người che/quá tầm với khiến server KHÔNG cộng tiền:
-                    if (System.currentTimeMillis() - lastSellMoneyTime >= 1500L) {
-                        notSellingTimer++;
-                    } else {
-                        notSellingTimer = 0;
-                    }
+                    notSellingTimer++;
                 }
 
-                // Nếu quá 30 ticks (~1.5s) không bán được / không cộng tiền:
-                if (notSellingTimer >= 30) {
-                    System.out.println("[MacroRecorder] (F4) Sell không cộng tiền hoặc bị che khuất tầm nhìn ("
-                            + notSellingTimer + " ticks)! Gửi " + afterShopGotoCommand + " để Baritone bước lại quầy bán...");
+                // Chỉ khi quá 80 ticks (~4 giây) liên tục HOÀN TOÀN KHÔNG CỘNG TIỀN VÀ MẤT TẦM BÁN:
+                if (notSellingTimer >= 80) {
+                    System.out.println("[MacroRecorder] (F4) Quá 4s không thấy server cộng tiền! Gửi " + afterShopGotoCommand + " để Baritone bước lại quầy bán...");
                     releaseUseItemKey();
                     executeClientCommand(afterShopGotoCommand);
                     stateBeforeRecovery = SellState.SELLING_1E_ITEMS;
@@ -1263,31 +1268,31 @@ public class MacroRecorderMod {
                     }
                     return true;
                 }
-                // Đè chuột phải người thật (khi tâm ngắm đang trúng bảng BÁN):
+                // Đè chuột phải người thật:
                 // Nếu đang nhìn vào bảng Buy hoặc bảng phía dưới: TUYỆT ĐỐI KHÔNG CLICK!
                 boolean lookingAtBuySign = SignAimHandler.isLookingAtAnyBuySign(mc);
-                boolean aimingAtSellSign = !lookingAtBuySign && SignAimHandler.isAimingAtSign(mc);
+                boolean canSell = !lookingAtBuySign && (SignAimHandler.isAimingAtSign(mc) || SignAimHandler.isFacingTargetSign(mc));
 
-                if (aimingAtSellSign) {
+                if (canSell) {
                     holdUseItemKey();
+                    // Đảm bảo click tới bảng kể cả khi có người che:
+                    if (mc.player != null && mc.player.ticksExisted % 2 == 0) {
+                        SignAimHandler.clickTargetSign();
+                    }
                 } else {
                     releaseUseItemKey();
                 }
 
-                // Nếu không ngắm được trúng bảng bán:
-                if (!aimingAtSellSign) {
-                    notSellingTimer++;
+                // Nếu tiền vẫn đang được cộng gần đây (< 3.0s):
+                // BÁN VẪN ĐANG DIỄN RA TỐT -> TUYỆT ĐỐI KHÔNG DỪNG LẠI!
+                if (System.currentTimeMillis() - lastSellMoneyTime < 3000L) {
+                    notSellingTimer = 0;
                 } else {
-                    // Dù đang ngắm trúng bảng, nhưng nếu bị kẹt/người che/quá tầm với khiến server KHÔNG cộng tiền:
-                    if (System.currentTimeMillis() - lastSellMoneyTime >= 1500L) {
-                        notSellingTimer++;
-                    } else {
-                        notSellingTimer = 0;
-                    }
+                    notSellingTimer++;
                 }
 
-                // Nếu quá 30 ticks (~1.5s) không bán được / không cộng tiền:
-                if (notSellingTimer >= 30) {
+                // Chỉ khi quá 80 ticks (~4 giây) liên tục HOÀN TOÀN KHÔNG CỘNG TIỀN VÀ MẤT TẦM BÁN:
+                if (notSellingTimer >= 80) {
                     System.out.println("[MacroRecorder] (F4) Sell không cộng tiền hoặc bị che khuất tầm nhìn ("
                             + notSellingTimer + " ticks)! Gửi " + afterShopGotoCommand + " để Baritone bước lại quầy bán...");
                     releaseUseItemKey();

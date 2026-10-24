@@ -862,6 +862,31 @@ public class SignAimHandler {
         return false;
     }
 
+    public static boolean isFacingTargetSign(Minecraft mc) {
+        if (mc == null || mc.player == null || targetSignPos == null) return false;
+        EntityPlayerSP player = mc.player;
+        double distSq = player.getDistanceSq(targetSignPos);
+        if (distSq > 25.0) return false; // trong cự ly 5 block
+
+        double eyeX = player.posX;
+        double eyeY = player.posY + player.getEyeHeight();
+        double eyeZ = player.posZ;
+        Vec3d target = new Vec3d(
+            targetSignPos.getX() + 0.5,
+            targetSignPos.getY() + 0.35 + yOffset,
+            targetSignPos.getZ() + 0.5
+        );
+        double dx = eyeX - target.x;
+        double dy = eyeY - target.y;
+        double dz = eyeZ - target.z;
+        float targetYaw = (float) (MathHelper.atan2(dx, -dz) * (180.0 / Math.PI));
+        double dist = Math.sqrt(dx * dx + dz * dz);
+        float targetPitch = (float) (MathHelper.atan2(dy, dist) * (180.0 / Math.PI));
+        float deltaYaw = Math.abs(MathHelper.wrapDegrees(targetYaw - player.rotationYaw));
+        float deltaPitch = Math.abs(targetPitch - player.rotationPitch);
+        return deltaYaw <= 25.0F && deltaPitch <= 25.0F;
+    }
+
     /**
      * Bán đồ tự động bằng tương tác gói tin nội bộ của game (Packet / ProcessRightClick)
      * TUYỆT ĐỐI KHÔNG SỬ DỤNG CHUỘT HỆ ĐIỀU HÀNH (OS MOUSE)
@@ -870,13 +895,17 @@ public class SignAimHandler {
         Minecraft mc = Minecraft.getMinecraft();
         if (mc.world == null || mc.player == null || mc.playerController == null || targetSignPos == null) return false;
 
-        // Chỉ click khi tâm ngắm thực sự chỉ vào bảng (chống AntiCheat kiểm tra góc nhìn)
-        if (!isAimingAtSign(mc)) {
+        // Cho phép click nếu tâm ngắm đang trúng bảng HOẶC góc mặt đang chỉa thẳng vào bảng (dù có người đứng che)
+        if (!isAimingAtSign(mc) && !isFacingTargetSign(mc)) {
             return false;
         }
 
-        EnumFacing facing = mc.objectMouseOver.sideHit;
-        Vec3d hitVec = mc.objectMouseOver.hitVec;
+        EnumFacing facing = EnumFacing.UP;
+        Vec3d hitVec = new Vec3d(targetSignPos.getX() + 0.5, targetSignPos.getY() + 0.5, targetSignPos.getZ() + 0.5);
+        if (mc.objectMouseOver != null && mc.objectMouseOver.typeOfHit == RayTraceResult.Type.BLOCK && targetSignPos.equals(mc.objectMouseOver.getBlockPos())) {
+            facing = mc.objectMouseOver.sideHit;
+            hitVec = mc.objectMouseOver.hitVec;
+        }
 
         mc.playerController.processRightClickBlock(mc.player, mc.world, targetSignPos, facing, hitVec, EnumHand.MAIN_HAND);
 
@@ -934,8 +963,9 @@ public class SignAimHandler {
         if (mc.currentScreen != null) return; // Không can thiệp nếu đang mở GUI/Chat
 
         if (isAutoWalking && !isWarmupActive && targetSignPos != null && mc.player != null) {
-            // Nếu đã ngắm trúng bảng bán thì tuyệt đối không di chuyển
-            if (isAimingAtSign(mc)) {
+            // Nếu đã ngắm trúng hoặc đang chỉa mặt vào bảng bán: tuyệt đối đứng yên
+            if (isAimingAtSign(mc) || isFacingTargetSign(mc)) {
+                if (isAutoWalking) stopAutoWalk(mc);
                 return;
             }
 
@@ -943,8 +973,6 @@ public class SignAimHandler {
             double dx = player.posX - (targetSignPos.getX() + 0.5);
             double dz = player.posZ - (targetSignPos.getZ() + 0.5);
             double distXZ = Math.sqrt(dx * dx + dz * dz);
-
-            boolean playerBlockingAhead = isAnotherPlayerBlocking(mc, player);
 
             if (distXZ > 2.2) {
                 // Nếu bị đẩy lùi khỏi quầy: bước xích lại gần quầy
@@ -966,10 +994,6 @@ public class SignAimHandler {
                 } else {
                     event.getMovementInput().moveForward = -0.8F;
                 }
-            } else if (playerBlockingAhead) {
-                // Cự ly đủ gần nhưng có người chắn tầm nhìn: nhích ngang tìm góc hở
-                event.getMovementInput().moveForward = 0.0F;
-                event.getMovementInput().moveStrafe = 0.6F;
             }
 
             mc.player.setSprinting(false);
@@ -1012,7 +1036,7 @@ public class SignAimHandler {
         // ĐIỀU KIỆN 100% NGƯỜI THẬT:
         // "miễn sao vẫn trong tầm ngắm thì ko di chuyển gì hết"
         // "nếu ra khỏi tầm nhắm bán ko lên tiền thì mới bắt đầu di chuyển"
-        if (isAimingAtSign(mc)) {
+        if (isAimingAtSign(mc) || isFacingTargetSign(mc)) {
             // ĐANG TRONG TẦM NGẮM BÁN ĐƯỢC TIỀN: ĐỨNG YÊN HOÀN TOÀN!
             if (isAutoWalking) {
                 stopAutoWalk(mc);

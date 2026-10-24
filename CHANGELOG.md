@@ -1,5 +1,16 @@
 # CHANGELOG - AutoAimSellSign 1.12.2
 
+## [1.4.40] - 2026-10-24
+### Feature & Polish (Continuous Sell While Blocked & Real-Time Money Stream Guarantee)
+- **Tiếp tục đè chuột phải bán đồ liên tục kể cả khi có người đứng che bảng**:
+  - Tích hợp hàm `isFacingTargetSign(mc)`: Khi góc nhìn nhân vật đang chỉa thẳng vào bảng bán trong cự ly, kể cả khi có người chơi khác đứng chắn trước mặt chắn tia raytrace của khối, bot vẫn nhận diện là đang aim vào bảng và **tiếp tục đè chuột phải (`holdUseItemKey()`)** mà không nhả ra.
+  - Sửa `onEntityInteract`: Hủy tương tác mở menu với người đứng che nhưng **tuyệt đối không nhả chuột phải**.
+  - Gửi thêm gói tin click `clickTargetSign()` trực tiếp vào `targetSignPos` mỗi 2 ticks để server luôn nhận được tương tác bán đồ.
+  - Xóa bỏ hành vi tự động nhích ngang né tránh (`moveStrafe`) khi có người đứng che, nhân vật đứng yên tuyệt đối tại quầy.
+- **Không bao giờ dừng lại khi server vẫn đang cộng tiền**:
+  - Mở rộng nhận diện toàn bộ các mẫu thông báo cộng tiền trong chat server (`cộng vào tài khoản`, `nhận được $`, `đã bán thành công`, v.v.).
+  - Miễn là server vẫn đang cộng tiền trong vòng 3 giây gần đây, biến đếm trễ `notSellingTimer` luôn được giữ ở 0 và bot **bán liên tục không ngừng nghỉ**.
+
 ## [1.4.39] - 2026-10-24
 ### Feature & Polish (Pre-Setup Target /aimsell 42 & Persistent Auto-Aim On F4 #goto)
 - **Hỗ trợ Setup mục tiêu trước (`/aimsell <ID/Item>`)**:

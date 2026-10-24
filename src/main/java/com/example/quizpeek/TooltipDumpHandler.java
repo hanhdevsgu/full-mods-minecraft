@@ -84,31 +84,47 @@ public class TooltipDumpHandler {
         handleAutoAnswerTimer(Minecraft.getMinecraft());
     }
 
+    private boolean isNpcQuizGui(GuiContainer gui) {
+        if (gui == null) return false;
+        try {
+            if (gui.inventorySlots instanceof net.minecraft.inventory.ContainerChest) {
+                String title = ((net.minecraft.inventory.ContainerChest) gui.inventorySlots).getLowerChestInventory().getDisplayName().getUnformattedText();
+                if (title != null) {
+                    String lower = title.toLowerCase();
+                    // Loại trừ kho /pv, rương farm:
+                    if (lower.contains("kho") || lower.contains("pv") || lower.contains("chest") || lower.contains("rương")) {
+                        return false;
+                    }
+                }
+            }
+        } catch (Exception ignored) {}
+        return true;
+    }
+
     private void handleAutoAnswerTimer(Minecraft mc) {
         if (mc == null || mc.player == null) {
             trackedContainer = null;
             return;
         }
 
-        // Tự động kích hoạt khi đang ở khu vực Shop (Y xấp xỉ 150 - 151) và có GUI mở ra:
-        boolean inShopAltitude = Math.abs(mc.player.posY - 150.0) <= 4.0 || Math.abs(mc.player.posY - 151.0) <= 4.0;
-        if (!inShopAltitude) {
-            deactivate();
-            return;
-        }
-
-        // Tự động kích hoạt nếu người chơi hoặc bot mở GUI tại Shop:
-        if (!active && mc.currentScreen instanceof GuiContainer) {
-            activateForNpc();
-        }
-
+        // CHỈ chạy khi được kích hoạt tương tác NPC (active == true) HOẶC khi mở GUI NPC thật sự
         if (!active) {
-            trackedContainer = null;
-            return;
+            if (mc.currentScreen instanceof GuiContainer && isNpcQuizGui((GuiContainer) mc.currentScreen)) {
+                activateForNpc();
+            } else {
+                trackedContainer = null;
+                return;
+            }
         }
 
         if (mc.currentScreen instanceof GuiContainer) {
             GuiContainer guiContainer = (GuiContainer) mc.currentScreen;
+
+            // Nếu là kho /pv thì bỏ qua ngay, không xử lý
+            if (!isNpcQuizGui(guiContainer)) {
+                deactivate();
+                return;
+            }
 
             if (guiContainer != trackedContainer) {
                 trackedContainer = guiContainer;
@@ -161,13 +177,29 @@ public class TooltipDumpHandler {
 
     private String getCleanTooltip(ItemStack stack, Minecraft mc) {
         if (stack == null || stack.isEmpty()) return "";
+        StringBuilder sb = new StringBuilder();
+        try {
+            sb.append(stack.getDisplayName()).append(" ");
+        } catch (Exception ignored) {}
+        try {
+            net.minecraft.nbt.NBTTagCompound tag = stack.getTagCompound();
+            if (tag != null && tag.hasKey("display", 10)) {
+                net.minecraft.nbt.NBTTagCompound display = tag.getCompoundTag("display");
+                if (display.hasKey("Lore", 9)) {
+                    net.minecraft.nbt.NBTTagList lore = display.getTagList("Lore", 8);
+                    for (int i = 0; i < lore.tagCount(); i++) {
+                        sb.append(lore.getStringTagAt(i)).append(" ");
+                    }
+                }
+            }
+        } catch (Exception ignored) {}
         try {
             List<String> tooltip = stack.getTooltip(mc.player, ITooltipFlag.TooltipFlags.NORMAL);
-            String full = String.join(" ", tooltip);
-            return removeAccent(TextFormatting.getTextWithoutFormattingCodes(full)).toLowerCase().trim();
-        } catch (Exception e) {
-            return "";
-        }
+            for (String line : tooltip) {
+                sb.append(line).append(" ");
+            }
+        } catch (Exception ignored) {}
+        return removeAccent(TextFormatting.getTextWithoutFormattingCodes(sb.toString())).toLowerCase().trim();
     }
 
     private boolean isAnswerMatchTooltip(String cleanTooltip, String answer) {
@@ -191,21 +223,18 @@ public class TooltipDumpHandler {
 
         // 1. Ưu tiên kiểm tra 3 slot chuẩn TARGET_SLOTS {21, 22, 23}
         List<Slot> primarySlots = new ArrayList<>();
+        List<String> primaryTooltips = new ArrayList<>();
         for (int sn : TARGET_SLOTS) {
             if (sn >= 0 && sn < container.inventorySlots.size()) {
                 Slot s = container.getSlot(sn);
                 if (s != null && s.getHasStack() && !s.getStack().isEmpty()) {
                     primarySlots.add(s);
+                    primaryTooltips.add(getCleanTooltip(s.getStack(), mc));
                 }
             }
         }
 
         if (primarySlots.size() == 3) {
-            List<String> primaryTooltips = new ArrayList<>();
-            for (Slot slot : primarySlots) {
-                primaryTooltips.add(getCleanTooltip(slot.getStack(), mc));
-            }
-
             for (AnswerSet set : allSets) {
                 if (set == null || set.getAnswers() == null || set.getAnswers().size() != 3) continue;
                 if (isSetMatch(primaryTooltips, set)) {
@@ -214,6 +243,34 @@ public class TooltipDumpHandler {
                     if (clickSlotMatchingAnswer(primarySlots, correct, container, mc)) {
                         return true;
                     }
+                }
+            }
+
+            // Fallback trong primarySlots: nếu 1 ô chứa correctAnswer và ít nhất 1 ô khác chứa câu trả lời của bộ đó:
+            for (AnswerSet set : allSets) {
+                if (set == null || set.getCorrectAnswer() == null) continue;
+                int matchCount = 0;
+                Slot correctSlot = null;
+                for (Slot s : primarySlots) {
+                    String tt = getCleanTooltip(s.getStack(), mc);
+                    if (isAnswerMatchTooltip(tt, set.getCorrectAnswer())) {
+                        correctSlot = s;
+                        matchCount++;
+                    } else {
+                        for (String ans : set.getAnswers()) {
+                            if (isAnswerMatchTooltip(tt, ans)) {
+                                matchCount++;
+                                break;
+                            }
+                        }
+                    }
+                }
+                if (correctSlot != null && matchCount >= 2) {
+                    try {
+                        mc.playerController.windowClick(container.windowId, correctSlot.slotNumber, 0, ClickType.PICKUP, mc.player);
+                        LOGGER.info("QuizPeek: Click trực tiếp slot {} theo bộ {}", correctSlot.slotNumber, set.getName());
+                        return true;
+                    } catch (Exception ignored) {}
                 }
             }
         }

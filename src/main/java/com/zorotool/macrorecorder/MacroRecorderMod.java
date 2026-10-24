@@ -2863,20 +2863,7 @@ public class MacroRecorderMod {
         hudSessionActive = true;
         hudSessionStartMillis = System.currentTimeMillis();
 
-        // Kiểm tra xem hiện tại đã đứng ở quầy bán chưa:
-        if (isAtDestination(afterShopGotoCommand)) {
-            System.out.println(
-                    "[MacroRecorder] >>> (F4) Đang đứng tại quầy bán đồ (" + afterShopGotoCommand + "), kích hoạt AutoAim và bắt đầu bán ngay!");
-            preStartActive = false;
-            resetAndStartSellMacro();
-            if (mc != null && mc.player != null) {
-                mc.player.sendMessage(new TextComponentString("§b[Macro] ▶ ĐÃ BẬT Macro (F4)! Nhấn F4 để tạm dừng/tiếp tục, F10 để dừng hẳn."));
-            }
-            return;
-        }
-
-        // Nếu có cấu hình goto tới NPC shop và chưa ở quầy bán:
-        // Tự động chạy tới NPC shop để giải quiz trước!
+        // 100% QUY TRÌNH: Goto NPC Shop -> Mở NPC -> QuizPeek Click Đáp Án -> Goto Quầy Bán -> Aim Bán Đồ:
         if (shopGotoCommand != null && !shopGotoCommand.trim().isEmpty()) {
             System.out.println("[MacroRecorder] >>> (F4) Bắt đầu: Gửi " + shopGotoCommand + " tới NPC shop giải quiz trước...");
             executeClientCommand(shopGotoCommand);
@@ -2884,8 +2871,21 @@ public class MacroRecorderMod {
             isRunning = true;
             preStartActive = false;
             waitTimer = 0;
+            com.example.quizpeek.TooltipDumpHandler.armForNextNpcGui();
             if (mc != null && mc.player != null) {
                 mc.player.sendMessage(new TextComponentString("§b[Macro] ▶ (F4) Di chuyển tới NPC shop giải quiz..."));
+            }
+            return;
+        }
+
+        // Nếu không cài đặt goto NPC: kiểm tra nếu đang ở quầy thì bán ngay, chưa ở thì đi tới quầy
+        if (isAtDestination(afterShopGotoCommand)) {
+            System.out.println(
+                    "[MacroRecorder] >>> (F4) Đang đứng tại quầy bán đồ (" + afterShopGotoCommand + "), kích hoạt AutoAim và bắt đầu bán ngay!");
+            preStartActive = false;
+            resetAndStartSellMacro();
+            if (mc != null && mc.player != null) {
+                mc.player.sendMessage(new TextComponentString("§b[Macro] ▶ ĐÃ BẬT Macro (F4)! Nhấn F4 để tạm dừng/tiếp tục, F10 để dừng hẳn."));
             }
             return;
         }

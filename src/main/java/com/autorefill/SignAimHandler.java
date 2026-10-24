@@ -902,13 +902,13 @@ public class SignAimHandler {
                 } catch (Exception ignored) {}
             }
 
-            isAimLockActive = true;
-            outOfRangeTicks = 0;
-            stuckTicks = 0;
-            isWarmupActive = false;
-
-            boolean found = findTargetSign(lastItemTarget, verbose);
-            if (found) {
+            boolean isAtShop = (mc.player != null && Math.abs(mc.player.posY - 151.0) <= 4.0);
+            boolean found = isAtShop ? findTargetSign(lastItemTarget, verbose) : false;
+            if (found && isAtShop) {
+                isAimLockActive = true;
+                outOfRangeTicks = 0;
+                stuckTicks = 0;
+                isWarmupActive = false;
                 if (mc.player != null) {
                     anchorPos = new Vec3d(mc.player.posX, mc.player.posY, mc.player.posZ);
                 }
@@ -926,6 +926,7 @@ public class SignAimHandler {
                 }
             } else {
                 targetSignPos = null;
+                isAimLockActive = false;
                 if (mc.player != null && verbose) {
                     mc.player.sendMessage(new TextComponentString(TextFormatting.YELLOW + 
                         "[AutoAim] ĐÃ SETUP TRƯỚC: " + targetDisplayName));

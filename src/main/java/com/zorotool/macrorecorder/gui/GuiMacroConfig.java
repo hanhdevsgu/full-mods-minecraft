@@ -196,7 +196,7 @@ public class GuiMacroConfig extends GuiScreen {
             String nextChestGoto = nextChestGotoField.getText().trim();
 
             ConfigHelper.setFarmItemId(farmItemId);
-            SignAimHandler.setupTarget(String.valueOf(farmItemId), true);
+            SignAimHandler.setupTarget(String.valueOf(farmItemId), false);
             if (this.mc != null && this.mc.player != null) {
                 this.mc.player.sendMessage(new TextComponentString(
                         "§a[AutoAim] ✔ Đã tự động áp dụng lệnh: §e/aimsell " + farmItemId + " §b(" + SignAimHandler.targetDisplayName + ")"));

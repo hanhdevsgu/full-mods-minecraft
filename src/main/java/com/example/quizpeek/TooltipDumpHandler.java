@@ -91,14 +91,17 @@ public class TooltipDumpHandler {
                 String title = ((net.minecraft.inventory.ContainerChest) gui.inventorySlots).getLowerChestInventory().getDisplayName().getUnformattedText();
                 if (title != null) {
                     String lower = title.toLowerCase();
-                    // Loại trừ kho /pv, rương farm:
-                    if (lower.contains("kho") || lower.contains("pv") || lower.contains("chest") || lower.contains("rương")) {
+                    // Loại trừ kho /pv, rương farm, login, menu:
+                    if (lower.contains("kho") || lower.contains("pv") || lower.contains("chest") 
+                            || lower.contains("rương") || lower.contains("đăng nhập") || lower.contains("login")
+                            || lower.contains("mật khẩu") || lower.contains("menu")) {
                         return false;
                     }
                 }
+                return true;
             }
         } catch (Exception ignored) {}
-        return true;
+        return false;
     }
 
     private void handleAutoAnswerTimer(Minecraft mc) {
@@ -107,20 +110,16 @@ public class TooltipDumpHandler {
             return;
         }
 
-        // CHỈ chạy khi được kích hoạt tương tác NPC (active == true) HOẶC khi mở GUI NPC thật sự
-        if (!active) {
-            if (mc.currentScreen instanceof GuiContainer && isNpcQuizGui((GuiContainer) mc.currentScreen)) {
-                activateForNpc();
-            } else {
-                trackedContainer = null;
-                return;
-            }
+        // TUYỆT ĐỐI CHỈ chạy khi Macro (F4 hoặc F9) đang hoạt động VÀ được kích hoạt tương tác NPC (active == true)
+        if (!active || !com.zorotool.macrorecorder.MacroRecorderMod.isMacroActive()) {
+            trackedContainer = null;
+            return;
         }
 
         if (mc.currentScreen instanceof GuiContainer) {
             GuiContainer guiContainer = (GuiContainer) mc.currentScreen;
 
-            // Nếu là kho /pv thì bỏ qua ngay, không xử lý
+            // Nếu không phải GUI Quiz NPC thì bỏ qua ngay, không xử lý
             if (!isNpcQuizGui(guiContainer)) {
                 deactivate();
                 return;

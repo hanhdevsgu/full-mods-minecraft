@@ -370,6 +370,10 @@ public class MacroRecorderMod {
         return instance;
     }
 
+    public static boolean isMacroActive() {
+        return instance != null && (instance.isRunning || instance.sellMacroRunning);
+    }
+
     @Mod.EventHandler
     public void preInit(FMLPreInitializationEvent event) {
         ConfigHelper.init(event);
@@ -1082,6 +1086,7 @@ public class MacroRecorderMod {
                             closeCurrentScreen();
                         }
                         com.example.quizpeek.TooltipDumpHandler.setAnswerClicked(false);
+                        com.example.quizpeek.TooltipDumpHandler.deactivate();
                         executeClientCommand(afterShopGotoCommand);
                         System.out.println("[MacroRecorder] Đã click đáp án NPC (chờ đúng 1s), gửi "
                                 + afterShopGotoCommand + " để rời khỏi khu shop...");
@@ -3301,6 +3306,7 @@ public class MacroRecorderMod {
         SignAimHandler.isAimLockActive = false;
         SignAimHandler.targetSignPos = null;
         SignAimHandler.isWarmupActive = false;
+        com.example.quizpeek.TooltipDumpHandler.deactivate();
 
         // 2. Hủy toàn bộ di chuyển của Baritone
         executeClientCommand("#stop");

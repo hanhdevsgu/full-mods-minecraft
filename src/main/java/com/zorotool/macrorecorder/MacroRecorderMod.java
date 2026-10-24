@@ -2982,20 +2982,30 @@ public class MacroRecorderMod {
         System.out.println("[MacroRecorder] ========================================");
     }
 
-    public void stopSellMacro() {
+    public void stopAllEverything() {
         releaseUseItemKey();
-        if (!sellMacroRunning)
-            return;
+        isRunning = false;
         sellMacroRunning = false;
+        preStartActive = false;
+        macroPaused = false;
+        inventoryTransferActive = false;
         targetVaultsToFill = -1;
         vaultsSoldThisSession = 0;
+        notSellingTimer = 0;
+
+        // 1. Tắt toàn bộ ghim camera AutoAim
         try {
             SignAimHandler.stopAimLock(mc);
         } catch (Exception ignored) {
         }
+        SignAimHandler.isAimLockActive = false;
+        SignAimHandler.targetSignPos = null;
         SignAimHandler.isWarmupActive = false;
-        notSellingTimer = 0;
+
+        // 2. Hủy toàn bộ di chuyển của Baritone
         executeClientCommand("#stop");
+
+        // 3. Nhả toàn bộ phím điều khiển
         if (mc != null && mc.gameSettings != null) {
             KeyBinding.setKeyBindState(mc.gameSettings.keyBindForward.getKeyCode(), false);
             KeyBinding.setKeyBindState(mc.gameSettings.keyBindBack.getKeyCode(), false);
@@ -3004,22 +3014,28 @@ public class MacroRecorderMod {
             KeyBinding.setKeyBindState(mc.gameSettings.keyBindJump.getKeyCode(), false);
             KeyBinding.setKeyBindState(mc.gameSettings.keyBindSprint.getKeyCode(), false);
         }
-        resetHud(); // F10 = dung han + dua ruong/tien/thoi gian ve lai 0
+
+        // 4. Đóng GUI nếu đang mở
         try {
             if (mc != null && mc.currentScreen != null) {
                 mc.player.closeScreen();
             }
-        } catch (Exception e) {
-            System.out.println("[MacroRecorder] (F4) Lỗi khi dừng macro bán mía: " + e);
-            e.printStackTrace();
+        } catch (Exception ignored) {
         }
+
+        // 5. Reset toàn bộ HUD
+        resetHud();
+
         System.out.println("[MacroRecorder] ========================================");
-        System.out.println("[MacroRecorder] >>> ĐÃ DỪNG Macro Bán Mía (F4) tại kho /pv " + sellVaultNumber);
-        System.out.println("[MacroRecorder] >>> Tổng mía đã rút xuống: " + totalSugarCaneTaken + " stacks");
+        System.out.println("[MacroRecorder] >>> (F10) ĐÃ DỪNG TOÀN BỘ MACRO & AUTOGHIM CAMERA!");
         System.out.println("[MacroRecorder] ========================================");
         if (mc != null && mc.player != null) {
-            mc.player.sendMessage(new TextComponentString("§c[Macro] ⏹ ĐÃ DỪNG HẲN Macro (F10)!"));
+            mc.player.sendMessage(new TextComponentString("§c[Macro] ⏹ ĐÃ DỪNG TOÀN BỘ Macro & AutoAim (F10)!"));
         }
+    }
+
+    public void stopSellMacro() {
+        stopAllEverything();
     }
 
     public boolean isSellMacroRunning() {
@@ -3027,12 +3043,8 @@ public class MacroRecorderMod {
     }
 
     /**
-     * F4 (khi dang co macro chay, ca F9 lan F4): TAM DUNG - dong bang state
-     * machine (onClientTick se return som) VA dong bang dong ho HUD:
-     * "chot" doan thoi gian vua chay vao hudAccumulatedMillis, dat
-     * hudSessionStartMillis = 0 de HUD ngung cong don cho toi khi resumeMacro().
-     * KHONG dung han, KHONG reset gi (chestIndex, sellVaultNumber,
-     * hudStacksSoldSession... deu giu nguyen) - bam F4 lai la chay tiep dung cho dang do.
+     * F4: TẠM DỪNG MỌI HÀNH ĐỘNG - đóng băng state machine, đồng hồ HUD, dừng Baritone và AutoAim.
+     * Nhấn F4 lần nữa là chạy tiếp đúng vị trí đang dở dang.
      */
     private void pauseMacro() {
         releaseUseItemKey();
@@ -3058,9 +3070,9 @@ public class MacroRecorderMod {
             hudAccumulatedMillis += System.currentTimeMillis() - hudSessionStartMillis;
             hudSessionStartMillis = 0;
         }
-        System.out.println("[MacroRecorder] >>> TẠM DỪNG (F4). Nhấn F4 để chạy tiếp, F10 để dừng hẳn + reset.");
+        System.out.println("[MacroRecorder] >>> TẠM DỪNG MỌI HÀNH ĐỘNG (F4). Nhấn F4 để chạy tiếp, F10 để dừng hẳn.");
         if (mc != null && mc.player != null) {
-            mc.player.sendMessage(new TextComponentString("§e[Macro] ⏸ ĐÃ TẠM DỪNG Macro (F4)! Nhấn F4 để chạy tiếp, F10 để dừng hẳn."));
+            mc.player.sendMessage(new TextComponentString("§e[Macro] ⏸ ĐÃ TẠM DỪNG MỌI HÀNH ĐỘNG (F4)! Nhấn F4 để chạy tiếp, F10 để dừng hẳn."));
         }
     }
 
@@ -3087,18 +3099,8 @@ public class MacroRecorderMod {
         }
     }
 
-    /**
-     * F10 khi dang o giua doan preStart (LAN F4 DAU TIEN, dang cho giua
-     * afterShopGotoCommand va afterShopLookCommand, xem startF4Sequence()) -
-     * dung han + reset HUD ve 0 giong het cac truong hop F10 khac.
-     */
     private void stopPreStartSequence() {
-        if (!preStartActive)
-            return;
-        preStartActive = false;
-        macroPaused = false;
-        resetHud();
-        System.out.println("[MacroRecorder] >>> ĐÃ DỪNG (F10) khi đang định vị lại trước khi chạy Macro.");
+        stopAllEverything();
     }
 
     /**
@@ -3221,15 +3223,7 @@ public class MacroRecorderMod {
         }
 
         if (stopMacroKey != null && stopMacroKey.isPressed()) {
-            if (isRunning) {
-                stopMacro();
-            } else if (sellMacroRunning) {
-                stopSellMacro();
-            } else if (preStartActive) {
-                stopPreStartSequence();
-            } else {
-                System.out.println("[MacroRecorder] Không có macro nào đang chạy!");
-            }
+            stopAllEverything();
         }
 
         if (accountOrderGuiKey != null && accountOrderGuiKey.isPressed()) {
@@ -3241,38 +3235,7 @@ public class MacroRecorderMod {
     }
 
     public void stopMacro() {
-        releaseUseItemKey();
-        if (!isRunning)
-            return;
-        isRunning = false;
-        targetVaultsToFill = -1;
-        vaultsSoldThisSession = 0;
-        SignAimHandler.isWarmupActive = false;
-        executeClientCommand("#stop");
-        if (mc != null && mc.gameSettings != null) {
-            KeyBinding.setKeyBindState(mc.gameSettings.keyBindForward.getKeyCode(), false);
-            KeyBinding.setKeyBindState(mc.gameSettings.keyBindBack.getKeyCode(), false);
-            KeyBinding.setKeyBindState(mc.gameSettings.keyBindLeft.getKeyCode(), false);
-            KeyBinding.setKeyBindState(mc.gameSettings.keyBindRight.getKeyCode(), false);
-            KeyBinding.setKeyBindState(mc.gameSettings.keyBindJump.getKeyCode(), false);
-            KeyBinding.setKeyBindState(mc.gameSettings.keyBindSprint.getKeyCode(), false);
-        }
-        resetHud(); // F10 = dung han + dua ruong/tien/thoi gian ve lai 0
-        try {
-            if (mc != null && mc.currentScreen != null) {
-                mc.player.closeScreen();
-            }
-        } catch (Exception e) {
-            System.out.println("[MacroRecorder] Lỗi khi dừng macro: " + e);
-            e.printStackTrace();
-        }
-        System.out.println("[MacroRecorder] ========================================");
-        System.out.println("[MacroRecorder] >>> ĐÃ DỪNG tại rương #" + (chestIndex + 1) + ", kho /pv " + vaultNumber);
-        System.out.println("[MacroRecorder] >>> Tổng mía: " + totalSugarCaneTaken + " stacks");
-        System.out.println("[MacroRecorder] ========================================");
-        if (mc != null && mc.player != null) {
-            mc.player.sendMessage(new TextComponentString("§c[Macro] ⏹ ĐÃ DỪNG HẲN Macro (F10)!"));
-        }
+        stopAllEverything();
     }
 
     public boolean isRunning() {

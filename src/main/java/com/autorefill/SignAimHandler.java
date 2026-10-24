@@ -946,6 +946,7 @@ public class SignAimHandler {
 
     public static void stopAimLock(Minecraft mc) {
         isAimLockActive = false;
+        targetSignPos = null;
         outOfRangeTicks = 0;
         stuckTicks = 0;
         isWarmupActive = false;

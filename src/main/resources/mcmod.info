@@ -1,0 +1,16 @@
+[
+{
+  "modid": "tntmod",
+  "name": "TNT Auto Logistics",
+  "description": "Auto TNT QuickMove (ID 46), Dispenser Auto-Fill, 3D ESP & Shared Team Sync.",
+  "version": "1.0",
+  "mcversion": "1.12.2",
+  "url": "",
+  "updateUrl": "",
+  "authorList": ["Omni-IT Architect"],
+  "credits": "",
+  "logoFile": "",
+  "screenshots": [],
+  "dependencies": []
+}
+]

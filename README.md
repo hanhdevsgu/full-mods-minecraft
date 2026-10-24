@@ -79,10 +79,13 @@ Click ngay vào 1 trong các đường link bên dưới để tải trực ti�
 
 ## 🎮 Phím Tắt Điều Khiển
 
-- **F4**: Bắt đầu chu trình tự động `#goto` tới quầy bán & bù đồ từ kho `/pv` lặp vô hạn.
+- **F4**: **Bắt đầu / Tạm dừng (Pause) / Chạy tiếp (Resume)**:
+  - Khi chưa chạy: Nhấn **F4** để khởi động chu trình bán & bù đồ vô hạn.
+  - Khi đang chạy: Nhấn **F4** để **TẠM DỪNG (Pause)** ngay lập tức (dừng di chuyển, đóng băng camera, đóng băng đồng hồ HUD).
+  - Khi đang tạm dừng: Nhấn **F4** lần nữa để **CHẠY TIẾP (Resume)** đúng vị trí đang dở dang!
 - **F8**: Mở Menu cấu hình Macro (tùy chỉnh ID vật phẩm, lệnh `/sethome`, lệnh `/home`, tọa độ `#goto`, số kho PV...).
 - **F9**: Bắt đầu Macro lấy đồ từ rương tại nhà vào các kho `/pv`.
-- **F10**: Dừng khẩn cấp toàn bộ tiến trình.
+- **F10**: **Dừng hẳn (Stop & Reset)** toàn bộ tiến trình và đưa bộ đếm về 0.
 - **K**: Bật / Tắt chế độ tự động trả lời QuizPeek.
 - **X**: Cài đặt độ trễ trả lời câu hỏi Quiz (mặc định 1.5s).
 - **U**: Mở giao diện quản lý thứ tự các tài khoản chạy song song (đa nick).

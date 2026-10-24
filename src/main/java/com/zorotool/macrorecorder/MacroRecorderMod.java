@@ -702,14 +702,14 @@ public class MacroRecorderMod {
                         return true;
                     }
                 } else {
-                    if (lastChestHadRemainingItems && itemsTakenThisChest > 0) {
+                    if (lastChestHadRemainingItems) {
                         System.out.println(
-                                "[MacroRecorder] Túi đồ chưa full 1E nhưng rương vẫn còn đồ farm -> tiếp tục mở rương hiện tại...");
+                                "[MacroRecorder] Rương vẫn còn " + getFarmItemDisplayName() + " (F8) -> tiếp tục mở rương hiện tại, KHÔNG #goto...");
                         state = MacroState.OPENING_CHEST;
                         return true;
                     } else {
                         System.out.println(
-                                "[MacroRecorder] Rương đã cạn đồ farm nhưng túi đồ chưa full 1E -> #goto rương tiếp theo (" + nextChestGotoCommand + ")...");
+                                "[MacroRecorder] Rương đã HẾT SẠCH " + getFarmItemDisplayName() + " (F8) -> Mới bắt đầu #goto rương tiếp theo (" + nextChestGotoCommand + ")...");
                         state = MacroState.MOVING_TO_NEXT_CHEST;
                         return true;
                     }
@@ -1105,14 +1105,14 @@ public class MacroRecorderMod {
             return true;
         }
 
-        // Quy tắc: Khi nào lấy full 1E mới đẩy vào /pv.
-        // Sau khi cất vào kho /pv xong (kể cả kho đã full hay chưa full), nếu túi đồ (E) chưa full 1E,
-        // PHẢI TIẾP TỤC ĐI LẤY RƯƠNG CHO FULL 1E, TUYỆT ĐỐI KHÔNG MỞ KHO TIẾP THEO KHI TÚI CHƯA FULL 1E!
-        if (lastChestHadRemainingItems && !isFull1E) {
-            System.out.println("[MacroRecorder] Túi đồ chưa full 1E (mới cất kho xong), tiếp tục mở rương farm hiện tại lấy cho đầy 1E...");
+        // Quy tắc người dùng yêu cầu: CHỈ #GOTO KHI RƯƠNG ĐÃ HẾT ITEM SET SẴN TRONG F8!
+        // Nếu rương hiện tại vẫn còn item farm -> mở lại rương hiện tại lấy tiếp (tuyệt đối không goto)!
+        // Chỉ khi rương hiện tại đã hết sạch item farm -> mới #goto sang rương kế tiếp!
+        if (lastChestHadRemainingItems) {
+            System.out.println("[MacroRecorder] Rương hiện tại vẫn còn " + getFarmItemDisplayName() + " (F8) -> Tiếp tục mở rương hiện tại, KHÔNG #goto...");
             state = MacroState.OPENING_CHEST;
         } else {
-            System.out.println("[MacroRecorder] Tiếp tục #goto rương farm kế tiếp lấy cho đầy 1E trước khi mở kho tiếp theo...");
+            System.out.println("[MacroRecorder] Rương hiện tại đã hết sạch " + getFarmItemDisplayName() + " (F8) -> Mới #goto rương kế tiếp (" + nextChestGotoCommand + ")...");
             state = MacroState.MOVING_TO_NEXT_CHEST;
         }
         return false;

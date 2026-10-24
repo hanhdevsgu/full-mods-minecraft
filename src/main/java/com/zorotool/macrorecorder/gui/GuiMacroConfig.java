@@ -2,11 +2,13 @@ package com.zorotool.macrorecorder.gui;
 
 import com.zorotool.macrorecorder.ConfigHelper;
 import com.zorotool.macrorecorder.MacroRecorderMod;
+import com.autorefill.SignAimHandler;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.FontRenderer;
 import net.minecraft.client.gui.GuiButton;
 import net.minecraft.client.gui.GuiScreen;
 import net.minecraft.client.gui.GuiTextField;
+import net.minecraft.util.text.TextComponentString;
 import org.lwjgl.input.Keyboard;
 
 import java.io.IOException;
@@ -193,6 +195,11 @@ public class GuiMacroConfig extends GuiScreen {
             String nextChestGoto = nextChestGotoField.getText().trim();
 
             ConfigHelper.setFarmItemId(farmItemId);
+            SignAimHandler.setupTarget(String.valueOf(farmItemId), true);
+            if (this.mc != null && this.mc.player != null) {
+                this.mc.player.sendMessage(new TextComponentString(
+                        "§a[AutoAim] ✔ Đã tự động áp dụng lệnh: §e/aimsell " + farmItemId + " §b(" + SignAimHandler.targetDisplayName + ")"));
+            }
             ConfigHelper.setCommands(sethomeCmd, homeCmd);
             ConfigHelper.setItemTransferDelayMs(itemTransferDelayMs);
             ConfigHelper.setConfig(vaults, moveDelay, 0f, 0f);

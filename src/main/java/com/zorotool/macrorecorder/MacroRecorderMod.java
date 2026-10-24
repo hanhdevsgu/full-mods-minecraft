@@ -2828,6 +2828,10 @@ public class MacroRecorderMod {
         }
 
         reloadConfig();
+        int cfgFarmId = ConfigHelper.getFarmItemId();
+        if (cfgFarmId > 0) {
+            SignAimHandler.setupTarget(String.valueOf(cfgFarmId), false);
+        }
 
         preStartTimer = 0;
         macroPaused = false;
@@ -2931,6 +2935,10 @@ public class MacroRecorderMod {
 
         // KÍCH HOẠT AUTO-AIM:
         try {
+            int cfgFarmId = ConfigHelper.getFarmItemId();
+            if (cfgFarmId > 0) {
+                SignAimHandler.setupTarget(String.valueOf(cfgFarmId), false);
+            }
             String target = SignAimHandler.getEffectiveTarget();
             SignAimHandler.startAimLock(target);
             System.out.println("[MacroRecorder] >>> (F4) Tự động kích hoạt AutoAim ghim bảng Sell (" + target + ")");

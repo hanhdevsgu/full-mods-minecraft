@@ -6,10 +6,9 @@ Mod hỗ trợ tự động bán tại biển Shop (Sell Sign), tự động l�
 
 ## 📥 TẢI VỀ 1-CLICK (DOWNLOAD 1 CLICK)
 
-Click ngay vào 1 trong các đường link bên dưới để tải trực tiếp file zip trọn bộ:
+Click ngay vào đường link bên dưới để tải trực tiếp file zip combo trọn bộ đúng 2 mod:
 
 ### 🚀 [👉 BẤM VÀO ĐÂY ĐỂ TẢI COMBO 2 MODS (Combo-2-Mods-AutoAimSellSign.zip)](https://github.com/hanhdevsgu/full-mods-minecraft/releases/download/aimsigntool-latest/Combo-2-Mods-AutoAimSellSign.zip)
-### 📦 [👉 BẤM VÀO ĐÂY ĐỂ TẢI BẢN MỞ RỘNG (Combo-3-Mods-AutoAimSellSign.zip)](https://github.com/hanhdevsgu/full-mods-minecraft/releases/download/aimsigntool-latest/Combo-3-Mods-AutoAimSellSign.zip)
 
 > [!IMPORTANT]
 > **Gói ZIP chuẩn chỉ gồm ĐÚNG 2 FILE DUY NHẤT (không còn file `modid1.0.jar` thừa, triệt tiêu 100% lỗi trùng Mod ID)**:
@@ -96,16 +95,15 @@ Click ngay vào 1 trong các đường link bên dưới để tải trực ti�
 
 1. Nhấn tổ hợp phím `Windows + R`, gõ `%appdata%\.minecraft\mods` và nhấn **Enter**.
 2. Xóa các file mod cũ liên quan (đặc biệt nếu có `modid1.0.jar` cũ).
-3. Giải nén file [Combo-2-Mods-AutoAimSellSign.zip](https://github.com/hanhdevsgu/full-mods-minecraft/releases/download/aimsigntool-latest/Combo-2-Mods-AutoAimSellSign.zip) hoặc [Combo-3-Mods-AutoAimSellSign.zip](https://github.com/hanhdevsgu/full-mods-minecraft/releases/download/aimsigntool-latest/Combo-3-Mods-AutoAimSellSign.zip) và copy đúng **2 file** vào thư mục `mods`:
+3. Giải nén file [Combo-2-Mods-AutoAimSellSign.zip](https://github.com/hanhdevsgu/full-mods-minecraft/releases/download/aimsigntool-latest/Combo-2-Mods-AutoAimSellSign.zip) và copy đúng **2 file** vào thư mục `mods`:
    - `AutoAimSellSign-1.12.2-1.0.jar`
    - `Impact-4.9.1-1.12.2.jar`
 4. Khởi động Minecraft phiên bản **Forge 1.12.2** và vào server trải nghiệm!
 
 ---
 
-## 🔗 Link Tải Dự Phòng
+## 🔗 Link Tải Trực Tiếp
 
-- [🚀 Tải Gói ZIP 1: Combo-2-Mods-AutoAimSellSign.zip](https://github.com/hanhdevsgu/full-mods-minecraft/releases/download/aimsigntool-latest/Combo-2-Mods-AutoAimSellSign.zip)
-- [📦 Tải Gói ZIP 2: Combo-3-Mods-AutoAimSellSign.zip](https://github.com/hanhdevsgu/full-mods-minecraft/releases/download/aimsigntool-latest/Combo-3-Mods-AutoAimSellSign.zip)
+- [🚀 Tải File ZIP Trọn Bộ (Đúng 2 Mods): Combo-2-Mods-AutoAimSellSign.zip](https://github.com/hanhdevsgu/full-mods-minecraft/releases/download/aimsigntool-latest/Combo-2-Mods-AutoAimSellSign.zip)
 - [💾 Tải Riêng File Mod: AutoAimSellSign-1.12.2-1.0.jar](https://github.com/hanhdevsgu/full-mods-minecraft/releases/download/aimsigntool-latest/AutoAimSellSign-1.12.2-1.0.jar)
 - [🌐 GitHub Releases Toàn Bộ Phiên Bản](https://github.com/hanhdevsgu/full-mods-minecraft/releases)

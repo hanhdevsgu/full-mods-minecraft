@@ -1982,14 +1982,19 @@ public class MacroRecorderMod {
             distSqToCounter = cx * cx + cz * cz;
         }
 
-        // 1. Chỉ dùng #goto khi bị đẩy THẬT SỰ QUÁ XA (xa quầy > 3.0m [sq > 9.0] hoặc xa bảng > 5.5m [sq > 30.0]):
-        boolean isFarAway = (distSqToCounter > 9.0 || distSqToSign > 30.0);
-        if (isFarAway) {
+        // 1. Kiểm tra bị đẩy lệch khỏi quầy bán đồ:
+        // Cự ly tới tâm quầy > 1.4m (sq > 2.0) HOẶC cự ly tới bảng > 3.6m (sq > 13.0):
+        boolean isFarAway = (distSqToCounter > 2.0 || distSqToSign > 13.0);
+        // HOẶC bị người khác đẩy đâm mặt sát vào góc/tường (collidedHorizontally) mà không ngắm được bảng:
+        boolean isPinnedAgainstWall = (mc.player.collidedHorizontally && !SignAimHandler.isAimingAtSign(mc));
+
+        if (isFarAway || isPinnedAgainstWall) {
             stopNudgeForward();
             pushAwayTicks++;
-            // Phản xạ nhanh: chỉ sau 3 ticks (0.15s) phát hiện văng xa -> gọi #goto về quầy ngay!
+            // Phản xạ nhanh (chỉ sau 3 ticks = 0.15s): phát hiện lệch quầy hoặc bị ép góc -> gọi #goto về quầy ngay!
             if (pushAwayTicks >= 3) {
-                System.out.println("[MacroRecorder] (F4) Bị đẩy xa khỏi quầy bán (" + String.format("%.1f", Math.sqrt(distSqToCounter)) + "m)! Dùng #goto để bước về quầy...");
+                System.out.println("[MacroRecorder] (F4) " + (isPinnedAgainstWall ? "Bị ép sát góc tường/mép bảng" : "Bị đẩy lệch khỏi quầy bán (" + String.format("%.1f", Math.sqrt(distSqToCounter)) + "m)")
+                        + "! Dùng #goto để bước về quầy...");
                 releaseUseItemKey();
                 executeClientCommand(afterShopGotoCommand);
                 stateBeforeRecovery = currentState;
@@ -2002,29 +2007,25 @@ public class MacroRecorderMod {
             return;
         }
 
-        // 2. VẪN Ở GẦN QUẦY (chỉ lệch nhẹ 0.2m - 2.0m):
-        // 100% NHƯ NGƯỜI THẬT: NHÍCH LÊN BẰNG PHÍM W, TUYỆT ĐỐI HẠN CHẾ #GOTO!
+        // 2. VẪN Ở GẦN QUẦY (chỉ lệch nhẹ < 1.4m và không bị kẹt góc):
         pushAwayTicks = 0;
 
-        // Cần nhích lên nếu: khoảng cách tới bảng > 2.4m (sq > 5.76) HOẶC tâm ngắm chưa dính trúng bảng
         boolean isAiming = SignAimHandler.isAimingAtSign(mc);
         boolean needNudge = (distSqToSign > 5.76 || !isAiming);
 
         if (needNudge) {
             sellNudgeTicks++;
-            // Nhịp nhích phím W như người thật: bước 1 bước ngắn (tối đa 10 ticks = 0.5s)
-            if (sellNudgeTicks <= 10) {
+            // Nhịp nhích phím W như người thật: bước 1 bước ngắn (tối đa 8 ticks ~ 0.4s)
+            if (sellNudgeTicks <= 8) {
                 nudgeForward();
-            } else if (sellNudgeTicks <= 15) {
-                // Tạm nhả phím 5 ticks (0.25s) để người chơi dừng đà
+            } else if (sellNudgeTicks <= 12) {
+                // Tạm nhả phím 4 ticks (0.2s) để người chơi dừng đà
                 stopNudgeForward();
             } else {
-                // Hết 1 nhịp 15 ticks reset lại để nhích nhịp kế tiếp nếu vẫn chưa vào tầm
                 sellNudgeTicks = 0;
-                // Nếu nhích liên tục quá 3 giây (60 ticks) mà vẫn không thể chạm bảng (kẹt góc/cột)
-                // Lúc này mới dùng #goto như giải pháp cứu cánh:
-                if (notSellingTimer >= 60) {
-                    System.out.println("[MacroRecorder] (F4) Nhích phím W bị kẹt góc > 3s! Dùng #goto hỗ trợ vượt chướng ngại vật...");
+                // Nếu nhích nhẹ quá 20 ticks (1.0s) mà vẫn không chạm được bảng -> dùng #goto cứu ngay, TUYỆT ĐỐI không đứng yên đợi lâu
+                if (notSellingTimer >= 20) {
+                    System.out.println("[MacroRecorder] (F4) Nhích phím W không chạm được bảng (> 1.0s)! Dùng #goto bước về vị trí chuẩn...");
                     stopNudgeForward();
                     releaseUseItemKey();
                     executeClientCommand(afterShopGotoCommand);
@@ -2044,53 +2045,66 @@ public class MacroRecorderMod {
 
     /**
      * Bán đồ 100% như người thật:
-     * - Khi không có ai che: đè chuột phải vanilla (KeyBinding useItem).
-     * - Khi có người chơi khác chen đứng trước mặt che bảng:
-     *   Tia raycast objectMouseOver sẽ trúng ENTITY (người chơi che) khiến đè chuột phải vanilla
-     *   tương tác với người chơi đó mà không chạm tới bảng phía sau.
-     *   Do đó, sử dụng hàm chính thống mc.playerController.processRightClickBlock(...)
-     *   theo nhịp chuẩn người thật (mỗi 2 ticks ~ 10 clicks/s) kết hợp mc.player.swingArm(...)
-     *   để tương tác trực tiếp lên khối bảng bán, giúp bán mượt mà không bao giờ bị gián đoạn hay diss!
+     * - Khi không có ai che VÀ tâm ngắm đang chỉ ĐÚNG VÀO BẢNG SELL: đè chuột phải vanilla (KeyBinding useItem).
+     * - TUYỆT ĐỐI KHÔNG đè chuột phải khi tâm ngắm lệch sang khối khác, tường, item frame, hay bảng khác (tránh mua nhầm cà rốt)!
+     * - Khi có người chơi khác chen đứng trước mặt che bảng (tia trúng ENTITY):
+     *   Tự động nhả chuột phải vanilla và sử dụng processRightClickBlock trực tiếp lên bảng sell.
      */
     private void performSellClick(Minecraft mc) {
-        if (mc == null || mc.player == null || mc.world == null) return;
+        if (mc == null || mc.player == null || mc.world == null) {
+            releaseUseItemKey();
+            return;
+        }
         BlockPos targetSignPos = SignAimHandler.targetSignPos;
         if (targetSignPos == null) {
             releaseUseItemKey();
             return;
         }
 
-        // Tuyệt đối không bấm nếu đang nhìn trúng bảng Mua (Buy sign)
+        // 1. Tuyệt đối không bấm nếu đang nhìn trúng bất kỳ bảng Mua (Buy sign) nào
         if (SignAimHandler.isLookingAtAnyBuySign(mc)) {
             releaseUseItemKey();
             return;
         }
 
-        // Đè chuột phải vanilla
-        holdUseItemKey();
-
-        // Nếu bị người chơi khác đứng che chắn phía trước (tia trúng ENTITY):
-        if (mc.objectMouseOver != null && mc.objectMouseOver.typeOfHit == RayTraceResult.Type.ENTITY) {
-            signBlockClickCooldown++;
-            if (signBlockClickCooldown >= 2) {
-                signBlockClickCooldown = 0;
-                double eyeX = mc.player.posX;
-                double eyeY = mc.player.posY + mc.player.getEyeHeight();
-                double eyeZ = mc.player.posZ;
-                double dx = (targetSignPos.getX() + 0.5) - eyeX;
-                double dy = (targetSignPos.getY() + 0.5) - eyeY;
-                double dz = (targetSignPos.getZ() + 0.5) - eyeZ;
-                // Cự ly với tay tối đa trong tầm 4.5 block (4.5^2 = 20.25)
-                if (dx * dx + dy * dy + dz * dz <= 20.25) {
-                    Vec3d hitVec = new Vec3d(targetSignPos.getX() + 0.5, targetSignPos.getY() + 0.8, targetSignPos.getZ() + 0.5);
-                    if (mc.playerController != null) {
-                        mc.playerController.processRightClickBlock(mc.player, mc.world, targetSignPos, EnumFacing.UP, hitVec, EnumHand.MAIN_HAND);
-                        mc.player.swingArm(EnumHand.MAIN_HAND);
+        // 2. KIỂM TRA TÂM NGẮM: TUYỆT ĐỐI CHỈ ĐÈ CHUỘT PHẢI KHI TÂM NGẮM ĐANG DÍNH ĐÚNG BẢNG SELL MỤC TIÊU!
+        if (mc.objectMouseOver != null) {
+            if (mc.objectMouseOver.typeOfHit == RayTraceResult.Type.BLOCK) {
+                BlockPos hitPos = mc.objectMouseOver.getBlockPos();
+                // Nếu tâm ngắm lệch sang khối khác (bảng cà rốt, item frame, tường gỗ...):
+                // NHẢ CHUỘT PHẢI NGAY LẬP TỨC để tránh mua nhầm cà rốt!
+                if (!targetSignPos.equals(hitPos) || !SignAimHandler.isAimingAtSign(mc)) {
+                    releaseUseItemKey();
+                    return;
+                }
+                // Tâm ngắm chuẩn xác trên bảng Sell -> đè chuột phải vanilla
+                holdUseItemKey();
+            } else if (mc.objectMouseOver.typeOfHit == RayTraceResult.Type.ENTITY) {
+                // Người chơi khác đứng che trước mặt: nhả chuột phải vanilla để không bấm vào họ hoặc item frame
+                releaseUseItemKey();
+                signBlockClickCooldown++;
+                if (signBlockClickCooldown >= 2) {
+                    signBlockClickCooldown = 0;
+                    double eyeX = mc.player.posX;
+                    double eyeY = mc.player.posY + mc.player.getEyeHeight();
+                    double eyeZ = mc.player.posZ;
+                    double dx = (targetSignPos.getX() + 0.5) - eyeX;
+                    double dy = (targetSignPos.getY() + 0.5) - eyeY;
+                    double dz = (targetSignPos.getZ() + 0.5) - eyeZ;
+                    // Cự ly với tay tối đa trong tầm 4.5 block (4.5^2 = 20.25)
+                    if (dx * dx + dy * dy + dz * dz <= 20.25) {
+                        Vec3d hitVec = new Vec3d(targetSignPos.getX() + 0.5, targetSignPos.getY() + 0.8, targetSignPos.getZ() + 0.5);
+                        if (mc.playerController != null) {
+                            mc.playerController.processRightClickBlock(mc.player, mc.world, targetSignPos, EnumFacing.UP, hitVec, EnumHand.MAIN_HAND);
+                            mc.player.swingArm(EnumHand.MAIN_HAND);
+                        }
                     }
                 }
+            } else {
+                releaseUseItemKey();
             }
         } else {
-            signBlockClickCooldown = 0;
+            releaseUseItemKey();
         }
     }
 

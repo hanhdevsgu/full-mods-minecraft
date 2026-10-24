@@ -1046,11 +1046,16 @@ public class MacroRecorderMod {
 
             case WAITING_AFTER_SHOP_GOTO_DELAY:
                 waitTimer++;
-                if (isAtDestination(afterShopGotoCommand) || waitTimer >= 200) {
+                if (isAtDestination(afterShopGotoCommand)) {
                     System.out.println(
-                            "[MacroRecorder] Đã tới vị trí bán đồ sau shop, kích hoạt AutoAim và bắt đầu bán F4...");
+                            "[MacroRecorder] Đã tới vị trí bán đồ sau shop (" + afterShopGotoCommand + "), kích hoạt AutoAim và bắt đầu bán F4 ngay...");
                     isRunning = false;
+                    waitTimer = 0;
                     resetAndStartSellMacro();
+                } else if (waitTimer >= 600) {
+                    System.out.println("[MacroRecorder] Quá 30s chưa tới quầy bán sau shop, gửi lại " + afterShopGotoCommand);
+                    executeClientCommand(afterShopGotoCommand);
+                    waitTimer = 0;
                 }
                 return false;
 
@@ -1520,22 +1525,18 @@ public class MacroRecorderMod {
             return false;
         int configuredId = ConfigHelper.getFarmItemId();
         int stackId = Item.getIdFromItem(stack.getItem());
-        if (configuredId > 0 && stackId == configuredId) {
-            return true;
-        }
+        // Nếu người dùng đã cài đặt ID trong F8 (ví dụ 363 thịt bò), CHỈ CHẤP NHẬN ĐÚNG ID ĐÓ!
         if (configuredId > 0) {
-            Item configured = Item.getItemById(configuredId);
-            if (configured != null && stack.getItem() == configured)
-                return true;
+            return stackId == configuredId;
         }
-        if (SignAimHandler.targetItemId > 0 && stackId == SignAimHandler.targetItemId) {
-            return true;
+        if (SignAimHandler.targetItemId > 0) {
+            return stackId == SignAimHandler.targetItemId;
         }
         String eff = SignAimHandler.getEffectiveTarget();
-        if ((configuredId == 289 || configuredId <= 0) && SignAimHandler.isGunpowderTarget(eff) && stack.getItem() == Items.GUNPOWDER) {
+        if (SignAimHandler.isGunpowderTarget(eff) && stack.getItem() == Items.GUNPOWDER) {
             return true;
         }
-        if ((configuredId == 338 || configuredId <= 0) && SignAimHandler.isReedsTarget(eff) && stack.getItem() == Items.REEDS) {
+        if (SignAimHandler.isReedsTarget(eff) && stack.getItem() == Items.REEDS) {
             return true;
         }
         return false;
@@ -1573,7 +1574,7 @@ public class MacroRecorderMod {
             try {
                 int x = Integer.parseInt(parts[1]);
                 int z = Integer.parseInt(parts[2]);
-                return new BlockPos(x, 0, z);
+                return new BlockPos(x, -999, z);
             } catch (Exception ignored) {
             }
         }
@@ -1583,12 +1584,19 @@ public class MacroRecorderMod {
     private boolean isAtDestination(String gotoCommand) {
         if (mc == null || mc.player == null)
             return false;
+        if (gotoCommand == null || gotoCommand.trim().isEmpty())
+            return true;
         BlockPos target = parseGotoPos(gotoCommand);
         if (target == null)
             return true;
         double dx = mc.player.posX - (target.getX() + 0.5);
         double dz = mc.player.posZ - (target.getZ() + 0.5);
-        return (dx * dx + dz * dz) <= 4.0; // Trong cự ly 2.0 block
+        boolean horizontalMatch = (dx * dx + dz * dz) <= 4.0; // Trong cự ly 2.0 block
+        if (target.getY() != -999) {
+            double dy = Math.abs(mc.player.posY - target.getY());
+            return horizontalMatch && (dy <= 2.5); // Khớp cả độ cao Y nếu lệnh có tọa độ Y
+        }
+        return horizontalMatch;
     }
 
     private boolean isPushedFarFromCounter() {
@@ -2838,8 +2846,11 @@ public class MacroRecorderMod {
         reloadConfig();
         int cfgFarmId = ConfigHelper.getFarmItemId();
         if (cfgFarmId > 0) {
-            SignAimHandler.setupTarget(String.valueOf(cfgFarmId), false);
+            SignAimHandler.setupTarget(String.valueOf(cfgFarmId), false, false);
         }
+
+        // Tắt AimLock trước khi Baritone di chuyển:
+        SignAimHandler.stopAimLock(mc);
 
         preStartTimer = 0;
         macroPaused = false;
@@ -2852,7 +2863,7 @@ public class MacroRecorderMod {
         // Kiểm tra xem hiện tại đã đứng ở quầy bán chưa:
         if (isAtDestination(afterShopGotoCommand)) {
             System.out.println(
-                    "[MacroRecorder] >>> (F4) Đang đứng tại quầy bán đồ, kích hoạt AutoAim và bắt đầu bán ngay!");
+                    "[MacroRecorder] >>> (F4) Đang đứng tại quầy bán đồ (" + afterShopGotoCommand + "), kích hoạt AutoAim và bắt đầu bán ngay!");
             preStartActive = false;
             resetAndStartSellMacro();
             if (mc != null && mc.player != null) {
@@ -2874,7 +2885,7 @@ public class MacroRecorderMod {
     private void processPreStartSequence() {
         preStartTimer++;
         if (isAtDestination(afterShopGotoCommand)) {
-            System.out.println("[MacroRecorder] >>> (F4) Đã tới quầy bán đồ, kích hoạt Macro...");
+            System.out.println("[MacroRecorder] >>> (F4) Đã tới quầy bán đồ (" + afterShopGotoCommand + "), kích hoạt AutoAim và bắt đầu bán ngay...");
             preStartActive = false;
             resetAndStartSellMacro();
         } else if (preStartTimer >= 600) {
@@ -2941,19 +2952,19 @@ public class MacroRecorderMod {
             KeyBinding.setKeyBindState(mc.gameSettings.keyBindSprint.getKeyCode(), false);
         }
 
-        // KÍCH HOẠT AUTO-AIM (CHỈ KHI ĐANG Ở SHOP Y ≈ 151):
+        // KÍCH HOẠT AUTO-AIM NGAY LẬP TỨC (CHỈ KHI ĐÃ ĐỨNG ĐÚNG QUẦY BÁN afterShopGotoCommand):
         try {
-            if (mc.player != null && Math.abs(mc.player.posY - 151.0) <= 4.0) {
+            if (isAtDestination(afterShopGotoCommand)) {
                 int cfgFarmId = ConfigHelper.getFarmItemId();
                 if (cfgFarmId > 0) {
-                    SignAimHandler.setupTarget(String.valueOf(cfgFarmId), false);
+                    SignAimHandler.setupTarget(String.valueOf(cfgFarmId), false, false);
                 }
                 String target = SignAimHandler.getEffectiveTarget();
                 SignAimHandler.startAimLock(target);
-                System.out.println("[MacroRecorder] >>> (F4) Tự động kích hoạt AutoAim ghim bảng Sell (" + target + ") tại quầy Shop Y=" + (int) mc.player.posY);
+                System.out.println("[MacroRecorder] >>> (F4) ĐÃ TỚI QUẦY BÁN (" + afterShopGotoCommand + ")! Tự động kích hoạt ngay lập tức AutoAim ghim bảng Sell (" + target + ") tại Y=" + (int) mc.player.posY);
             } else {
                 SignAimHandler.stopAimLock(mc);
-                System.out.println("[MacroRecorder] >>> (F4) Hiện không ở khu vực Shop Y=151 (Y=" + (mc.player != null ? (int) mc.player.posY : 0) + ") -> Không kích hoạt AutoAim.");
+                System.out.println("[MacroRecorder] >>> (F4) Chưa đứng đúng vị trí quầy bán (" + afterShopGotoCommand + ") -> Không kích hoạt AutoAim.");
             }
         } catch (Exception e) {
             System.out.println("[MacroRecorder] Lỗi kích hoạt AutoAim: " + e);

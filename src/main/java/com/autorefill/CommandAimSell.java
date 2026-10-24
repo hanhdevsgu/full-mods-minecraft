@@ -49,7 +49,7 @@ public class CommandAimSell extends CommandBase {
                 SignAimHandler.stopAimLock(mc);
                 mc.player.sendMessage(new TextComponentString(TextFormatting.RED + "[AutoAim] Đã TẮT ghim camera."));
             } else {
-                SignAimHandler.setupTarget(eff, true);
+                SignAimHandler.startAimLock(eff);
             }
             return;
         }
@@ -64,7 +64,7 @@ public class CommandAimSell extends CommandBase {
             mc.player.sendMessage(new TextComponentString(TextFormatting.GREEN + 
                 "[AutoAim] Đã đưa mục tiêu về mặc định: Thuốc súng (Gunpowder) [ID: 289]"));
             if (SignAimHandler.isAimLockActive) {
-                SignAimHandler.setupTarget("gunpowder", true);
+                SignAimHandler.startAimLock("gunpowder");
             }
             return;
         }
@@ -76,17 +76,17 @@ public class CommandAimSell extends CommandBase {
                 SignAimHandler.stopAimLock(mc);
                 mc.player.sendMessage(new TextComponentString(TextFormatting.RED + "[AutoAim] Đã TẮT ghim camera."));
             } else {
-                SignAimHandler.setupTarget(eff, true);
+                SignAimHandler.startAimLock(eff);
             }
             return;
         } else if (sub.startsWith("lock ") || sub.startsWith("toggle ")) {
             String targetItem = cleaned.substring(cleaned.indexOf(' ')).trim();
-            SignAimHandler.setupTarget(targetItem, true);
+            SignAimHandler.startAimLock(targetItem);
             return;
         }
 
         if (sub.equals("on") || sub.equals("start")) {
-            SignAimHandler.setupTarget(SignAimHandler.getEffectiveTarget(), true);
+            SignAimHandler.startAimLock(SignAimHandler.getEffectiveTarget());
         } else if (sub.equals("off") || sub.equals("stop") || sub.equals("unlock")) {
             SignAimHandler.stopAimLock(mc);
             mc.player.sendMessage(new TextComponentString(TextFormatting.RED + "[AutoAim] Đã TẮT ghim camera."));

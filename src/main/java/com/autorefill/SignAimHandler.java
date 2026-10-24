@@ -878,7 +878,7 @@ public class SignAimHandler {
 
     private static boolean isSyncingTarget = false;
 
-    public static void setupTarget(String input, boolean verbose) {
+    public static void setupTarget(String input, boolean verbose, boolean activateNow) {
         if (isSyncingTarget) return;
         try {
             isSyncingTarget = true;
@@ -902,36 +902,45 @@ public class SignAimHandler {
                 } catch (Exception ignored) {}
             }
 
-            boolean isAtShop = (mc.player != null && Math.abs(mc.player.posY - 151.0) <= 4.0);
-            boolean found = isAtShop ? findTargetSign(lastItemTarget, verbose) : false;
-            if (found && isAtShop) {
-                isAimLockActive = true;
-                outOfRangeTicks = 0;
-                stuckTicks = 0;
-                isWarmupActive = false;
-                if (mc.player != null) {
-                    anchorPos = new Vec3d(mc.player.posX, mc.player.posY, mc.player.posZ);
-                }
-                if (mc.gameSettings != null) {
-                    mc.gameSettings.pauseOnLostFocus = false;
-                }
-                if (mc.player != null) {
-                    mc.player.setSprinting(false);
-                    if (verbose) {
-                        mc.player.sendMessage(new TextComponentString(TextFormatting.GREEN + 
-                            "[AutoAim] ĐÃ BẬT GHIM BẢNG [Sell] " + targetDisplayName));
-                        mc.player.sendMessage(new TextComponentString(TextFormatting.AQUA + 
-                            "-> Camera ghim vào bảng mượt như người thật. Bạn thoải mái đè chuột phải để bán đồ!"));
+            if (activateNow) {
+                boolean isAtShop = (mc.player != null && Math.abs(mc.player.posY - 151.0) <= 4.0);
+                boolean found = isAtShop ? findTargetSign(lastItemTarget, verbose) : false;
+                if (found && isAtShop) {
+                    isAimLockActive = true;
+                    outOfRangeTicks = 0;
+                    stuckTicks = 0;
+                    isWarmupActive = false;
+                    if (mc.player != null) {
+                        anchorPos = new Vec3d(mc.player.posX, mc.player.posY, mc.player.posZ);
+                    }
+                    if (mc.gameSettings != null) {
+                        mc.gameSettings.pauseOnLostFocus = false;
+                    }
+                    if (mc.player != null) {
+                        mc.player.setSprinting(false);
+                        if (verbose) {
+                            mc.player.sendMessage(new TextComponentString(TextFormatting.GREEN + 
+                                "[AutoAim] ĐÃ BẬT GHIM BẢNG [Sell] " + targetDisplayName));
+                            mc.player.sendMessage(new TextComponentString(TextFormatting.AQUA + 
+                                "-> Camera ghim vào bảng mượt như người thật. Bạn thoải mái đè chuột phải để bán đồ!"));
+                        }
+                    }
+                } else {
+                    targetSignPos = null;
+                    isAimLockActive = false;
+                    if (mc.player != null && verbose) {
+                        mc.player.sendMessage(new TextComponentString(TextFormatting.RED + 
+                            "[AutoAim] Chưa tìm thấy bảng [Sell] " + targetDisplayName + " quanh vị trí này!"));
                     }
                 }
             } else {
-                targetSignPos = null;
+                // CHỈ SETUP CẤU HÌNH, TUYỆT ĐỐI KHÔNG TỰ TIỆN BẬT AIMLOCK!
                 isAimLockActive = false;
                 if (mc.player != null && verbose) {
                     mc.player.sendMessage(new TextComponentString(TextFormatting.YELLOW + 
-                        "[AutoAim] ĐÃ SETUP TRƯỚC: " + targetDisplayName));
+                        "[AutoAim] ĐÃ SETUP MỤC TIÊU: " + targetDisplayName));
                     mc.player.sendMessage(new TextComponentString(TextFormatting.AQUA + 
-                        "-> Khi bấm F4 (#goto tới quầy), camera sẽ tự động chỉa và ghim đúng vào bảng " + targetDisplayName + "!"));
+                        "-> Khi #goto tới quầy bán đồ, camera sẽ tự động kích hoạt ghim đúng vào bảng [Sell]!"));
                 }
             }
         } finally {
@@ -939,8 +948,12 @@ public class SignAimHandler {
         }
     }
 
+    public static void setupTarget(String itemTarget, boolean verbose) {
+        setupTarget(itemTarget, verbose, false);
+    }
+
     public static void startAimLock(String itemTarget) {
-        setupTarget(itemTarget, false);
+        setupTarget(itemTarget, false, true);
     }
 
     public static void toggleAimLock(String itemTarget) {
@@ -1256,7 +1269,7 @@ public class SignAimHandler {
         EntityPlayerSP player = mc.player;
         // Chỉ hoạt động khi người chơi ở quầy Shop (Y xấp xỉ 151)
         if (Math.abs(player.posY - 151.0) > 4.0) {
-            if (isAutoWalking) stopAutoWalk(mc);
+            stopAimLock(mc);
             return;
         }
 

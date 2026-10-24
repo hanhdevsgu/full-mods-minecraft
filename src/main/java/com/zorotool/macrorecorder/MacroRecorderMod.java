@@ -1186,48 +1186,17 @@ public class MacroRecorderMod {
 
                 // 100% NHƯ NGƯỜI THẬT: NẾU TIỀN ĐANG CỘNG LIÊN TỤC THÌ TUYỆT ĐỐI ĐỨNG YÊN, KHÔNG NHÚC NHÍCH!
                 long now1E = System.currentTimeMillis();
-                boolean isMoneyFlowing1E = (now1E - lastSellMoneyTime < 2500L);
+                boolean isMoneyFlowing1E = (now1E - lastSellMoneyTime < 1000L);
 
                 if (isMoneyFlowing1E) {
-                    // Tiền đang cộng đều đặn vào tài khoản -> Aim đang dính bảng và bán cực tốt:
-                    // Có người chơi đẩy hay va quẹt thì người thật vẫn đứng im đè chuột bán tiếp, KHÔNG nhúc nhích!
+                    // Tiền đang cộng đều đặn -> Aim đang dính bảng và bán cực tốt: ĐỨNG YÊN HOÀN TOÀN!
+                    stopNudgeForward();
                     pushAwayTicks = 0;
                     notSellingTimer = 0;
+                    sellNudgeTicks = 0;
                 } else {
-                    // CHỈ KHI NÀO TIỀN ĐÃ NGỪNG CỘNG (quá 2.5s không có chat cộng tiền):
-                    notSellingTimer++;
-                    boolean outOfRange1E = isPushedAwayFromCounterOrSign();
-                    if (outOfRange1E) {
-                        pushAwayTicks++;
-                        // Tiền đã ngừng cộng VÀ thật sự bị đẩy ra khỏi tầm bán -> Gửi #goto bước lại quầy ngay:
-                        if (pushAwayTicks >= 4) {
-                            System.out.println("[MacroRecorder] (F4) Tiền đã ngừng cộng và bị đẩy ra khỏi tầm bán! Gửi "
-                                    + afterShopGotoCommand + " để bước lại đúng quầy bán...");
-                            releaseUseItemKey();
-                            executeClientCommand(afterShopGotoCommand);
-                            stateBeforeRecovery = SellState.SELLING_1E_ITEMS;
-                            sellState = SellState.RECOVERING_TO_COUNTER;
-                            sellWaitTimer = 0;
-                            pushAwayTicks = 0;
-                            notSellingTimer = 0;
-                            return false;
-                        }
-                    } else {
-                        pushAwayTicks = 0;
-                        // Vẫn đứng ở quầy nhưng quá 40 ticks (2.0s) không thấy cộng tiền -> gửi lại để căn chỉnh vị trí:
-                        if (notSellingTimer >= 40) {
-                            System.out.println("[MacroRecorder] (F4) Quá 2s không cộng tiền! Gửi " + afterShopGotoCommand + " để cân chỉnh lại vị trí quầy bán...");
-                            releaseUseItemKey();
-                            executeClientCommand(afterShopGotoCommand);
-                            stateBeforeRecovery = SellState.SELLING_1E_ITEMS;
-                            sellState = SellState.RECOVERING_TO_COUNTER;
-                            sellWaitTimer = 0;
-                            pushAwayTicks = 0;
-                            notSellingTimer = 0;
-                            lastSellMoneyTime = System.currentTimeMillis();
-                            return false;
-                        }
-                    }
+                    // Tiền đã ngừng cộng quá 1s -> xử lý nhích lên nhẹ hoặc #goto nếu bị đẩy quá xa
+                    handleSellPositionRecovery(mc, SellState.SELLING_1E_ITEMS);
                 }
                 return false;
 
@@ -1350,48 +1319,17 @@ public class MacroRecorderMod {
 
                 // 100% NHƯ NGƯỜI THẬT: NẾU TIỀN ĐANG CỘNG LIÊN TỤC THÌ TUYỆT ĐỐI ĐỨNG YÊN, KHÔNG NHÚC NHÍCH!
                 long nowItems = System.currentTimeMillis();
-                boolean isMoneyFlowingItems = (nowItems - lastSellMoneyTime < 2500L);
+                boolean isMoneyFlowingItems = (nowItems - lastSellMoneyTime < 1000L);
 
                 if (isMoneyFlowingItems) {
-                    // Tiền đang cộng đều đặn vào tài khoản -> Aim đang dính bảng và bán cực tốt:
-                    // Có người chơi đẩy hay va quẹt thì người thật vẫn đứng im đè chuột bán tiếp, KHÔNG nhúc nhích!
+                    // Tiền đang cộng đều đặn -> Aim đang dính bảng và bán cực tốt: ĐỨNG YÊN HOÀN TOÀN!
+                    stopNudgeForward();
                     pushAwayTicks = 0;
                     notSellingTimer = 0;
+                    sellNudgeTicks = 0;
                 } else {
-                    // CHỈ KHI NÀO TIỀN ĐÃ NGỪNG CỘNG (quá 2.5s không có chat cộng tiền):
-                    notSellingTimer++;
-                    boolean outOfRangeItems = isPushedAwayFromCounterOrSign();
-                    if (outOfRangeItems) {
-                        pushAwayTicks++;
-                        // Tiền đã ngừng cộng VÀ thật sự bị đẩy ra khỏi tầm bán -> Gửi #goto bước lại quầy ngay:
-                        if (pushAwayTicks >= 4) {
-                            System.out.println("[MacroRecorder] (F4) Tiền đã ngừng cộng và bị đẩy ra khỏi tầm bán! Gửi "
-                                    + afterShopGotoCommand + " để bước lại đúng quầy bán...");
-                            releaseUseItemKey();
-                            executeClientCommand(afterShopGotoCommand);
-                            stateBeforeRecovery = SellState.SELLING_ITEMS;
-                            sellState = SellState.RECOVERING_TO_COUNTER;
-                            sellWaitTimer = 0;
-                            pushAwayTicks = 0;
-                            notSellingTimer = 0;
-                            return false;
-                        }
-                    } else {
-                        pushAwayTicks = 0;
-                        // Vẫn đứng ở quầy nhưng quá 40 ticks (2.0s) không thấy cộng tiền -> gửi lại để căn chỉnh vị trí:
-                        if (notSellingTimer >= 40) {
-                            System.out.println("[MacroRecorder] (F4) Quá 2s không cộng tiền! Gửi " + afterShopGotoCommand + " để cân chỉnh lại vị trí quầy bán...");
-                            releaseUseItemKey();
-                            executeClientCommand(afterShopGotoCommand);
-                            stateBeforeRecovery = SellState.SELLING_ITEMS;
-                            sellState = SellState.RECOVERING_TO_COUNTER;
-                            sellWaitTimer = 0;
-                            pushAwayTicks = 0;
-                            notSellingTimer = 0;
-                            lastSellMoneyTime = System.currentTimeMillis();
-                            return false;
-                        }
-                    }
+                    // Tiền đã ngừng cộng quá 1s -> xử lý nhích lên nhẹ hoặc #goto nếu bị đẩy quá xa
+                    handleSellPositionRecovery(mc, SellState.SELLING_ITEMS);
                 }
                 return false;
 
@@ -1441,6 +1379,7 @@ public class MacroRecorderMod {
                     notSellingTimer = 0;
                     sellWaitTimer = 0;
                     pushAwayTicks = 0;
+                    sellNudgeTicks = 0;
                     lastSellMoneyTime = System.currentTimeMillis();
                     sellState = stateBeforeRecovery;
                 }
@@ -1953,6 +1892,113 @@ public class MacroRecorderMod {
     private void releaseUseItemKey() {
         if (mc != null && mc.gameSettings != null) {
             KeyBinding.setKeyBindState(mc.gameSettings.keyBindUseItem.getKeyCode(), false);
+            KeyBinding.setKeyBindState(mc.gameSettings.keyBindForward.getKeyCode(), false);
+        }
+    }
+
+    private int sellNudgeTicks = 0;
+
+    private void nudgeForward() {
+        if (mc != null && mc.gameSettings != null && mc.player != null) {
+            mc.player.setSprinting(false);
+            KeyBinding.setKeyBindState(mc.gameSettings.keyBindForward.getKeyCode(), true);
+        }
+    }
+
+    private void stopNudgeForward() {
+        if (mc != null && mc.gameSettings != null) {
+            KeyBinding.setKeyBindState(mc.gameSettings.keyBindForward.getKeyCode(), false);
+        }
+    }
+
+    /**
+     * Tự động xử lý vị trí khi bán đồ 100% NHƯ NGƯỜI THẬT:
+     * - HẠN CHẾ TỐI ĐA #goto: Những khúc lệch nhẹ (0.2m - 2.0m) thì tự động nhích lên bằng phím W
+     *   để tâm ngắm dính vào bảng, tuyệt đối không spam lệnh Baritone tránh lộ bot.
+     * - CHỈ KHI BỊ ĐẨY QUÁ XA (văng ra khỏi quầy > 3.0m hoặc xa bảng > 5.5m): Lúc này mới dùng #goto.
+     */
+    private void handleSellPositionRecovery(Minecraft mc, SellState currentState) {
+        if (mc == null || mc.player == null) return;
+        notSellingTimer++;
+
+        BlockPos targetSignPos = SignAimHandler.targetSignPos;
+        BlockPos counterTarget = parseGotoPos(afterShopGotoCommand);
+
+        double distSqToSign = 0.0;
+        if (targetSignPos != null) {
+            double eyeX = mc.player.posX;
+            double eyeY = mc.player.posY + mc.player.getEyeHeight();
+            double eyeZ = mc.player.posZ;
+            double dx = (targetSignPos.getX() + 0.5) - eyeX;
+            double dy = (targetSignPos.getY() + 0.5) - eyeY;
+            double dz = (targetSignPos.getZ() + 0.5) - eyeZ;
+            distSqToSign = dx * dx + dy * dy + dz * dz;
+        }
+
+        double distSqToCounter = 0.0;
+        if (counterTarget != null) {
+            double cx = mc.player.posX - (counterTarget.getX() + 0.5);
+            double cz = mc.player.posZ - (counterTarget.getZ() + 0.5);
+            distSqToCounter = cx * cx + cz * cz;
+        }
+
+        // 1. Chỉ dùng #goto khi bị đẩy THẬT SỰ QUÁ XA (xa quầy > 3.0m [sq > 9.0] hoặc xa bảng > 5.5m [sq > 30.0]):
+        boolean isFarAway = (distSqToCounter > 9.0 || distSqToSign > 30.0);
+        if (isFarAway) {
+            stopNudgeForward();
+            pushAwayTicks++;
+            // Phản xạ nhanh: chỉ sau 3 ticks (0.15s) phát hiện văng xa -> gọi #goto về quầy ngay!
+            if (pushAwayTicks >= 3) {
+                System.out.println("[MacroRecorder] (F4) Bị đẩy xa khỏi quầy bán (" + String.format("%.1f", Math.sqrt(distSqToCounter)) + "m)! Dùng #goto để bước về quầy...");
+                releaseUseItemKey();
+                executeClientCommand(afterShopGotoCommand);
+                stateBeforeRecovery = currentState;
+                sellState = SellState.RECOVERING_TO_COUNTER;
+                sellWaitTimer = 0;
+                pushAwayTicks = 0;
+                notSellingTimer = 0;
+                sellNudgeTicks = 0;
+            }
+            return;
+        }
+
+        // 2. VẪN Ở GẦN QUẦY (chỉ lệch nhẹ 0.2m - 2.0m):
+        // 100% NHƯ NGƯỜI THẬT: NHÍCH LÊN BẰNG PHÍM W, TUYỆT ĐỐI HẠN CHẾ #GOTO!
+        pushAwayTicks = 0;
+
+        // Cần nhích lên nếu: khoảng cách tới bảng > 2.4m (sq > 5.76) HOẶC tâm ngắm chưa dính trúng bảng
+        boolean isAiming = SignAimHandler.isAimingAtSign(mc);
+        boolean needNudge = (distSqToSign > 5.76 || !isAiming);
+
+        if (needNudge) {
+            sellNudgeTicks++;
+            // Nhịp nhích phím W như người thật: bước 1 bước ngắn (tối đa 10 ticks = 0.5s)
+            if (sellNudgeTicks <= 10) {
+                nudgeForward();
+            } else if (sellNudgeTicks <= 15) {
+                // Tạm nhả phím 5 ticks (0.25s) để người chơi dừng đà
+                stopNudgeForward();
+            } else {
+                // Hết 1 nhịp 15 ticks reset lại để nhích nhịp kế tiếp nếu vẫn chưa vào tầm
+                sellNudgeTicks = 0;
+                // Nếu nhích liên tục quá 3 giây (60 ticks) mà vẫn không thể chạm bảng (kẹt góc/cột)
+                // Lúc này mới dùng #goto như giải pháp cứu cánh:
+                if (notSellingTimer >= 60) {
+                    System.out.println("[MacroRecorder] (F4) Nhích phím W bị kẹt góc > 3s! Dùng #goto hỗ trợ vượt chướng ngại vật...");
+                    stopNudgeForward();
+                    releaseUseItemKey();
+                    executeClientCommand(afterShopGotoCommand);
+                    stateBeforeRecovery = currentState;
+                    sellState = SellState.RECOVERING_TO_COUNTER;
+                    sellWaitTimer = 0;
+                    notSellingTimer = 0;
+                    sellNudgeTicks = 0;
+                }
+            }
+        } else {
+            // Đã vào cự ly chuẩn và ngắm dính bảng -> dừng nhích ngay!
+            stopNudgeForward();
+            sellNudgeTicks = 0;
         }
     }
 

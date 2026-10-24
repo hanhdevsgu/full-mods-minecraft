@@ -78,7 +78,7 @@ public class ConfigHelper {
     // de co the doi noi dung lenh ma khong can build lai jar.
     public static final String DEFAULT_SETHOME_COMMAND = "/sethome";
     public static final String DEFAULT_SHOP_COMMAND = "/shop";
-    public static final String DEFAULT_HOME_MIA_COMMAND = "/HOME MIA";
+    public static final String DEFAULT_HOME_MIA_COMMAND = "/home";
 
     // ===== DANH SACH THU TU TAI KHOAN (nhieu nick mo cung luc F4) - GUI phim U =====
     // ===== (xem GuiAccountOrder). accountOrder la thu tu "ai chay truoc, ai chay =====
@@ -159,6 +159,9 @@ public class ConfigHelper {
             // Ghi lai ngay sau khi doc: file cu thieu field moi (vd lan dau nang cap
             // tu .cfg sang .json) se tu dong duoc bo sung gia tri mac dinh va luu lai.
             saveConfig();
+            try {
+                com.autorefill.SignAimHandler.setupTarget(String.valueOf(data.farmItemId), false);
+            } catch (Throwable ignored) {}
             logCurrent("LOADED CONFIG (JSON)");
         } catch (Exception e) {
             System.err.println("[MacroRecorder] Lỗi load config JSON: " + e.getMessage());
@@ -231,6 +234,9 @@ public class ConfigHelper {
     public static void setFarmItemId(int itemId) {
         data.farmItemId = itemId;
         saveConfig();
+        try {
+            com.autorefill.SignAimHandler.setupTarget(String.valueOf(itemId), false);
+        } catch (Throwable ignored) {}
     }
 
     /** Delay giua cac click lay/bo item trong ruong. 0 = giu nguyen toc do toi da. */
@@ -399,12 +405,44 @@ public class ConfigHelper {
         return data.sethomeCommand;
     }
 
+    public static void setSethomeCommand(String command) {
+        String cmd = command != null ? command.trim() : "";
+        if (!cmd.isEmpty() && !cmd.startsWith("/") && !cmd.startsWith("#") && !cmd.startsWith(".")) {
+            cmd = "/" + cmd;
+        }
+        data.sethomeCommand = nonBlankOrDefault(cmd, DEFAULT_SETHOME_COMMAND);
+        saveConfig();
+    }
+
     public static String getShopCommand() {
         return data.shopCommand;
     }
 
     public static String getHomeMiaCommand() {
         return data.homeMiaCommand;
+    }
+
+    public static void setHomeMiaCommand(String command) {
+        String cmd = command != null ? command.trim() : "";
+        if (!cmd.isEmpty() && !cmd.startsWith("/") && !cmd.startsWith("#") && !cmd.startsWith(".")) {
+            cmd = "/" + cmd;
+        }
+        data.homeMiaCommand = nonBlankOrDefault(cmd, DEFAULT_HOME_MIA_COMMAND);
+        saveConfig();
+    }
+
+    public static void setCommands(String sethomeCmd, String homeCmd) {
+        String sCmd = sethomeCmd != null ? sethomeCmd.trim() : "";
+        if (!sCmd.isEmpty() && !sCmd.startsWith("/") && !sCmd.startsWith("#") && !sCmd.startsWith(".")) {
+            sCmd = "/" + sCmd;
+        }
+        String hCmd = homeCmd != null ? homeCmd.trim() : "";
+        if (!hCmd.isEmpty() && !hCmd.startsWith("/") && !hCmd.startsWith("#") && !hCmd.startsWith(".")) {
+            hCmd = "/" + hCmd;
+        }
+        data.sethomeCommand = nonBlankOrDefault(sCmd, DEFAULT_SETHOME_COMMAND);
+        data.homeMiaCommand = nonBlankOrDefault(hCmd, DEFAULT_HOME_MIA_COMMAND);
+        saveConfig();
     }
 
     // ===== DANH SACH THU TU TAI KHOAN - dung cho GUI (phim U, xem GuiAccountOrder) =====

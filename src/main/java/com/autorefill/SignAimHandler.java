@@ -44,6 +44,10 @@ public class SignAimHandler {
         if (hasUserConfiguredTarget && configuredTarget != null && !configuredTarget.trim().isEmpty()) {
             return configuredTarget;
         }
+        int cfgId = com.zorotool.macrorecorder.ConfigHelper.getFarmItemId();
+        if (cfgId > 0 && cfgId != 289) {
+            return String.valueOf(cfgId);
+        }
         return "gunpowder";
     }
 
@@ -128,6 +132,42 @@ public class SignAimHandler {
                 parsedId = 289;
             } else if (isReedsTarget(lower)) {
                 parsedId = 338;
+            } else if (lower.equals("beef") || lower.equals("raw_beef") || lower.equals("raw beef") || lower.equals("thit bo") || lower.equals("thịt bò") || lower.equals("bo") || lower.equals("bò")) {
+                parsedId = 363;
+            } else if (lower.equals("steak") || lower.equals("cooked_beef") || lower.equals("cooked beef") || lower.equals("thit bo chin") || lower.equals("thịt bò chín") || lower.equals("bit tet") || lower.equals("bít tết")) {
+                parsedId = 364;
+            } else if (lower.equals("porkchop") || lower.equals("raw_porkchop") || lower.equals("raw porkchop") || lower.equals("thit heo") || lower.equals("thịt heo") || lower.equals("thit lon") || lower.equals("thịt lợn")) {
+                parsedId = 319;
+            } else if (lower.equals("cooked_porkchop") || lower.equals("cooked porkchop") || lower.equals("thit heo chin") || lower.equals("thịt heo chín") || lower.equals("thit lon chin") || lower.equals("thịt lợn chín")) {
+                parsedId = 320;
+            } else if (lower.equals("chicken") || lower.equals("raw_chicken") || lower.equals("raw chicken") || lower.equals("thit ga") || lower.equals("thịt gà") || lower.equals("ga") || lower.equals("gà")) {
+                parsedId = 365;
+            } else if (lower.equals("cooked_chicken") || lower.equals("cooked chicken") || lower.equals("thit ga chin") || lower.equals("thịt gà chín")) {
+                parsedId = 366;
+            } else if (lower.equals("mutton") || lower.equals("raw_mutton") || lower.equals("raw mutton") || lower.equals("thit cuu") || lower.equals("thịt cừu")) {
+                parsedId = 423;
+            } else if (lower.equals("cooked_mutton") || lower.equals("cooked mutton") || lower.equals("thit cuu chin") || lower.equals("thịt cừu chín")) {
+                parsedId = 424;
+            } else if (lower.equals("rabbit") || lower.equals("raw_rabbit") || lower.equals("thit tho") || lower.equals("thịt thỏ")) {
+                parsedId = 411;
+            } else if (lower.equals("cooked_rabbit") || lower.equals("thit tho chin") || lower.equals("thịt thỏ chín")) {
+                parsedId = 412;
+            } else if (lower.equals("leather") || lower.equals("da") || lower.equals("da bo") || lower.equals("da bò") || lower.equals("da thuoc") || lower.equals("da thuộc")) {
+                parsedId = 334;
+            } else if (lower.equals("feather") || lower.equals("long ga") || lower.equals("lông gà") || lower.equals("long vu") || lower.equals("lông vũ")) {
+                parsedId = 288;
+            } else if (lower.equals("string") || lower.equals("to") || lower.equals("tơ") || lower.equals("to nhen") || lower.equals("tơ nhện") || lower.equals("chi") || lower.equals("chỉ")) {
+                parsedId = 287;
+            } else if (lower.equals("bone") || lower.equals("xuong") || lower.equals("xương")) {
+                parsedId = 352;
+            } else if (lower.equals("spider_eye") || lower.equals("spider eye") || lower.equals("mat nhen") || lower.equals("mắt nhện")) {
+                parsedId = 375;
+            } else if (lower.equals("rotten_flesh") || lower.equals("rotten flesh") || lower.equals("thit thoi") || lower.equals("thịt thối")) {
+                parsedId = 367;
+            } else if (lower.equals("egg") || lower.equals("trung") || lower.equals("trứng")) {
+                parsedId = 344;
+            } else if (lower.equals("slimeball") || lower.equals("slime ball") || lower.equals("bong slime") || lower.equals("bóng slime")) {
+                parsedId = 341;
             } else if (lower.equals("sat") || lower.equals("sắt") || lower.equals("khoi sat") || lower.equals("khối sắt") || lower.equals("iron_block") || lower.equals("iron block")) {
                 parsedId = 42;
             } else if (lower.equals("thoi sat") || lower.equals("thỏi sắt") || lower.equals("iron_ingot") || lower.equals("iron ingot") || lower.equals("iron")) {
@@ -211,6 +251,60 @@ public class SignAimHandler {
             targetDisplayName = "Thuốc súng (Gunpowder) [ID: 289]";
         } else if (parsedId == 338) {
             targetDisplayName = "Mía (Sugar Cane) [ID: 338]";
+        } else if (parsedId == 363) {
+            targetDisplayName = "Thịt bò (Raw Beef) [ID: 363]";
+        } else if (parsedId == 364) {
+            targetDisplayName = "Bít tết (Steak) [ID: 364]";
+        } else if (parsedId == 319) {
+            targetDisplayName = "Thịt heo (Raw Porkchop) [ID: 319]";
+        } else if (parsedId == 320) {
+            targetDisplayName = "Thịt heo chín (Cooked Porkchop) [ID: 320]";
+        } else if (parsedId == 365) {
+            targetDisplayName = "Thịt gà (Raw Chicken) [ID: 365]";
+        } else if (parsedId == 366) {
+            targetDisplayName = "Thịt gà chín (Cooked Chicken) [ID: 366]";
+        } else if (parsedId == 423) {
+            targetDisplayName = "Thịt cừu (Raw Mutton) [ID: 423]";
+        } else if (parsedId == 424) {
+            targetDisplayName = "Thịt cừu chín (Cooked Mutton) [ID: 424]";
+        } else if (parsedId == 411) {
+            targetDisplayName = "Thịt thỏ (Raw Rabbit) [ID: 411]";
+        } else if (parsedId == 412) {
+            targetDisplayName = "Thịt thỏ chín (Cooked Rabbit) [ID: 412]";
+        } else if (parsedId == 334) {
+            targetDisplayName = "Da thuộc (Leather) [ID: 334]";
+        } else if (parsedId == 288) {
+            targetDisplayName = "Lông gà (Feather) [ID: 288]";
+        } else if (parsedId == 287) {
+            targetDisplayName = "Tơ nhện (String) [ID: 287]";
+        } else if (parsedId == 352) {
+            targetDisplayName = "Xương (Bone) [ID: 352]";
+        } else if (parsedId == 375) {
+            targetDisplayName = "Mắt nhện (Spider Eye) [ID: 375]";
+        } else if (parsedId == 367) {
+            targetDisplayName = "Thịt thối (Rotten Flesh) [ID: 367]";
+        } else if (parsedId == 344) {
+            targetDisplayName = "Trứng gà (Egg) [ID: 344]";
+        } else if (parsedId == 341) {
+            targetDisplayName = "Bóng Slime (Slimeball) [ID: 341]";
+        } else if (parsedId == 368) {
+            targetDisplayName = "Ngọc Ender (Ender Pearl) [ID: 368]";
+        } else if (parsedId == 369) {
+            targetDisplayName = "Que quỷ lửa (Blaze Rod) [ID: 369]";
+        } else if (parsedId == 372) {
+            targetDisplayName = "Bướu địa ngục (Nether Wart) [ID: 372]";
+        } else if (parsedId == 81) {
+            targetDisplayName = "Xương rồng (Cactus) [ID: 81]";
+        } else if (parsedId == 391) {
+            targetDisplayName = "Cà rốt (Carrot) [ID: 391]";
+        } else if (parsedId == 392) {
+            targetDisplayName = "Khoai tây (Potato) [ID: 392]";
+        } else if (parsedId == 296) {
+            targetDisplayName = "Lúa mì (Wheat) [ID: 296]";
+        } else if (parsedId == 360) {
+            targetDisplayName = "Dưa hấu (Melon) [ID: 360]";
+        } else if (parsedId == 86) {
+            targetDisplayName = "Bí ngô (Pumpkin) [ID: 86]";
         } else if (parsedId == 265) {
             targetDisplayName = "Thỏi sắt (Iron Ingot) [ID: 265]";
         } else if (parsedId == 41) {
@@ -414,6 +508,127 @@ public class SignAimHandler {
                 targetAliases.add("wheat");
                 targetAliases.add("lúa mì");
                 targetAliases.add("lua mi");
+                break;
+            case 363:
+                targetAliases.add("beef");
+                targetAliases.add("raw_beef");
+                targetAliases.add("raw beef");
+                targetAliases.add("thịt bò");
+                targetAliases.add("thit bo");
+                targetAliases.add("bò sống");
+                targetAliases.add("bo song");
+                targetAliases.add("bò");
+                targetAliases.add("bo");
+                break;
+            case 364:
+                targetAliases.add("steak");
+                targetAliases.add("cooked_beef");
+                targetAliases.add("cooked beef");
+                targetAliases.add("thịt bò chín");
+                targetAliases.add("thit bo chin");
+                targetAliases.add("bít tết");
+                targetAliases.add("bit tet");
+                break;
+            case 319:
+                targetAliases.add("porkchop");
+                targetAliases.add("raw_porkchop");
+                targetAliases.add("raw porkchop");
+                targetAliases.add("thịt heo");
+                targetAliases.add("thit heo");
+                targetAliases.add("thịt lợn");
+                targetAliases.add("thit lon");
+                break;
+            case 320:
+                targetAliases.add("cooked_porkchop");
+                targetAliases.add("cooked porkchop");
+                targetAliases.add("thịt heo chín");
+                targetAliases.add("thit heo chin");
+                targetAliases.add("thịt lợn chín");
+                targetAliases.add("thit lon chin");
+                break;
+            case 365:
+                targetAliases.add("chicken");
+                targetAliases.add("raw_chicken");
+                targetAliases.add("raw chicken");
+                targetAliases.add("thịt gà");
+                targetAliases.add("thit ga");
+                targetAliases.add("gà sống");
+                targetAliases.add("ga song");
+                break;
+            case 366:
+                targetAliases.add("cooked_chicken");
+                targetAliases.add("cooked chicken");
+                targetAliases.add("thịt gà chín");
+                targetAliases.add("thit ga chin");
+                break;
+            case 423:
+                targetAliases.add("mutton");
+                targetAliases.add("raw_mutton");
+                targetAliases.add("raw mutton");
+                targetAliases.add("thịt cừu");
+                targetAliases.add("thit cuu");
+                break;
+            case 424:
+                targetAliases.add("cooked_mutton");
+                targetAliases.add("cooked mutton");
+                targetAliases.add("thịt cừu chín");
+                targetAliases.add("thit cuu chin");
+                break;
+            case 411:
+                targetAliases.add("rabbit");
+                targetAliases.add("raw_rabbit");
+                targetAliases.add("raw rabbit");
+                targetAliases.add("thịt thỏ");
+                targetAliases.add("thit tho");
+                break;
+            case 412:
+                targetAliases.add("cooked_rabbit");
+                targetAliases.add("cooked rabbit");
+                targetAliases.add("thịt thỏ chín");
+                targetAliases.add("thit tho chin");
+                break;
+            case 334:
+                targetAliases.add("leather");
+                targetAliases.add("da");
+                targetAliases.add("da bò");
+                targetAliases.add("da bo");
+                targetAliases.add("da thuộc");
+                targetAliases.add("da thuoc");
+                break;
+            case 288:
+                targetAliases.add("feather");
+                targetAliases.add("lông gà");
+                targetAliases.add("long ga");
+                targetAliases.add("lông vũ");
+                targetAliases.add("long vu");
+                break;
+            case 287:
+                targetAliases.add("string");
+                targetAliases.add("tơ");
+                targetAliases.add("to");
+                targetAliases.add("tơ nhện");
+                targetAliases.add("to nhen");
+                targetAliases.add("chỉ");
+                targetAliases.add("chi");
+                break;
+            case 375:
+                targetAliases.add("spider_eye");
+                targetAliases.add("spider eye");
+                targetAliases.add("mắt nhện");
+                targetAliases.add("mat nhen");
+                break;
+            case 367:
+                targetAliases.add("rotten_flesh");
+                targetAliases.add("rotten flesh");
+                targetAliases.add("thịt thối");
+                targetAliases.add("thit thoi");
+                break;
+            case 344:
+                targetAliases.add("egg");
+                targetAliases.add("trứng");
+                targetAliases.add("trung");
+                targetAliases.add("trứng gà");
+                targetAliases.add("trung ga");
                 break;
         }
     }
@@ -650,55 +865,65 @@ public class SignAimHandler {
         player.sendMessage(new TextComponentString(TextFormatting.YELLOW + "[AutoAim Debug] Tìm thấy " + count + " bảng."));
     }
 
+    private static boolean isSyncingTarget = false;
+
     public static void setupTarget(String input, boolean verbose) {
-        Minecraft mc = Minecraft.getMinecraft();
-        if (input == null || input.trim().isEmpty()) {
-            input = "gunpowder";
-        }
-        String clean = input.replaceAll("[<>\\[\\]]", "").trim();
-        if (clean.isEmpty()) {
-            clean = "gunpowder";
-        }
-        hasUserConfiguredTarget = true;
-        configuredTarget = clean;
-        resolveTarget(clean);
-
-        if (targetItemId > 0) {
-            try {
-                com.zorotool.macrorecorder.ConfigHelper.setFarmItemId(targetItemId);
-            } catch (Exception ignored) {}
-        }
-
-        isAimLockActive = true;
-        outOfRangeTicks = 0;
-        stuckTicks = 0;
-        isWarmupActive = false;
-
-        boolean found = findTargetSign(lastItemTarget);
-        if (found) {
-            if (mc.player != null) {
-                anchorPos = new Vec3d(mc.player.posX, mc.player.posY, mc.player.posZ);
+        if (isSyncingTarget) return;
+        try {
+            isSyncingTarget = true;
+            Minecraft mc = Minecraft.getMinecraft();
+            if (input == null || input.trim().isEmpty()) {
+                input = "gunpowder";
             }
-            if (mc.gameSettings != null) {
-                mc.gameSettings.pauseOnLostFocus = false;
+            String clean = input.replaceAll("[<>\\[\\]]", "").trim();
+            if (clean.isEmpty()) {
+                clean = "gunpowder";
             }
-            if (mc.player != null) {
-                mc.player.setSprinting(false);
-                if (verbose) {
-                    mc.player.sendMessage(new TextComponentString(TextFormatting.GREEN + 
-                        "[AutoAim] ĐÃ BẬT GHIM BẢNG [Sell] " + targetDisplayName));
+            hasUserConfiguredTarget = true;
+            configuredTarget = clean;
+            resolveTarget(clean);
+
+            if (targetItemId > 0) {
+                try {
+                    if (com.zorotool.macrorecorder.ConfigHelper.getFarmItemId() != targetItemId) {
+                        com.zorotool.macrorecorder.ConfigHelper.setFarmItemId(targetItemId);
+                    }
+                } catch (Exception ignored) {}
+            }
+
+            isAimLockActive = true;
+            outOfRangeTicks = 0;
+            stuckTicks = 0;
+            isWarmupActive = false;
+
+            boolean found = findTargetSign(lastItemTarget);
+            if (found) {
+                if (mc.player != null) {
+                    anchorPos = new Vec3d(mc.player.posX, mc.player.posY, mc.player.posZ);
+                }
+                if (mc.gameSettings != null) {
+                    mc.gameSettings.pauseOnLostFocus = false;
+                }
+                if (mc.player != null) {
+                    mc.player.setSprinting(false);
+                    if (verbose) {
+                        mc.player.sendMessage(new TextComponentString(TextFormatting.GREEN + 
+                            "[AutoAim] ĐÃ BẬT GHIM BẢNG [Sell] " + targetDisplayName));
+                        mc.player.sendMessage(new TextComponentString(TextFormatting.AQUA + 
+                            "-> Camera ghim vào bảng mượt như người thật. Bạn thoải mái đè chuột phải để bán đồ!"));
+                    }
+                }
+            } else {
+                targetSignPos = null;
+                if (mc.player != null && verbose) {
+                    mc.player.sendMessage(new TextComponentString(TextFormatting.YELLOW + 
+                        "[AutoAim] ĐÃ SETUP TRƯỚC: " + targetDisplayName));
                     mc.player.sendMessage(new TextComponentString(TextFormatting.AQUA + 
-                        "-> Camera ghim vào bảng mượt như người thật. Bạn thoải mái đè chuột phải để bán đồ!"));
+                        "-> Khi bấm F4 (#goto tới quầy), camera sẽ tự động chỉa và ghim đúng vào bảng " + targetDisplayName + "!"));
                 }
             }
-        } else {
-            targetSignPos = null;
-            if (mc.player != null && verbose) {
-                mc.player.sendMessage(new TextComponentString(TextFormatting.YELLOW + 
-                    "[AutoAim] ĐÃ SETUP TRƯỚC: " + targetDisplayName));
-                mc.player.sendMessage(new TextComponentString(TextFormatting.AQUA + 
-                    "-> Khi bấm F4 (#goto tới quầy), camera sẽ tự động chỉa và ghim đúng vào bảng " + targetDisplayName + "!"));
-            }
+        } finally {
+            isSyncingTarget = false;
         }
     }
 

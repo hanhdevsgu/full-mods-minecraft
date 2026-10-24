@@ -1,5 +1,21 @@
 # CHANGELOG - AutoAimSellSign 1.12.2
 
+## [1.4.41] - 2026-10-24
+### Feature & Bugfix (Custom /sethome & /home on GUI F8 & Multi-Item Farm Fix)
+- **Đưa lệnh `/sethome` và `/home` lên trực tiếp giao diện GUI F8 (Không còn lệnh set cứng)**:
+  - Thêm 2 ô nhập liệu trên Menu F8: `Lệnh /sethome tại farm` và `Lệnh /home về nhà`.
+  - Tái cấu trúc layout 7 ô đối xứng 2 bên đẹp mắt, hỗ trợ mọi độ phân giải màn hình.
+  - Tự động chuẩn hóa dấu `/` nếu người chơi gõ thiếu (vd: gõ `sethome` -> tự thành `/sethome`, `home mia` -> tự thành `/home mia`).
+  - Lưu trực tiếp vào `macrorecorder.json` và áp dụng tức thì khi bấm "✔ Lưu cấu hình" hoặc Enter.
+- **Khắc phục triệt để lỗi chọn ID 363 (Thịt bò) nhưng về nhà vẫn lấy thuốc súng**:
+  - Sửa hàm `isFarmItem()`: Khi đã cài đặt `farmItemId != 289`, hệ thống lọc chính xác vật phẩm theo ID cấu hình, tuyệt đối không bao giờ match nhầm sang thuốc súng nữa.
+  - Tự động đồng bộ hai chiều giữa GUI F8 và `SignAimHandler`: Khi đổi ID trên GUI F8, AutoAim và bộ lọc rương/kho lập tức chuyển mục tiêu sang vật phẩm mới mà không cần gõ lệnh thủ công.
+  - Thêm đầy đủ từ khóa và tên hiển thị cho mob farm & nông sản: Thịt bò sống (`363`), Bít tết (`364`), Thịt heo (`319`/`320`), Thịt gà (`365`/`366`), Thịt cừu (`423`/`424`), Da thuộc (`334`), Lông gà (`288`), Tơ nhện (`287`), Xương (`352`), Thịt thối (`367`), Trứng (`344`), Cà rốt (`391`), Khoai tây (`392`), v.v.
+  - Dynamic Display Name: Toàn bộ thông báo log console và game tự động hiển thị đúng tên vật phẩm đang farm thay vì gán cứng chữ "thuốc súng".
+- **Cập nhật link tải trọn bộ 2 file ZIP 1-click**:
+  - `Combo-2-Mods-AutoAimSellSign.zip` (Chuẩn 2 mods tối ưu: AutoAimSellSign + Impact 4.9.1).
+  - `Combo-3-Mods-AutoAimSellSign.zip` (Bản đầy đủ mở rộng).
+
 ## [1.4.40] - 2026-10-24
 ### Feature & Polish (Continuous Sell While Blocked & Real-Time Money Stream Guarantee)
 - **Tiếp tục đè chuột phải bán đồ liên tục kể cả khi có người đứng che bảng**:

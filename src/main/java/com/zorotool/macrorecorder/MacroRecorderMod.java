@@ -744,7 +744,7 @@ public class MacroRecorderMod {
                 int moved = depositOnlyFarmItemsSuperFast();
                 boolean vaultFull = isCurrentVaultFull();
                 System.out.println("[MacroRecorder] Kho /pv " + vaultNumber + " (lần " + depositRoundInVault + "/2): đã đẩy "
-                        + moved + " stack thuốc súng vào kho (kho đầy=" + vaultFull + ", moved=" + moved + ")");
+                        + moved + " stack " + getFarmItemDisplayName() + " vào kho (kho đầy=" + vaultFull + ", moved=" + moved + ")");
 
                 // 1 PV chỉ mở tối đa 2 lần:
                 // - Nếu kho đã đầy (hoặc đã có sẵn đồ/sắt nên đầy ngay, hoặc đẩy vào 1 lần là đầy): Đóng và chuyển sang kho kế tiếp!
@@ -1102,12 +1102,12 @@ public class MacroRecorderMod {
             case SELLING_1E_ITEMS:
                 if (countReedsInInventory() < SELL_ITEMS_DONE_THRESHOLD) {
                     System.out.println(
-                            "[MacroRecorder] (F4) Trong 36 ô không còn thuốc súng để bán (hoặc đã bán sạch 1E)! Chuẩn bị gửi /home về nhà...");
+                            "[MacroRecorder] (F4) Trong 36 ô không còn " + getFarmItemDisplayName() + " để bán (hoặc đã bán sạch 1E)! Chuẩn bị gửi " + ConfigHelper.getHomeMiaCommand() + " về nhà...");
                     releaseUseItemKey();
                     notSellingTimer = 0;
                     if (onlySell1E) {
                         System.out.println(
-                                "[MacroRecorder] (F4) Chế độ dính rác: Đã bán hết đồ trên người! Chuẩn bị gửi /home về nhà (đã bán " + vaultsSoldThisSession + " kho /pv)...");
+                                "[MacroRecorder] (F4) Chế độ dính rác: Đã bán hết đồ trên người! Chuẩn bị gửi " + ConfigHelper.getHomeMiaCommand() + " về nhà (đã bán " + vaultsSoldThisSession + " kho /pv)...");
                         // Giữ nguyên vaultsSoldThisSession thực tế (0 nếu dính rác ngay từ đầu chỉ bán 1E, hoặc số kho /pv thực tế đã rút bán)
                         sellState = SellState.SENDING_HOME;
                     } else {
@@ -1236,7 +1236,7 @@ public class MacroRecorderMod {
 
                 if (currentVaultExhausted) {
                     System.out.println("[MacroRecorder] (F4) Kho /pv " + sellVaultNumber
-                            + " đã được rút HẾT SẠCH thuốc súng (không còn stack nào)! Bán xong túi này sẽ không mở lại nữa.");
+                            + " đã được rút HẾT SẠCH " + getFarmItemDisplayName() + " (không còn stack nào)! Bán xong túi này sẽ không mở lại nữa.");
                 }
 
                 lastSellTakenCount = taken;
@@ -1247,7 +1247,7 @@ public class MacroRecorderMod {
                     vaultsSoldThisSession = sellVaultNumber;
                 }
                 System.out.println("[MacroRecorder] (F4) Kho /pv " + sellVaultNumber + " (lần " + sellRoundInVault
-                        + "/2): rút " + taken + " stack thuốc súng");
+                        + "/2): rút " + taken + " stack " + getFarmItemDisplayName());
                 sellClickCooldown = 0;
                 sellState = SellState.SELLING_ITEMS;
                 lastSellMoneyTime = System.currentTimeMillis();
@@ -1260,7 +1260,7 @@ public class MacroRecorderMod {
                     notSellingTimer = 0;
                     if (onlySell1E) {
                         System.out.println(
-                                "[MacroRecorder] (F4) Trong 36 ô không còn thuốc súng để bán (do dính rác)! Gửi /home về nhà ngay...");
+                                "[MacroRecorder] (F4) Trong 36 ô không còn " + getFarmItemDisplayName() + " để bán (do dính rác)! Gửi " + ConfigHelper.getHomeMiaCommand() + " về nhà ngay...");
                         vaultsSoldThisSession = sellVaultNumber;
                         sellState = SellState.SENDING_HOME;
                     } else {
@@ -1490,27 +1490,50 @@ public class MacroRecorderMod {
      * Dem tong so mia (REEDS) hien co trong tui do nguoi choi (khong tinh kho /pv,
      * vi luc nay GUI kho da dong). Dung de biet "balo khi nao item het".
      */
+    public String getFarmItemDisplayName() {
+        if (SignAimHandler.targetDisplayName != null && !SignAimHandler.targetDisplayName.isEmpty()) {
+            return SignAimHandler.targetDisplayName;
+        }
+        int id = ConfigHelper.getFarmItemId();
+        if (id > 0) {
+            Item item = Item.getItemById(id);
+            if (item != null) {
+                try {
+                    return new ItemStack(item).getDisplayName() + " [ID: " + id + "]";
+                } catch (Exception ignored) {}
+            }
+            return "Vật phẩm [ID: " + id + "]";
+        }
+        return "Nông sản";
+    }
+
     /**
-     * Kiem tra vat pham farm theo ID cau hinh trong GUI F8.
+     * Kiem tra vat pham farm theo ID cau hinh trong GUI F8 hoac /aimsell.
      * F3+H cho biet numeric item ID trong Minecraft 1.12.2.
      */
     private boolean isFarmItem(ItemStack stack) {
         if (stack == null || stack.isEmpty())
             return false;
-        String eff = SignAimHandler.getEffectiveTarget();
-        if (SignAimHandler.isGunpowderTarget(eff) && stack.getItem() == Items.GUNPOWDER) {
-            return true;
-        }
-        if (SignAimHandler.isReedsTarget(eff) && stack.getItem() == Items.REEDS) {
-            return true;
-        }
-        if (SignAimHandler.targetItemId > 0 && Item.getIdFromItem(stack.getItem()) == SignAimHandler.targetItemId) {
-            return true;
-        }
         int configuredId = ConfigHelper.getFarmItemId();
-        Item configured = Item.getItemById(configuredId);
-        if (configured != null && stack.getItem() == configured)
+        int stackId = Item.getIdFromItem(stack.getItem());
+        if (configuredId > 0 && stackId == configuredId) {
             return true;
+        }
+        if (configuredId > 0) {
+            Item configured = Item.getItemById(configuredId);
+            if (configured != null && stack.getItem() == configured)
+                return true;
+        }
+        if (SignAimHandler.targetItemId > 0 && stackId == SignAimHandler.targetItemId) {
+            return true;
+        }
+        String eff = SignAimHandler.getEffectiveTarget();
+        if ((configuredId == 289 || configuredId <= 0) && SignAimHandler.isGunpowderTarget(eff) && stack.getItem() == Items.GUNPOWDER) {
+            return true;
+        }
+        if ((configuredId == 338 || configuredId <= 0) && SignAimHandler.isReedsTarget(eff) && stack.getItem() == Items.REEDS) {
+            return true;
+        }
         return false;
     }
 
@@ -1751,7 +1774,7 @@ public class MacroRecorderMod {
             }
             return totalMoved;
         } catch (Exception e) {
-            System.out.println("[MacroRecorder] Lỗi khi chuyển thuốc súng vào kho /pv: " + e);
+            System.out.println("[MacroRecorder] Lỗi khi chuyển " + getFarmItemDisplayName() + " vào kho /pv: " + e);
         }
         return 0;
     }
@@ -2768,7 +2791,7 @@ public class MacroRecorderMod {
                     + " (kho cuối #goto xong đi thẳng ra shop)");
         }
         System.out.println("[MacroRecorder] >>> Lấy đủ " + targetVaultsToFill
-                + " kho -> /shop -> tự động chuyển sang chạy logic bán của F4 -> /HOME MIA -> lặp lại vô hạn.");
+                + " kho -> /shop -> tự động chuyển sang chạy logic bán của F4 -> " + ConfigHelper.getHomeMiaCommand() + " -> lặp lại vô hạn.");
         System.out.println("[MacroRecorder] >>> Nhấn F10 để dừng giữa chừng");
         System.out.println("[MacroRecorder] ========================================");
     }

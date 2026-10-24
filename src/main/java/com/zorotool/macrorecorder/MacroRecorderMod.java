@@ -1191,44 +1191,50 @@ public class MacroRecorderMod {
                     releaseUseItemKey();
                 }
 
-                // PHÁT HIỆN BỊ ĐẨY XA TỨC THÌ (INSTANT PUSH RECOVERY):
-                if (isPushedAwayFromCounterOrSign()) {
-                    pushAwayTicks++;
-                    // Bị đẩy lệch liên tục 4 ticks (0.2s) -> GỬI #GOTO BƯỚC LẠI QUẦY BÁN NGAY LẬP TỨC:
-                    if (pushAwayTicks >= 4) {
-                        System.out.println("[MacroRecorder] (F4) Phát hiện bị đẩy lệch khỏi quầy/ngoài tầm bán! Gửi " + afterShopGotoCommand + " bước lại ngay...");
-                        releaseUseItemKey();
-                        executeClientCommand(afterShopGotoCommand);
-                        stateBeforeRecovery = SellState.SELLING_1E_ITEMS;
-                        sellState = SellState.RECOVERING_TO_COUNTER;
-                        sellWaitTimer = 0;
-                        pushAwayTicks = 0;
-                        notSellingTimer = 0;
-                        return false;
-                    }
-                } else {
-                    pushAwayTicks = 0;
-                }
+                // 100% NHƯ NGƯỜI THẬT: NẾU TIỀN ĐANG CỘNG LIÊN TỤC THÌ TUYỆT ĐỐI ĐỨNG YÊN, KHÔNG NHÚC NHÍCH!
+                long now1E = System.currentTimeMillis();
+                boolean isMoneyFlowing1E = (now1E - lastSellMoneyTime < 2500L);
 
-                // Nếu tiền vẫn đang được cộng gần đây (< 2.0s):
-                if (System.currentTimeMillis() - lastSellMoneyTime < 2000L) {
+                if (isMoneyFlowing1E) {
+                    // Tiền đang cộng đều đặn vào tài khoản -> Aim đang dính bảng và bán cực tốt:
+                    // Có người chơi đẩy hay va quẹt thì người thật vẫn đứng im đè chuột bán tiếp, KHÔNG nhúc nhích!
+                    pushAwayTicks = 0;
                     notSellingTimer = 0;
                 } else {
+                    // CHỈ KHI NÀO TIỀN ĐÃ NGỪNG CỘNG (quá 2.5s không có chat cộng tiền):
                     notSellingTimer++;
-                }
-
-                // Nếu quá 30 ticks (1.5s) không cộng tiền -> bước lại quầy ngay:
-                if (notSellingTimer >= 30) {
-                    System.out.println("[MacroRecorder] (F4) Quá 1.5s không thấy server cộng tiền! Gửi " + afterShopGotoCommand + " để Baritone bước lại quầy bán...");
-                    releaseUseItemKey();
-                    executeClientCommand(afterShopGotoCommand);
-                    stateBeforeRecovery = SellState.SELLING_1E_ITEMS;
-                    sellState = SellState.RECOVERING_TO_COUNTER;
-                    sellWaitTimer = 0;
-                    pushAwayTicks = 0;
-                    notSellingTimer = 0;
-                    lastSellMoneyTime = System.currentTimeMillis();
-                    return false;
+                    boolean outOfRange1E = isPushedAwayFromCounterOrSign();
+                    if (outOfRange1E) {
+                        pushAwayTicks++;
+                        // Tiền đã ngừng cộng VÀ thật sự bị đẩy ra khỏi tầm bán -> Gửi #goto bước lại quầy ngay:
+                        if (pushAwayTicks >= 4) {
+                            System.out.println("[MacroRecorder] (F4) Tiền đã ngừng cộng và bị đẩy ra khỏi tầm bán! Gửi "
+                                    + afterShopGotoCommand + " để bước lại đúng quầy bán...");
+                            releaseUseItemKey();
+                            executeClientCommand(afterShopGotoCommand);
+                            stateBeforeRecovery = SellState.SELLING_1E_ITEMS;
+                            sellState = SellState.RECOVERING_TO_COUNTER;
+                            sellWaitTimer = 0;
+                            pushAwayTicks = 0;
+                            notSellingTimer = 0;
+                            return false;
+                        }
+                    } else {
+                        pushAwayTicks = 0;
+                        // Vẫn đứng ở quầy nhưng quá 40 ticks (2.0s) không thấy cộng tiền -> gửi lại để căn chỉnh vị trí:
+                        if (notSellingTimer >= 40) {
+                            System.out.println("[MacroRecorder] (F4) Quá 2s không cộng tiền! Gửi " + afterShopGotoCommand + " để cân chỉnh lại vị trí quầy bán...");
+                            releaseUseItemKey();
+                            executeClientCommand(afterShopGotoCommand);
+                            stateBeforeRecovery = SellState.SELLING_1E_ITEMS;
+                            sellState = SellState.RECOVERING_TO_COUNTER;
+                            sellWaitTimer = 0;
+                            pushAwayTicks = 0;
+                            notSellingTimer = 0;
+                            lastSellMoneyTime = System.currentTimeMillis();
+                            return false;
+                        }
+                    }
                 }
                 return false;
 
@@ -1357,45 +1363,50 @@ public class MacroRecorderMod {
                     releaseUseItemKey();
                 }
 
-                // PHÁT HIỆN BỊ ĐẨY XA TỨC THÌ (INSTANT PUSH RECOVERY):
-                if (isPushedAwayFromCounterOrSign()) {
-                    pushAwayTicks++;
-                    // Bị đẩy lệch liên tục 4 ticks (0.2s) -> GỬI #GOTO BƯỚC LẠI QUẦY BÁN NGAY LẬP TỨC:
-                    if (pushAwayTicks >= 4) {
-                        System.out.println("[MacroRecorder] (F4) Phát hiện bị đẩy lệch khỏi quầy/ngoài tầm bán! Gửi " + afterShopGotoCommand + " bước lại ngay...");
-                        releaseUseItemKey();
-                        executeClientCommand(afterShopGotoCommand);
-                        stateBeforeRecovery = SellState.SELLING_ITEMS;
-                        sellState = SellState.RECOVERING_TO_COUNTER;
-                        sellWaitTimer = 0;
-                        pushAwayTicks = 0;
-                        notSellingTimer = 0;
-                        return false;
-                    }
-                } else {
-                    pushAwayTicks = 0;
-                }
+                // 100% NHƯ NGƯỜI THẬT: NẾU TIỀN ĐANG CỘNG LIÊN TỤC THÌ TUYỆT ĐỐI ĐỨNG YÊN, KHÔNG NHÚC NHÍCH!
+                long nowItems = System.currentTimeMillis();
+                boolean isMoneyFlowingItems = (nowItems - lastSellMoneyTime < 2500L);
 
-                // Nếu tiền vẫn đang được cộng gần đây (< 2.0s):
-                if (System.currentTimeMillis() - lastSellMoneyTime < 2000L) {
+                if (isMoneyFlowingItems) {
+                    // Tiền đang cộng đều đặn vào tài khoản -> Aim đang dính bảng và bán cực tốt:
+                    // Có người chơi đẩy hay va quẹt thì người thật vẫn đứng im đè chuột bán tiếp, KHÔNG nhúc nhích!
+                    pushAwayTicks = 0;
                     notSellingTimer = 0;
                 } else {
+                    // CHỈ KHI NÀO TIỀN ĐÃ NGỪNG CỘNG (quá 2.5s không có chat cộng tiền):
                     notSellingTimer++;
-                }
-
-                // Nếu quá 30 ticks (1.5s) không cộng tiền -> bước lại quầy ngay:
-                if (notSellingTimer >= 30) {
-                    System.out.println("[MacroRecorder] (F4) Sell không cộng tiền ("
-                            + notSellingTimer + " ticks)! Gửi " + afterShopGotoCommand + " để Baritone bước lại quầy bán...");
-                    releaseUseItemKey();
-                    executeClientCommand(afterShopGotoCommand);
-                    stateBeforeRecovery = SellState.SELLING_ITEMS;
-                    sellState = SellState.RECOVERING_TO_COUNTER;
-                    sellWaitTimer = 0;
-                    pushAwayTicks = 0;
-                    notSellingTimer = 0;
-                    lastSellMoneyTime = System.currentTimeMillis();
-                    return false;
+                    boolean outOfRangeItems = isPushedAwayFromCounterOrSign();
+                    if (outOfRangeItems) {
+                        pushAwayTicks++;
+                        // Tiền đã ngừng cộng VÀ thật sự bị đẩy ra khỏi tầm bán -> Gửi #goto bước lại quầy ngay:
+                        if (pushAwayTicks >= 4) {
+                            System.out.println("[MacroRecorder] (F4) Tiền đã ngừng cộng và bị đẩy ra khỏi tầm bán! Gửi "
+                                    + afterShopGotoCommand + " để bước lại đúng quầy bán...");
+                            releaseUseItemKey();
+                            executeClientCommand(afterShopGotoCommand);
+                            stateBeforeRecovery = SellState.SELLING_ITEMS;
+                            sellState = SellState.RECOVERING_TO_COUNTER;
+                            sellWaitTimer = 0;
+                            pushAwayTicks = 0;
+                            notSellingTimer = 0;
+                            return false;
+                        }
+                    } else {
+                        pushAwayTicks = 0;
+                        // Vẫn đứng ở quầy nhưng quá 40 ticks (2.0s) không thấy cộng tiền -> gửi lại để căn chỉnh vị trí:
+                        if (notSellingTimer >= 40) {
+                            System.out.println("[MacroRecorder] (F4) Quá 2s không cộng tiền! Gửi " + afterShopGotoCommand + " để cân chỉnh lại vị trí quầy bán...");
+                            releaseUseItemKey();
+                            executeClientCommand(afterShopGotoCommand);
+                            stateBeforeRecovery = SellState.SELLING_ITEMS;
+                            sellState = SellState.RECOVERING_TO_COUNTER;
+                            sellWaitTimer = 0;
+                            pushAwayTicks = 0;
+                            notSellingTimer = 0;
+                            lastSellMoneyTime = System.currentTimeMillis();
+                            return false;
+                        }
+                    }
                 }
                 return false;
 

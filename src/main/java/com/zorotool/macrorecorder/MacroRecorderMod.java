@@ -912,53 +912,45 @@ public class MacroRecorderMod {
 
             case WAITING_SHOP_TELEPORT:
                 waitTimer++;
-                BlockPos shopDest = parseGotoPos(shopGotoCommand);
-                boolean arrivedAtShop = false;
-                if (mc.player != null) {
-                    if (shopDest != null) {
-                        double dx = mc.player.posX - (shopDest.getX() + 0.5);
-                        double dz = mc.player.posZ - (shopDest.getZ() + 0.5);
-                        if ((dx * dx + dz * dz) <= 10000.0) {
-                            if (farmTeleportOriginPos != null) {
-                                double fDx = mc.player.posX - farmTeleportOriginPos.x;
-                                double fDy = mc.player.posY - farmTeleportOriginPos.y;
-                                double fDz = mc.player.posZ - farmTeleportOriginPos.z;
-                                if ((fDx * fDx + fDy * fDy + fDz * fDz) > 64.0 || Math.abs(fDy) > 4.0) {
-                                    arrivedAtShop = true;
-                                }
-                            } else {
-                                arrivedAtShop = true;
-                            }
-                        }
-                    } else if (farmTeleportOriginPos != null) {
-                        double fDx = mc.player.posX - farmTeleportOriginPos.x;
-                        double fDy = mc.player.posY - farmTeleportOriginPos.y;
-                        double fDz = mc.player.posZ - farmTeleportOriginPos.z;
-                        if ((fDx * fDx + fDy * fDy + fDz * fDz) > 64.0 || Math.abs(fDy) > 4.0) {
-                            arrivedAtShop = true;
-                        }
-                    } else if (Math.abs(mc.player.posY - 150.0) <= 2.0 || Math.abs(mc.player.posY - 151.0) <= 2.0) {
-                        arrivedAtShop = true;
-                    }
+
+                // Đứng yên tuyệt đối trong thời gian chờ dịch chuyển & load map
+                if (mc.gameSettings != null) {
+                    KeyBinding.setKeyBindState(mc.gameSettings.keyBindForward.getKeyCode(), false);
+                    KeyBinding.setKeyBindState(mc.gameSettings.keyBindBack.getKeyCode(), false);
+                    KeyBinding.setKeyBindState(mc.gameSettings.keyBindLeft.getKeyCode(), false);
+                    KeyBinding.setKeyBindState(mc.gameSettings.keyBindRight.getKeyCode(), false);
+                    KeyBinding.setKeyBindState(mc.gameSettings.keyBindJump.getKeyCode(), false);
+                    KeyBinding.setKeyBindState(mc.gameSettings.keyBindSprint.getKeyCode(), false);
                 }
-                if (arrivedAtShop || teleportCompleteMessageReceived) {
-                    System.out.println(
-                            "[MacroRecorder] ĐÃ XÁC NHẬN TỚI SHOP THÀNH CÔNG! (Tọa độ X=" + (int) mc.player.posX
-                                    + ", Y=" + (int) mc.player.posY + ", Z=" + (int) mc.player.posZ
-                                    + ") -> Chạy ngay tới quầy shop!");
-                    teleportCompleteMessageReceived = false;
-                    waitTimer = 0;
-                    queueWaitLogTimer = 0;
-                    state = MacroState.WAITING_QUEUE_TURN;
-                    return true; // Tuyệt đối nhanh: chuyển thẳng sang gửi shopGotoCommand ngay trong cùng tick!
+
+                if (waitTimer % 20 == 0) {
+                    int sec = waitTimer / 20;
+                    int curY = (mc.player != null) ? (int) Math.round(mc.player.posY) : 0;
+                    System.out.println("[MacroRecorder] Đang chờ server dịch chuyển /shop & load map (" + sec + "/7s)... Y hiện tại = " + curY);
                 }
-                // Nếu sau 140 ticks (7s) chưa tới shop (do cooldown dịch chuyển) -> retry
+
+                // Đợi tầm 7s (140 ticks) cho server đếm lùi dịch chuyển và load map hoàn tất
                 if (waitTimer >= 140) {
-                    String cmd = ConfigHelper.getShopCommand();
-                    System.out.println("[MacroRecorder] Chưa tới shop sau 7s, retry gửi lại " + cmd + "...");
-                    trySendCommand(cmd);
-                    waitTimer = 0;
-                    state = MacroState.WAITING_SETHOME_DELAY;
+                    boolean atShopY = (mc.player != null) && Math.abs(mc.player.posY - 151.0) <= 2.0;
+                    if (atShopY) {
+                        System.out.println(
+                                "[MacroRecorder] ĐÃ ĐỢI 7S LOAD MAP & XÁC NHẬN Y=151! (Tọa độ X=" + (int) mc.player.posX
+                                        + ", Y=" + (int) mc.player.posY + ", Z=" + (int) mc.player.posZ
+                                        + ") -> Chạy logic NPC và quầy shop!");
+                        teleportCompleteMessageReceived = false;
+                        waitTimer = 0;
+                        queueWaitLogTimer = 0;
+                        state = MacroState.WAITING_QUEUE_TURN;
+                        return true; // Chuyển sang chạy logic NPC / goto
+                    } else {
+                        // Sau 7s mà Y hiện tại vẫn chưa phải 151 (bị lag hoặc server huỷ dịch chuyển) -> retry
+                        String retryShopCmd = (shopCommand != null && !shopCommand.trim().isEmpty()) ? shopCommand : ConfigHelper.getShopCommand();
+                        int curY = (mc.player != null) ? (int) Math.round(mc.player.posY) : 0;
+                        System.out.println("[MacroRecorder] Đã đợi 7s nhưng Y hiện tại = " + curY
+                                + " (chưa đạt 151, nghi vấn bị lag) -> Retry gửi lại: " + retryShopCmd + "...");
+                        trySendCommand(retryShopCmd);
+                        waitTimer = 0;
+                    }
                 }
                 return false;
 
@@ -1485,29 +1477,26 @@ public class MacroRecorderMod {
                     KeyBinding.setKeyBindState(mc.gameSettings.keyBindSprint.getKeyCode(), false);
                 }
 
+                if (sellWaitTimer % 20 == 0) {
+                    int sec = sellWaitTimer / 20;
+                    int curY = (mc.player != null) ? (int) Math.round(mc.player.posY) : 0;
+                    System.out.println("[MacroRecorder] (Home) Đang chờ server dịch chuyển về nhà (" + sec + "/7s)... Y hiện tại = " + curY);
+                }
+
                 // Chờ đủ 7 giây (140 ticks) theo quy định server:
                 if (sellWaitTimer >= 140) {
-                    boolean hasLeftShop = false;
-                    if (teleportCompleteMessageReceived) {
-                        hasLeftShop = true;
-                    } else if (mc.player != null && shopTeleportOriginPos != null) {
-                        double dX = mc.player.posX - shopTeleportOriginPos.x;
-                        double dY = mc.player.posY - shopTeleportOriginPos.y;
-                        double dZ = mc.player.posZ - shopTeleportOriginPos.z;
-                        double distSqFromShop = dX * dX + dY * dY + dZ * dZ;
-                        // Xác nhận đã rời khỏi vị trí quầy shop (khoảng cách 3D > 8m hoặc lệch Y > 4m):
-                        if (distSqFromShop > 64.0 || Math.abs(dY) > 4.0) {
-                            hasLeftShop = true;
-                        }
-                    }
+                    // Kiểm tra Y hiện tại: nếu Y không khác 151 (tức là vẫn ở shop Y ≈ 151) thì retry
+                    boolean isStillAtShopY = (mc.player != null) && Math.abs(mc.player.posY - 151.0) <= 2.0;
 
-                    if (hasLeftShop) {
+                    if (!isStillAtShopY) {
                         try {
                             SignAimHandler.stopAimLock(mc);
                         } catch (Exception ignored) {
                         }
                         String curHome = (homeMiaCommand != null && !homeMiaCommand.trim().isEmpty()) ? homeMiaCommand : ConfigHelper.getHomeMiaCommand();
-                        System.out.println("[MacroRecorder] (Home) Đã qua 7s, xác nhận đã rời khỏi shop -> Về nhà thành công bằng lệnh: " + curHome
+                        int curY = (mc.player != null) ? (int) Math.round(mc.player.posY) : 0;
+                        System.out.println("[MacroRecorder] (Home) Đã qua 7s, xác nhận Y hiện tại = " + curY
+                                + " (đã khác 151) -> Về nhà thành công bằng lệnh: " + curHome
                                 + "! Tắt AutoAim hoàn toàn, chuẩn bị xả rác và lấy đồ...");
                         sellWaitTimer = 0;
                         homeYStableTicks = 0;
@@ -1515,9 +1504,11 @@ public class MacroRecorderMod {
                         sellState = SellState.WAITING_HOME_SETTLE;
                         return false;
                     } else {
-                        // Sau 7s mà vị trí vẫn chưa rời khỏi shop (do lag hoặc server huỷ) -> retry gửi lại lệnh home
+                        // Sau 7s mà Y hiện tại không khác 151 (vẫn kẹt ở shop) -> retry gửi lại lệnh home
                         String retryCmd = (homeMiaCommand != null && !homeMiaCommand.trim().isEmpty()) ? homeMiaCommand : ConfigHelper.getHomeMiaCommand();
-                        System.out.println("[MacroRecorder] (Home) Đã qua 7s nhưng vẫn ở vị trí shop, retry gửi lại: " + retryCmd + "...");
+                        int curY = (mc.player != null) ? (int) Math.round(mc.player.posY) : 0;
+                        System.out.println("[MacroRecorder] (Home) Đã qua 7s nhưng Y hiện tại = " + curY
+                                + " (vẫn không khác 151, còn kẹt ở shop) -> Retry gửi lại: " + retryCmd + "...");
                         trySendCommand(retryCmd);
                         sellWaitTimer = 0;
                         homeYStableTicks = 0;

@@ -1,5 +1,17 @@
 # CHANGELOG - AutoAimSellSign 1.12.2
 
+## [1.4.44] - 2026-10-26
+### Bugfix & Polish (Port Exact Push Recovery from Download Jar & Fix Blocked Sign Selling)
+- **Bê nguyên vẹn logic xử lý khi bị đẩy từ file AutoAimSellSign-1.12.2-1.0.jar (phần download)**:
+  - Khôi phục cơ chế di chuyển mượt mà thông qua `InputUpdateEvent` (`moveForward = 0.8f` và `moveStrafe`) trong `SignAimHandler`.
+  - Giữ nguyên logic né người chơi chắn đường `isAnotherPlayerBlocking` và tự động tắt sprint.
+  - Phục hồi cơ chế `autoReturnEnabled` và `onClientTick` tự động bước lại quầy bán khi bị đẩy văng ra xa (> 2.2m), dừng bước ngay khi đã ngắm trúng bảng.
+- **Fix triệt để vấn đề bị người khác che bảng không bán được**:
+  - Nâng cấp `SignAimHandler.isAimingAtSign(mc)`: Khi có người chơi hoặc entity đứng che trước bảng (`RayTraceResult.Type.ENTITY`), hệ thống kiểm tra hướng mắt (pitch/yaw trong dung sai 20 độ) và cự ly trong tầm với (<= 4.2m). Nếu hướng mắt đang nhắm vào bảng, coi như đang ngắm trúng bảng (`isAimingAtSign = true`).
+  - Tiếp tục bán bình thường qua lệnh `processRightClickBlock` trực tiếp lên bảng mục tiêu mỗi 4 ticks (5 CPS), không bị gián đoạn khi có người đứng nhảy nhót trước mặt.
+  - Chặn các sự kiện tương tác thực thể (`EntityInteract`, `EntityInteractSpecific`, `RightClickItem`) để client không bao giờ bấm nhầm vào người chơi chắn bảng hoặc gửi packet kích hoạt anti-cheat.
+  - Tuyệt đối không đè phím chuột phải (`keyBindUseItem = false`) để tránh chiếm chuột và tránh bị văng lobby.
+
 ## [1.4.43] - 2026-10-25
 ### Bugfix & Polish (Absolute Hotbar 1 & Weapons Protection, Instant Push-Recovery Towards Sign)
 - **Bảo vệ tuyệt đối ô Hotbar 1 và vũ khí / công cụ khỏi bị vứt (Q)**:

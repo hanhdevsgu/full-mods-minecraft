@@ -1146,18 +1146,63 @@ public class SignAimHandler {
     }
 
     public static boolean isAimingAtSign(Minecraft mc) {
-        if (mc == null || mc.world == null || mc.objectMouseOver == null || targetSignPos == null) return false;
-        if (mc.objectMouseOver.typeOfHit != RayTraceResult.Type.BLOCK) return false;
-        BlockPos hitPos = mc.objectMouseOver.getBlockPos();
-        if (!targetSignPos.equals(hitPos)) return false;
+        if (mc == null || mc.world == null || targetSignPos == null || mc.player == null) return false;
 
-        TileEntity te = mc.world.getTileEntity(hitPos);
-        if (te instanceof TileEntitySign) {
-            TileEntitySign sign = (TileEntitySign) te;
-            if (isBuySign(sign)) return false; // Tuyệt đối không coi bảng Buy là bảng Sell!
-            if (!isMatchingSellSign(sign, lastItemTarget)) return false;
+        // 1. Nếu ngắm trực tiếp trúng block trên thế giới:
+        if (mc.objectMouseOver != null && mc.objectMouseOver.typeOfHit == RayTraceResult.Type.BLOCK) {
+            BlockPos hitPos = mc.objectMouseOver.getBlockPos();
+            if (targetSignPos.equals(hitPos)) {
+                TileEntity te = mc.world.getTileEntity(hitPos);
+                if (te instanceof TileEntitySign) {
+                    TileEntitySign sign = (TileEntitySign) te;
+                    if (isBuySign(sign)) return false; // Tuyệt đối không coi bảng Buy là bảng Sell!
+                    if (!isMatchingSellSign(sign, lastItemTarget)) return false;
+                }
+                return true;
+            }
+            return false;
         }
-        return true;
+
+        // 2. NẾU BỊ CHE BẢNG (người chơi khác hoặc entity đứng che chắn phía trước):
+        // Server cho phép bán khi bị che trước mặt.
+        // Kiểm tra xem góc nhìn (pitch/yaw) đang hướng thẳng về bảng sell và cự ly trong tầm với:
+        double eyeX = mc.player.posX;
+        double eyeY = mc.player.posY + mc.player.getEyeHeight();
+        double eyeZ = mc.player.posZ;
+
+        double signCenterX = targetSignPos.getX() + 0.5;
+        double signCenterY = targetSignPos.getY() + 0.5 + yOffset;
+        double signCenterZ = targetSignPos.getZ() + 0.5;
+
+        double dx = signCenterX - eyeX;
+        double dy = signCenterY - eyeY;
+        double dz = signCenterZ - eyeZ;
+        double distSq = dx * dx + dy * dy + dz * dz;
+
+        // Cự ly tới bảng trong tầm với (<= 4.2m -> distSq <= 17.64):
+        if (distSq <= 17.64) {
+            float targetYaw = (float) (MathHelper.atan2(dz, dx) * (180.0 / Math.PI)) - 90.0F;
+            double distXZ = Math.sqrt(dx * dx + dz * dz);
+            float targetPitch = (float) (-(MathHelper.atan2(dy, distXZ) * (180.0 / Math.PI)));
+
+            float diffYaw = Math.abs(MathHelper.wrapDegrees(targetYaw - mc.player.rotationYaw));
+            float diffPitch = Math.abs(targetPitch - mc.player.rotationPitch);
+
+            // Góc nhìn đang hướng thẳng vào bảng với dung sai tự nhiên (yaw <= 20, pitch <= 20):
+            if (diffYaw <= 20.0F && diffPitch <= 20.0F) {
+                // Đảm bảo nếu đang nhìn trúng block khác thì block đó KHÔNG PHẢI là bảng Buy:
+                if (mc.objectMouseOver != null && mc.objectMouseOver.typeOfHit == RayTraceResult.Type.BLOCK) {
+                    BlockPos pos = mc.objectMouseOver.getBlockPos();
+                    TileEntity te = mc.world.getTileEntity(pos);
+                    if (te instanceof TileEntitySign && isBuySign((TileEntitySign) te)) {
+                        return false;
+                    }
+                }
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -1242,11 +1287,78 @@ public class SignAimHandler {
         updateCameraSmooth(mc, event.renderTickTime);
     }
 
+    private static boolean isAnotherPlayerBlocking(Minecraft mc, EntityPlayerSP player) {
+        if (mc.world == null || player == null || targetSignPos == null) {
+            return false;
+        }
+        double toSignX = (double) targetSignPos.getX() + 0.5 - player.posX;
+        double toSignZ = (double) targetSignPos.getZ() + 0.5 - player.posZ;
+        for (net.minecraft.entity.player.EntityPlayer other : mc.world.playerEntities) {
+            if (other == null || other == player) continue;
+            double d = player.getDistance(other);
+            if (d < 1.3) {
+                double dx = other.posX - player.posX;
+                double dz = other.posZ - player.posZ;
+                double dot = dx * toSignX + dz * toSignZ;
+                if (dot > 0.0) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
     /**
-     * Ở khu vực quầy shop: TUYỆT ĐỐI KHÔNG can thiệp phím di chuyển,
-     * để người chơi đứng yên tự nhiên 100%, người khác đẩy chỉ dịch chuyển bình thường,
-     * không bao giờ bị server kick văng ra lobby.
+     * Bê y chang logic xử lý khi bị đẩy từ file AutoAimSellSign-1.12.2-1.0.jar:
+     * Dùng InputUpdateEvent để nhích di chuyển tự nhiên (moveForward = 0.8f, moveStrafe) mượt mà 100%.
      */
+    @SubscribeEvent
+    public void onInputUpdate(InputUpdateEvent event) {
+        if (!isAimLockActive || targetSignPos == null) {
+            return;
+        }
+        Minecraft mc = Minecraft.getMinecraft();
+        if (mc.currentScreen != null) {
+            return;
+        }
+        if (isAutoWalking && !isWarmupActive && targetSignPos != null && mc.player != null) {
+            if (SignAimHandler.isAimingAtSign(mc)) {
+                return;
+            }
+            EntityPlayerSP player = mc.player;
+            double dx = player.posX - ((double) targetSignPos.getX() + 0.5);
+            double dz = player.posZ - ((double) targetSignPos.getZ() + 0.5);
+            double distXZ = Math.sqrt(dx * dx + dz * dz);
+            boolean playerBlockingAhead = SignAimHandler.isAnotherPlayerBlocking(mc, player);
+            if (distXZ > 2.2) {
+                double toSignX = (double) targetSignPos.getX() + 0.5 - player.posX;
+                double toSignZ = (double) targetSignPos.getZ() + 0.5 - player.posZ;
+                float moveAngle = (float) (MathHelper.atan2(toSignZ, toSignX) * (180.0 / Math.PI)) - 90.0f;
+                float diff = MathHelper.wrapDegrees(moveAngle - player.rotationYaw);
+                if (Math.abs(diff) <= 60.0f) {
+                    event.getMovementInput().moveForward = 0.8f;
+                    event.getMovementInput().forwardKeyDown = true;
+                    event.getMovementInput().moveStrafe = 0.0f;
+                } else if (diff > 60.0f && diff < 120.0f) {
+                    event.getMovementInput().moveForward = 0.2f;
+                    event.getMovementInput().moveStrafe = -0.8f;
+                } else if (diff < -60.0f && diff > -120.0f) {
+                    event.getMovementInput().moveForward = 0.2f;
+                    event.getMovementInput().moveStrafe = 0.8f;
+                } else {
+                    event.getMovementInput().moveForward = -0.8f;
+                }
+            } else if (playerBlockingAhead) {
+                event.getMovementInput().moveForward = 0.0f;
+                event.getMovementInput().moveStrafe = 0.6f;
+            }
+            mc.player.setSprinting(false);
+            if (mc.gameSettings != null) {
+                KeyBinding.setKeyBindState(mc.gameSettings.keyBindSprint.getKeyCode(), false);
+            }
+        }
+    }
+
     @SubscribeEvent
     public void onClientTick(TickEvent.ClientTickEvent event) {
         if (event.phase != TickEvent.Phase.END) return;
@@ -1258,15 +1370,54 @@ public class SignAimHandler {
 
         EntityPlayerSP player = mc.player;
 
-        // Chỉ tắt AimLock khi người chơi ở quá xa bảng mục tiêu (> 25 block)
-        if (targetSignPos != null && player.getDistanceSq(targetSignPos) > 625.0) {
-            stopAimLock(mc);
-            return;
-        }
-
         // Quét tự động chuyển bảng mỗi 5 tick (0.25s) khi người chơi bước sang bảng khác
         if (player.ticksExisted % 5 == 0) {
             scanAndSwitchTargetSign(mc);
+        }
+
+        if (targetSignPos == null) {
+            if (isAutoWalking) {
+                stopAutoWalk(mc);
+            }
+            return;
+        }
+
+        // Bê y chang logic Auto-Return khi bị người khác đẩy ra xa từ file download:
+        if (SignAimHandler.isAimingAtSign(mc)) {
+            if (isAutoWalking) {
+                SignAimHandler.stopAutoWalk(mc);
+            }
+            outOfRangeTicks = 0;
+            stuckTicks = 0;
+        } else if (autoReturnEnabled && !isWarmupActive) {
+            if (!isAutoWalking && ++outOfRangeTicks >= 8) {
+                isAutoWalking = true;
+                stuckTicks = 0;
+                lastCheckX = player.posX;
+                lastCheckZ = player.posZ;
+            }
+            if (isAutoWalking) {
+                player.setSprinting(false);
+                if (SignAimHandler.isAimingAtSign(mc)) {
+                    SignAimHandler.stopAutoWalk(mc);
+                    outOfRangeTicks = 0;
+                    stuckTicks = 0;
+                } else if (player.collidedHorizontally) {
+                    double moved = Math.sqrt(Math.pow(player.posX - lastCheckX, 2.0) + Math.pow(player.posZ - lastCheckZ, 2.0));
+                    if (moved < 0.03) {
+                        ++stuckTicks;
+                    }
+                    if (stuckTicks >= 6) {
+                        SignAimHandler.stopAutoWalk(mc);
+                        outOfRangeTicks = 0;
+                        stuckTicks = 0;
+                    }
+                } else {
+                    stuckTicks = 0;
+                }
+                lastCheckX = player.posX;
+                lastCheckZ = player.posZ;
+            }
         }
     }
 

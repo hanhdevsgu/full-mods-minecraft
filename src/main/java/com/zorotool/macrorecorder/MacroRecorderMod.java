@@ -2032,7 +2032,6 @@ public class MacroRecorderMod {
      */
     private void handleSellPositionRecovery(Minecraft mc, SellState currentState) {
         if (mc == null || mc.player == null) return;
-        notSellingTimer++;
 
         BlockPos targetSignPos = SignAimHandler.targetSignPos;
         if (targetSignPos == null) {
@@ -2051,25 +2050,19 @@ public class MacroRecorderMod {
             distToSign = Math.sqrt(dx * dx + dy * dy + dz * dz);
         }
 
-        // 1. CỰ LY BÁN CHUẨN (<= 2.2m): ĐỨNG YÊN 100% NHƯ NGƯỜI THẬT!
-        // Không bấm phím WASD, không giật cục, không sprint, không jump!
-        if (distToSign <= 2.2) {
+        // 1. CỰ LY BÁN CHUẨN (<= 2.2m) HOẶC ĐANG NGẮM ĐÚNG BẢNG SELL:
+        // ĐỨNG YÊN 100% NHƯ NGƯỜI THẬT!
+        if (distToSign <= 2.2 || SignAimHandler.isAimingAtSign(mc)) {
+            SignAimHandler.stopAutoWalk(mc);
             stopAllMovement();
             pushAwayTicks = 0;
             sellNudgeTicks = 0;
             return;
         }
 
-        // 2. CỰ LY BỊ ĐẨY NHẸ / TRUNG BÌNH (2.2m < distToSign <= 6.5m):
-        // 100% ĐI BỘ BẰNG PHÍM (WASD) BƯỚC LẠI GẦN BẢNG!
-        // TUYỆT ĐỐI KHÔNG DÙNG #GOTO để không bao giờ bị quay về 1 chỗ cố định như bot!
-        double targetX = (targetSignPos != null) ? (targetSignPos.getX() + 0.5) : mc.player.posX;
-        double targetZ = (targetSignPos != null) ? (targetSignPos.getZ() + 0.5) : mc.player.posZ;
-
+        // 2. CỰ LY BỊ ĐẨY RA XA (distToSign > 2.2m):
+        // SignAimHandler (onInputUpdate) tự động bước đi tự nhiên hướng về bảng sell y chang file download!
         pushAwayTicks++;
-
-        // Bước đi bộ bằng phím WASD hướng thẳng về phía bảng sell:
-        walkTowards(targetX, targetZ);
 
         // 3. CHỈ KHI BỊ ĐẨY QUÁ XA (> 7.0m) HOẶC BỊ KẸT CHƯỚNG NGẠI VẬT QUÁ LÂU (> 8s = 160 ticks):
         // Mới kích hoạt lệnh #goto chính xác trong GUI F8 (afterShopGotoCommand)!
@@ -2078,6 +2071,7 @@ public class MacroRecorderMod {
                     ? afterShopGotoCommand : ConfigHelper.getAfterShopGotoCommand();
             System.out.println("[MacroRecorder] (F4) Bị đẩy quá xa bảng (" + String.format("%.1f", distToSign)
                     + "m) hoặc kẹt >8s! Kích hoạt #goto F8 (" + afterShopGoto + ") để quay lại...");
+            SignAimHandler.stopAutoWalk(mc);
             stopAllMovement();
             releaseUseItemKey();
             executeClientCommand(afterShopGoto);

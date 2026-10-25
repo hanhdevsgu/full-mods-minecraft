@@ -485,27 +485,14 @@ public class MacroRecorderMod {
         TileEntity te = mc.world.getTileEntity(pos);
         if (te instanceof TileEntitySign) {
             TileEntitySign sign = (TileEntitySign) te;
-            // 1. Tuyệt đối chặn 100% chuột phải vào bất kỳ bảng Buy nào
+            // 1. Tuyệt đối chặn 100% chuột phải vào bất kỳ bảng Buy nào để không bao giờ mua nhầm đồ
             if (SignAimHandler.isBuySign(sign)) {
                 event.setCanceled(true);
                 releaseUseItemKey();
                 System.out.println("[MacroRecorder] (Anti-Buy Shield) ĐÃ CHẶN chuột phải vào bảng Buy tại " + pos + "!");
                 return;
             }
-            // 2. Chặn chuột phải vào bất kỳ bảng nào không phải bảng Sell nông sản của mình:
-            if (!SignAimHandler.isMatchingSellSign(sign, SignAimHandler.lastItemTarget)) {
-                event.setCanceled(true);
-                releaseUseItemKey();
-                System.out.println("[MacroRecorder] (Anti-Buy Shield) ĐÃ CHẶN chuột phải vào bảng không đúng món tại " + pos + "!");
-                return;
-            }
-            // 3. Nếu đã xác định được targetSignPos và click vào bảng khác tọa độ:
-            if (SignAimHandler.targetSignPos != null && !pos.equals(SignAimHandler.targetSignPos)) {
-                event.setCanceled(true);
-                releaseUseItemKey();
-                System.out.println("[MacroRecorder] (Anti-Buy Shield) ĐÃ CHẶN chuột phải vào bảng khác tọa độ tại " + pos + "!");
-                return;
-            }
+            // Đối với bảng Sell, kể cả có người khác che hay che bảng vẫn cho phép bán thoải mái!
         }
     }
 
@@ -824,10 +811,10 @@ public class MacroRecorderMod {
 
             case MOVING_TO_NEXT_CHEST:
                 if (chestIndex + 1 > MAX_CHEST_HOPS_SAFETY) {
-                    System.out.println("[MacroRecorder] Đã goto quá " + MAX_CHEST_HOPS_SAFETY
-                            + " rương liên tiếp (an toàn), dừng macro để kiểm tra.");
-                    stopMacro();
-                    return false;
+                    System.out.println("[MacroRecorder] Đã duyệt qua tối đa các rương, chuyển sang đi shop...");
+                    finishing = true;
+                    state = MacroState.WAITING_BEFORE_SHOP;
+                    return true;
                 }
                 executeClientCommand(nextChestGotoCommand);
                 chestIndex++;
@@ -856,10 +843,11 @@ public class MacroRecorderMod {
                         return true;
                     }
                 }
-                if (waitTimer > MOVE_TIMEOUT_TICKS_SAFETY) {
+                if (waitTimer > 400) {
                     System.out.println(
-                            "[MacroRecorder] Di chuyển quá lâu mà không thấy rương kế tiếp (an toàn), dừng macro.");
-                    stopMacro();
+                            "[MacroRecorder] Di chuyển quá 20s chưa tới rương kế tiếp -> Thử gửi lại lệnh di chuyển: " + nextChestGotoCommand);
+                    executeClientCommand(nextChestGotoCommand);
+                    waitTimer = 0;
                 }
                 return false;
 
@@ -1178,10 +1166,9 @@ public class MacroRecorderMod {
                             "[MacroRecorder] (F4) Trong 36 ô không còn " + getFarmItemDisplayName() + " để bán (hoặc đã bán sạch 1E)! Chuẩn bị gửi " + ConfigHelper.getHomeMiaCommand() + " về nhà...");
                     releaseUseItemKey();
                     notSellingTimer = 0;
-                    if (onlySell1E) {
+                    if (onlySell1E || maxVaults <= 0) {
                         System.out.println(
-                                "[MacroRecorder] (F4) Chế độ dính rác: Đã bán hết đồ trên người! Chuẩn bị gửi " + ConfigHelper.getHomeMiaCommand() + " về nhà (đã bán " + vaultsSoldThisSession + " kho /pv)...");
-                        // Giữ nguyên vaultsSoldThisSession thực tế (0 nếu dính rác ngay từ đầu chỉ bán 1E, hoặc số kho /pv thực tế đã rút bán)
+                                "[MacroRecorder] (F4) Chế độ bán 1E (hoặc kho = 0): Đã bán hết đồ trên người! Chuẩn bị gửi " + ConfigHelper.getHomeMiaCommand() + " về nhà (đã bán " + vaultsSoldThisSession + " kho /pv)...");
                         sellState = SellState.SENDING_HOME;
                     } else {
                         System.out.println(
@@ -1196,6 +1183,10 @@ public class MacroRecorderMod {
                 // 1. Kiểm tra cự ly tới bảng sell mục tiêu:
                 double distToSign1E = 999.0;
                 BlockPos sign1E = SignAimHandler.targetSignPos;
+                if (sign1E == null) {
+                    SignAimHandler.findTargetSign(SignAimHandler.getEffectiveTarget(), false);
+                    sign1E = SignAimHandler.targetSignPos;
+                }
                 if (sign1E != null && mc.player != null) {
                     double eyeX = mc.player.posX;
                     double eyeY = mc.player.posY + mc.player.getEyeHeight();
@@ -1205,39 +1196,17 @@ public class MacroRecorderMod {
                     double sz = (sign1E.getZ() + 0.5) - eyeZ;
                     distToSign1E = Math.sqrt(sx * sx + sy * sy + sz * sz);
                 }
-                boolean inReach1E = (distToSign1E <= 4.2);
-                boolean isAiming1E = SignAimHandler.isAimingAtSign(mc);
-                boolean isEntityBlocking1E = (sign1E != null && mc.objectMouseOver != null && mc.objectMouseOver.typeOfHit == RayTraceResult.Type.ENTITY);
+                boolean inReach1E = (distToSign1E <= 4.0);
 
-                // Thực hiện click bán khi ở trong tầm với và tâm đang nhắm vào bảng (hoặc có entity/player đứng trước che)
-                if (inReach1E && (isAiming1E || isEntityBlocking1E)) {
+                // THOẢI MÁI BÁN KHI Ở TRONG TẦM VỚI (kể cả có người khác che trước mặt hay che bảng):
+                if (inReach1E) {
                     performSellClick(mc);
                 } else {
                     releaseUseItemKey();
                 }
 
-                // 2. Kiểm tra dòng tiền (tiền có đang được server cộng liên tục không)
-                long now1E = System.currentTimeMillis();
-                long timeSinceMoney1E = now1E - lastSellMoneyTime;
-                boolean isMoneyFlowing1E = (timeSinceMoney1E < 800L); // Server cộng tiền đều đặn
-
-                // 3. XỬ LÝ DI CHUYỂN 100% NHƯ NGƯỜI THẬT:
-                // Nếu ở cự ly bán chuẩn (distToSign1E <= 2.5m) VÀ đang ngắm trúng bảng:
-                if (distToSign1E <= 2.5 && (isAiming1E || (isEntityBlocking1E && isMoneyFlowing1E))) {
-                    if (isMoneyFlowing1E) {
-                        // Tiền đang cộng đều đặn và đang trong tầm ngắm: ĐỨNG YÊN 100%, TUYỆT ĐỐI KHÔNG BẤM PHÍM DI CHUYỂN WASD!
-                        stopAllMovement();
-                        pushAwayTicks = 0;
-                        notSellingTimer = 0;
-                        sellNudgeTicks = 0;
-                    } else {
-                        // Tiền ngừng tăng: ngay lập tức nhích WASD lại gần bảng
-                        handleSellPositionRecovery(mc, SellState.SELLING_1E_ITEMS);
-                    }
-                } else {
-                    // Bị đẩy văng xa khỏi tầm bán (> 2.5m) hoặc lệch tâm: ngay lập tức nhích WASD lại gần bảng
-                    handleSellPositionRecovery(mc, SellState.SELLING_1E_ITEMS);
-                }
+                // XỬ LÝ DI CHUYỂN 100% NHƯ NGƯỜI THẬT:
+                handleSellPositionRecovery(mc, SellState.SELLING_1E_ITEMS);
                 return false;
 
             case OPENING_VAULT:
@@ -1279,12 +1248,19 @@ public class MacroRecorderMod {
                 if (sellWaitTimer % vaultRetryTicks == 0 && mc.currentScreen == null) {
                     trySendCommand("/pv " + sellVaultNumber);
                 }
-                // TUYỆT ĐỐI KHÔNG DỪNG MACRO KHI CHỜ MỞ KHO
-                if (sellWaitTimer > 400) {
+                // Nếu chờ quá 15s mà server không mở GUI kho (hoặc server tắt /pv) -> chuyển sang kho kế tiếp hoặc về nhà
+                if (sellWaitTimer > 300) {
                     System.out.println(
-                            "[MacroRecorder] (F4) Chưa mở được kho /pv " + sellVaultNumber + " sau 20s, gửi lại lệnh...");
+                            "[MacroRecorder] (F4) Server không mở được kho /pv " + sellVaultNumber + " sau 15s -> Tiếp tục hoặc về nhà...");
                     sellWaitTimer = 0;
-                    trySendCommand("/pv " + sellVaultNumber);
+                    if (sellVaultNumber >= maxVaults) {
+                        sellState = SellState.SENDING_HOME;
+                    } else {
+                        sellVaultNumber++;
+                        sellRoundInVault = 0;
+                        sellState = SellState.WAITING_NEXT_VAULT_DELAY;
+                    }
+                    return true;
                 }
                 return false;
 
@@ -1344,9 +1320,9 @@ public class MacroRecorderMod {
                 if (countReedsInInventory() < SELL_ITEMS_DONE_THRESHOLD) {
                     releaseUseItemKey();
                     notSellingTimer = 0;
-                    if (onlySell1E) {
+                    if (onlySell1E || maxVaults <= 0) {
                         System.out.println(
-                                "[MacroRecorder] (F4) Trong 36 ô không còn " + getFarmItemDisplayName() + " để bán (do dính rác)! Gửi " + ConfigHelper.getHomeMiaCommand() + " về nhà ngay...");
+                                "[MacroRecorder] (F4) Trong 36 ô không còn " + getFarmItemDisplayName() + " để bán! Gửi " + ConfigHelper.getHomeMiaCommand() + " về nhà ngay...");
                         vaultsSoldThisSession = sellVaultNumber;
                         sellState = SellState.SENDING_HOME;
                     } else {
@@ -1357,6 +1333,10 @@ public class MacroRecorderMod {
                 // 1. Kiểm tra cự ly tới bảng sell mục tiêu:
                 double distToSignItems = 999.0;
                 BlockPos signItems = SignAimHandler.targetSignPos;
+                if (signItems == null) {
+                    SignAimHandler.findTargetSign(SignAimHandler.getEffectiveTarget(), false);
+                    signItems = SignAimHandler.targetSignPos;
+                }
                 if (signItems != null && mc.player != null) {
                     double eyeX = mc.player.posX;
                     double eyeY = mc.player.posY + mc.player.getEyeHeight();
@@ -1366,56 +1346,36 @@ public class MacroRecorderMod {
                     double sz = (signItems.getZ() + 0.5) - eyeZ;
                     distToSignItems = Math.sqrt(sx * sx + sy * sy + sz * sz);
                 }
-                boolean inReachItems = (distToSignItems <= 4.2);
-                boolean isAimingItems = SignAimHandler.isAimingAtSign(mc);
-                boolean isEntityBlockingItems = (signItems != null && mc.objectMouseOver != null && mc.objectMouseOver.typeOfHit == RayTraceResult.Type.ENTITY);
+                boolean inReachItems = (distToSignItems <= 4.0);
 
-                // Thực hiện click bán khi ở trong tầm với và tâm đang nhắm vào bảng (hoặc có entity/player đứng trước che)
-                if (inReachItems && (isAimingItems || isEntityBlockingItems)) {
+                // THOẢI MÁI BÁN KHI Ở TRONG TẦM VỚI (kể cả có người khác che trước mặt hay che bảng):
+                if (inReachItems) {
                     performSellClick(mc);
                 } else {
                     releaseUseItemKey();
                 }
 
-                // 2. Kiểm tra dòng tiền (tiền có đang được server cộng liên tục không)
-                long nowItems = System.currentTimeMillis();
-                long timeSinceMoneyItems = nowItems - lastSellMoneyTime;
-                boolean isMoneyFlowingItems = (timeSinceMoneyItems < 800L); // Server cộng tiền đều đặn
-
-                // 3. XỬ LÝ DI CHUYỂN 100% NHƯ NGƯỜI THẬT:
-                // Nếu ở cự ly bán chuẩn (distToSignItems <= 2.5m) VÀ đang ngắm trúng bảng:
-                if (distToSignItems <= 2.5 && (isAimingItems || (isEntityBlockingItems && isMoneyFlowingItems))) {
-                    if (isMoneyFlowingItems) {
-                        // Tiền đang cộng đều đặn và đang trong tầm ngắm: ĐỨNG YÊN 100%, TUYỆT ĐỐI KHÔNG BẤM PHÍM DI CHUYỂN WASD!
-                        stopAllMovement();
-                        pushAwayTicks = 0;
-                        notSellingTimer = 0;
-                        sellNudgeTicks = 0;
-                    } else {
-                        // Tiền ngừng tăng: ngay lập tức nhích WASD lại gần bảng
-                        handleSellPositionRecovery(mc, SellState.SELLING_ITEMS);
-                    }
-                } else {
-                    // Bị đẩy văng xa khỏi tầm bán (> 2.5m) hoặc lệch tâm: ngay lập tức nhích WASD lại gần bảng
-                    handleSellPositionRecovery(mc, SellState.SELLING_ITEMS);
-                }
+                // XỬ LÝ DI CHUYỂN 100% NHƯ NGƯỜI THẬT:
+                handleSellPositionRecovery(mc, SellState.SELLING_ITEMS);
                 return false;
 
             case RECOVERING_TO_COUNTER:
                 releaseUseItemKey();
                 sellWaitTimer++;
-                // Kiểm tra cự ly tới tâm vị trí đứng quầy chuẩn:
-                BlockPos counterTarget = parseGotoPos(afterShopGotoCommand);
+                // Kiểm tra cự ly tới tâm vị trí đứng quầy chuẩn theo cấu hình GUI F8:
+                String recGoto = (afterShopGotoCommand != null && !afterShopGotoCommand.trim().isEmpty())
+                        ? afterShopGotoCommand : ConfigHelper.getAfterShopGotoCommand();
+                BlockPos counterTarget = parseGotoPos(recGoto);
                 double distSqToCenter = 999.0;
                 if (counterTarget != null && mc.player != null) {
                     double ddx = mc.player.posX - (counterTarget.getX() + 0.5);
                     double ddz = mc.player.posZ - (counterTarget.getZ() + 0.5);
                     distSqToCenter = ddx * ddx + ddz * ddz;
                 }
-                boolean atCenter = distSqToCenter <= 0.81; // Cự ly sát tâm quầy <= 0.9 block
+                boolean atCenter = distSqToCenter <= 1.2;
 
                 // Kiểm tra khoảng cách tới bảng bán:
-                boolean inReachOfSign = true;
+                boolean inReachOfSign = false;
                 if (SignAimHandler.targetSignPos != null && mc.player != null) {
                     double eyeX = mc.player.posX;
                     double eyeY = mc.player.posY + mc.player.getEyeHeight();
@@ -1423,41 +1383,33 @@ public class MacroRecorderMod {
                     double sx = (SignAimHandler.targetSignPos.getX() + 0.5) - eyeX;
                     double sy = (SignAimHandler.targetSignPos.getY() + 0.5) - eyeY;
                     double sz = (SignAimHandler.targetSignPos.getZ() + 0.5) - eyeZ;
-                    inReachOfSign = (sx * sx + sy * sy + sz * sz) <= 15.21; // <= 3.9 block
+                    inReachOfSign = (sx * sx + sy * sy + sz * sz) <= 7.84; // <= 2.8 block
                 }
 
-                // TUYỆT ĐỐI KHÔNG DỪNG SỚM GIỮA ĐƯỜNG!
-                // Chỉ dừng khi ĐÃ VỀ TẬN NƠI (atCenter || inReachOfSign) hoặc sau tối đa 60 ticks (3s):
-                if (sellWaitTimer >= 6 && (inReachOfSign || atCenter || sellWaitTimer >= 60)) {
+                // Khi đã về tận nơi (atCenter || inReachOfSign) hoặc sau tối đa 200 ticks (10s):
+                if (sellWaitTimer >= 10 && (inReachOfSign || atCenter || sellWaitTimer >= 200)) {
                     executeClientCommand("#stop");
-                    if (mc.gameSettings != null) {
-                        KeyBinding.setKeyBindState(mc.gameSettings.keyBindForward.getKeyCode(), false);
-                        KeyBinding.setKeyBindState(mc.gameSettings.keyBindBack.getKeyCode(), false);
-                        KeyBinding.setKeyBindState(mc.gameSettings.keyBindLeft.getKeyCode(), false);
-                        KeyBinding.setKeyBindState(mc.gameSettings.keyBindRight.getKeyCode(), false);
-                        KeyBinding.setKeyBindState(mc.gameSettings.keyBindJump.getKeyCode(), false);
-                        KeyBinding.setKeyBindState(mc.gameSettings.keyBindSprint.getKeyCode(), false);
-                    }
+                    stopAllMovement();
                     if (afterShopLookCommand != null && !afterShopLookCommand.isEmpty()) {
                         executeClientCommand(afterShopLookCommand);
                     }
                     String target = SignAimHandler.getEffectiveTarget();
                     SignAimHandler.startAimLock(target);
-                    System.out.println("[MacroRecorder] (F4) Đã bước về lại đúng vị trí quầy bán! Tiếp tục bán...");
+                    System.out.println("[MacroRecorder] (F4) Đã bước về lại vị trí quầy bán F8 (" + recGoto + ")! Tiếp tục bán...");
                     notSellingTimer = 0;
                     sellWaitTimer = 0;
                     pushAwayTicks = 0;
                     sellNudgeTicks = 0;
                     lastSellMoneyTime = System.currentTimeMillis();
-                    sellState = stateBeforeRecovery;
+                    sellState = (stateBeforeRecovery != null) ? stateBeforeRecovery : SellState.SELLING_1E_ITEMS;
                 }
                 return false;
 
             case CHECK_VAULT_DONE:
                 releaseUseItemKey();
-                if (onlySell1E) {
+                if (onlySell1E || maxVaults <= 0) {
                     System.out.println(
-                            "[MacroRecorder] (F4) Chế độ chỉ bán 1E (do dính rác): Dừng mở kho /pv, chuẩn bị gửi /home về nhà...");
+                            "[MacroRecorder] (F4) Chế độ chỉ bán 1E (hoặc kho = 0): Dừng mở kho /pv, chuẩn bị gửi /home về nhà...");
                     sellState = SellState.SENDING_HOME;
                     return true;
                 }
@@ -1550,20 +1502,30 @@ public class MacroRecorderMod {
                     System.out.println("[MacroRecorder] (Home) Đang chờ server dịch chuyển về nhà (" + sec + "/7s)... Y hiện tại = " + curY);
                 }
 
-                // Chờ đủ 7 giây (140 ticks) theo quy định server:
-                if (sellWaitTimer >= 140) {
-                    // Kiểm tra Y hiện tại: nếu Y không khác 151 (tức là vẫn ở shop Y ≈ 151) thì retry
+                boolean leftShop = false;
+                if (mc.player != null && shopTeleportOriginPos != null) {
+                    double distSqFromShop = mc.player.getDistanceSq(shopTeleportOriginPos.x, shopTeleportOriginPos.y, shopTeleportOriginPos.z);
+                    if (distSqFromShop > 100.0 || Math.abs(mc.player.posY - shopY) > 3.0) {
+                        leftShop = true;
+                    }
+                }
+                if (teleportCompleteMessageReceived) {
+                    leftShop = true;
+                }
+
+                // Chờ đủ 7 giây (140 ticks) theo quy định server hoặc khi đã rời khỏi shop:
+                if (leftShop || sellWaitTimer >= 140) {
                     boolean isStillAtShopY = (mc.player != null) && Math.abs(mc.player.posY - 151.0) <= 2.0;
 
-                    if (!isStillAtShopY) {
+                    if (!isStillAtShopY || leftShop) {
                         try {
                             SignAimHandler.stopAimLock(mc);
                         } catch (Exception ignored) {
                         }
                         String curHome = (homeMiaCommand != null && !homeMiaCommand.trim().isEmpty()) ? homeMiaCommand : ConfigHelper.getHomeMiaCommand();
                         int curY = (mc.player != null) ? (int) Math.round(mc.player.posY) : 0;
-                        System.out.println("[MacroRecorder] (Home) Đã qua 7s, xác nhận Y hiện tại = " + curY
-                                + " (đã khác 151) -> Về nhà thành công bằng lệnh: " + curHome
+                        System.out.println("[MacroRecorder] (Home) Xác nhận đã rời khỏi shop (Y = " + curY
+                                + ") -> Về nhà thành công bằng lệnh: " + curHome
                                 + "! Tắt AutoAim hoàn toàn, chuẩn bị xả rác và lấy đồ...");
                         sellWaitTimer = 0;
                         homeYStableTicks = 0;
@@ -1571,7 +1533,7 @@ public class MacroRecorderMod {
                         sellState = SellState.WAITING_HOME_SETTLE;
                         return false;
                     } else {
-                        // Sau 7s mà Y hiện tại không khác 151 (vẫn kẹt ở shop) -> retry gửi lại lệnh home
+                        // Sau 7s mà vẫn kẹt ở shop -> retry gửi lại lệnh home
                         String retryCmd = (homeMiaCommand != null && !homeMiaCommand.trim().isEmpty()) ? homeMiaCommand : ConfigHelper.getHomeMiaCommand();
                         int curY = (mc.player != null) ? (int) Math.round(mc.player.posY) : 0;
                         System.out.println("[MacroRecorder] (Home) Đã qua 7s nhưng Y hiện tại = " + curY
@@ -2086,43 +2048,36 @@ public class MacroRecorderMod {
             distToSign = Math.sqrt(dx * dx + dy * dy + dz * dz);
         }
 
-        boolean isAiming = SignAimHandler.isAimingAtSign(mc);
-        long timeSinceLastMoney = System.currentTimeMillis() - lastSellMoneyTime;
-        boolean isMoneyFlowing = (timeSinceLastMoney < 800L);
-
-        // 1. Nếu đã ở cự ly bán chuẩn (<= 2.4m) và đang ngắm trúng bảng: ĐỨNG YÊN HOÀN TOÀN!
-        if (distToSign <= 2.4 && isAiming) {
+        // 1. CỰ LY BÁN CHUẨN (<= 2.2m): ĐỨNG YÊN 100% NHƯ NGƯỜI THẬT!
+        // Không bấm phím WASD, không giật cục, không sprint, không jump!
+        if (distToSign <= 2.2) {
             stopAllMovement();
             pushAwayTicks = 0;
             sellNudgeTicks = 0;
             return;
         }
 
-        // Nếu đã ở rất sát bảng (<= 1.7m): dừng lại ngay để không đâm sầm vào bảng/quầy
-        if (distToSign <= 1.7) {
-            stopAllMovement();
-            pushAwayTicks = 0;
-            sellNudgeTicks = 0;
-            return;
-        }
-
-        // Tọa độ mục tiêu bước lại: 100% LÀ TỌA ĐỘ BẢNG SELL (targetSignPos)!
-        // Tuyệt đối KHÔNG quay về vị trí #goto cũ trong F8!
+        // 2. CỰ LY BỊ ĐẨY NHẸ / TRUNG BÌNH (2.2m < distToSign <= 6.5m):
+        // 100% ĐI BỘ BẰNG PHÍM (WASD) BƯỚC LẠI GẦN BẢNG!
+        // TUYỆT ĐỐI KHÔNG DÙNG #GOTO để không bao giờ bị quay về 1 chỗ cố định như bot!
         double targetX = (targetSignPos != null) ? (targetSignPos.getX() + 0.5) : mc.player.posX;
         double targetZ = (targetSignPos != null) ? (targetSignPos.getZ() + 0.5) : mc.player.posZ;
 
         pushAwayTicks++;
 
-        // 2. NGAY LẬP TỨC: bước đi bộ WASD nhích lại gần bảng
-        // Tuyệt đối không sprint gây đói, đi bộ tự nhiên như người chơi thật:
+        // Bước đi bộ bằng phím WASD hướng thẳng về phía bảng sell:
         walkTowards(targetX, targetZ);
 
-        // 3. Fallback cực đoan: Chỉ dùng #goto khi bị văng mất tích (> 15m) và kẹt quá 8s
-        if (timeSinceLastMoney > 8000L && pushAwayTicks >= 160 && distToSign > 15.0) {
-            System.out.println("[MacroRecorder] (F4) Bị đẩy văng quá xa (>15m) kẹt >8s! Thử #goto quay lại...");
+        // 3. CHỈ KHI BỊ ĐẨY QUÁ XA (> 7.0m) HOẶC BỊ KẸT CHƯỚNG NGẠI VẬT QUÁ LÂU (> 8s = 160 ticks):
+        // Mới kích hoạt lệnh #goto chính xác trong GUI F8 (afterShopGotoCommand)!
+        if (distToSign > 7.0 || (pushAwayTicks >= 160 && distToSign > 3.8)) {
+            String afterShopGoto = (afterShopGotoCommand != null && !afterShopGotoCommand.trim().isEmpty())
+                    ? afterShopGotoCommand : ConfigHelper.getAfterShopGotoCommand();
+            System.out.println("[MacroRecorder] (F4) Bị đẩy quá xa bảng (" + String.format("%.1f", distToSign)
+                    + "m) hoặc kẹt >8s! Kích hoạt #goto F8 (" + afterShopGoto + ") để quay lại...");
             stopAllMovement();
             releaseUseItemKey();
-            executeClientCommand(afterShopGotoCommand);
+            executeClientCommand(afterShopGoto);
             stateBeforeRecovery = currentState;
             sellState = SellState.RECOVERING_TO_COUNTER;
             sellWaitTimer = 0;
@@ -2134,10 +2089,10 @@ public class MacroRecorderMod {
 
     /**
      * Bán đồ 100% như người thật:
-     * - Khi không có ai che VÀ tâm ngắm đang chỉ ĐÚNG VÀO BẢNG SELL: đè chuột phải vanilla (KeyBinding useItem).
-     * - TUYỆT ĐỐI KHÔNG đè chuột phải khi tâm ngắm lệch sang khối khác, tường, item frame, hay bảng khác (tránh mua nhầm cà rốt)!
-     * - Khi có người chơi khác chen đứng trước mặt che bảng (tia trúng ENTITY):
-     *   Tự động nhả chuột phải vanilla và sử dụng processRightClickBlock trực tiếp lên bảng sell.
+     * - Trên server này cho phép bán kể cả khi có người chơi khác hay khối che trước mặt,
+     *   nên luôn giữ đè chuột phải (KeyBinding useItem) để bán thoải mái.
+     * - Đồng thời gửi processRightClickBlock trực tiếp lên bảng sell mục tiêu mỗi 2 tick.
+     * - Tuyệt đối không bấm nếu đang nhìn trúng bảng Buy.
      */
     private void performSellClick(Minecraft mc) {
         if (mc == null || mc.player == null || mc.world == null) {
@@ -2147,8 +2102,12 @@ public class MacroRecorderMod {
 
         BlockPos targetSignPos = SignAimHandler.targetSignPos;
         if (targetSignPos == null) {
-            releaseUseItemKey();
-            return;
+            SignAimHandler.findTargetSign(SignAimHandler.getEffectiveTarget(), false);
+            targetSignPos = SignAimHandler.targetSignPos;
+            if (targetSignPos == null) {
+                releaseUseItemKey();
+                return;
+            }
         }
 
         // 1. Tuyệt đối không bấm nếu đang nhìn trúng bất kỳ bảng Mua (Buy sign) nào
@@ -2166,54 +2125,28 @@ public class MacroRecorderMod {
             KeyBinding.setKeyBindState(mc.gameSettings.keyBindJump.getKeyCode(), false);
         }
 
-        // 2. KIỂM TRA TÂM NGẮM: TUYỆT ĐỐI CHỈ ĐÈ CHUỘT PHẢI KHI TÂM NGẮM ĐANG DÍNH ĐÚNG BẢNG SELL MỤC TIÊU!
-        if (mc.objectMouseOver != null) {
-            if (mc.objectMouseOver.typeOfHit == RayTraceResult.Type.BLOCK) {
-                BlockPos hitPos = mc.objectMouseOver.getBlockPos();
-                // Nếu tâm ngắm lệch sang khối khác (bảng cà rốt, item frame, tường gỗ...):
-                // NHẢ CHUỘT PHẢI NGAY LẬP TỨC để tránh mua nhầm cà rốt!
-                if (!targetSignPos.equals(hitPos) || !SignAimHandler.isAimingAtSign(mc)) {
-                    releaseUseItemKey();
-                    return;
-                }
-                // Tâm ngắm chuẩn xác trên bảng Sell -> đè chuột phải vanilla
-                holdUseItemKey();
-                // Cơ chế vung tay (Arm swing) nhịp nhàng tự nhiên (10 ticks = 0.5s/lần) như người thật, không làm hao thức ăn:
-                sellArmSwingTimer++;
-                if (sellArmSwingTimer >= 10) {
-                    sellArmSwingTimer = 0;
-                    if (mc.player != null && !mc.player.isSwingInProgress) {
-                        mc.player.swingArm(EnumHand.MAIN_HAND);
-                    }
-                }
-            } else if (mc.objectMouseOver.typeOfHit == RayTraceResult.Type.ENTITY) {
-                // Người chơi khác đứng che trước mặt: nhả chuột phải vanilla để không bấm vào họ hoặc item frame
-                releaseUseItemKey();
-                signBlockClickCooldown++;
-                if (signBlockClickCooldown >= 4) {
-                    signBlockClickCooldown = 0;
-                    double eyeX = mc.player.posX;
-                    double eyeY = mc.player.posY + mc.player.getEyeHeight();
-                    double eyeZ = mc.player.posZ;
-                    double dx = (targetSignPos.getX() + 0.5) - eyeX;
-                    double dy = (targetSignPos.getY() + 0.5) - eyeY;
-                    double dz = (targetSignPos.getZ() + 0.5) - eyeZ;
-                    // Cự ly với tay tối đa trong tầm 4.5 block (4.5^2 = 20.25)
-                    if (dx * dx + dy * dy + dz * dz <= 20.25) {
-                        Vec3d hitVec = new Vec3d(targetSignPos.getX() + 0.5, targetSignPos.getY() + 0.5, targetSignPos.getZ() + 0.5);
-                        if (mc.playerController != null) {
-                            mc.playerController.processRightClickBlock(mc.player, mc.world, targetSignPos, EnumFacing.UP, hitVec, EnumHand.MAIN_HAND);
-                            if (mc.player != null && !mc.player.isSwingInProgress) {
-                                mc.player.swingArm(EnumHand.MAIN_HAND);
-                            }
-                        }
-                    }
-                }
-            } else {
-                releaseUseItemKey();
+        // 2. GIỮ ĐÈ CHUỘT PHẢI BÁN THOẢI MÁI:
+        // Cứ đè chuột phải sell liên tục kể cả có người đứng che trước mặt:
+        holdUseItemKey();
+
+        // 3. ĐỒNG THỜI GỬI TƯƠNG TÁC TRỰC TIẾP LÊN BẢNG SELL MỤC TIÊU:
+        // Đảm bảo dù người khác có đứng chắn sát mặt thì server vẫn nhận click bán vào bảng!
+        signBlockClickCooldown++;
+        if (signBlockClickCooldown >= 2) {
+            signBlockClickCooldown = 0;
+            Vec3d hitVec = new Vec3d(targetSignPos.getX() + 0.5, targetSignPos.getY() + 0.5, targetSignPos.getZ() + 0.5);
+            if (mc.playerController != null) {
+                mc.playerController.processRightClickBlock(mc.player, mc.world, targetSignPos, EnumFacing.UP, hitVec, EnumHand.MAIN_HAND);
             }
-        } else {
-            releaseUseItemKey();
+        }
+
+        // 4. Vung tay nhẹ nhàng tự nhiên (10 ticks = 0.5s/lần) như người thật, không làm hao thức ăn:
+        sellArmSwingTimer++;
+        if (sellArmSwingTimer >= 10) {
+            sellArmSwingTimer = 0;
+            if (mc.player != null && !mc.player.isSwingInProgress) {
+                mc.player.swingArm(EnumHand.MAIN_HAND);
+            }
         }
     }
 

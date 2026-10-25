@@ -812,8 +812,8 @@ public class SignAimHandler {
             }
         }
 
-        // Fallback: Tìm bảng sell bất kỳ gần người chơi nhất (trong phạm vi 12 block)
-        if (matchedSigns.isEmpty()) {
+        // Fallback: Chỉ tìm bảng sell bất kỳ khi người dùng cố ý cấu hình là "any" hoặc "all"
+        if (matchedSigns.isEmpty() && (lastItemTarget.equals("any") || lastItemTarget.equals("all"))) {
             for (TileEntity te : mc.world.loadedTileEntityList) {
                 if (te instanceof TileEntitySign) {
                     TileEntitySign sign = (TileEntitySign) te;

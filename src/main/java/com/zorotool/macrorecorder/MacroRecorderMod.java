@@ -1969,19 +1969,16 @@ public class MacroRecorderMod {
             distSqToCounter = cx * cx + cz * cz;
         }
 
-        // 1. Kiểm tra bị đẩy lệch khỏi quầy bán đồ:
-        // Cự ly tới tâm quầy > 1.4m (sq > 2.0) HOẶC cự ly tới bảng > 3.6m (sq > 13.0):
-        boolean isFarAway = (distSqToCounter > 2.0 || distSqToSign > 13.0);
-        // HOẶC bị người khác đẩy đâm mặt sát vào góc/tường (collidedHorizontally) mà không ngắm được bảng:
-        boolean isPinnedAgainstWall = (mc.player.collidedHorizontally && !SignAimHandler.isAimingAtSign(mc));
+        // 1. Kiểm tra bị người khác xô đẩy văng xa khỏi quầy bán đồ:
+        // Cự ly tới tâm quầy > 2.5m (sq > 6.25) HOẶC cự ly tới bảng > 4.2m (sq > 17.64):
+        boolean isFarAway = (distSqToCounter > 6.25 || distSqToSign > 17.64);
 
-        if (isFarAway || isPinnedAgainstWall) {
+        if (isFarAway) {
             stopNudgeForward();
             pushAwayTicks++;
-            // Phản xạ nhanh (chỉ sau 3 ticks = 0.15s): phát hiện lệch quầy hoặc bị ép góc -> gọi #goto về quầy ngay!
-            if (pushAwayTicks >= 3) {
-                System.out.println("[MacroRecorder] (F4) " + (isPinnedAgainstWall ? "Bị ép sát góc tường/mép bảng" : "Bị đẩy lệch khỏi quầy bán (" + String.format("%.1f", Math.sqrt(distSqToCounter)) + "m)")
-                        + "! Dùng #goto để bước về quầy...");
+            // Phản xạ: sau 30 ticks (1.5s) thực sự bị đẩy xa mới dùng #goto bước lại quầy
+            if (pushAwayTicks >= 30) {
+                System.out.println("[MacroRecorder] (F4) Bị đẩy lệch khỏi quầy bán (" + String.format("%.1f", Math.sqrt(distSqToCounter)) + "m)! Dùng #goto để bước về quầy...");
                 releaseUseItemKey();
                 executeClientCommand(afterShopGotoCommand);
                 stateBeforeRecovery = currentState;
@@ -1994,7 +1991,7 @@ public class MacroRecorderMod {
             return;
         }
 
-        // 2. VẪN Ở GẦN QUẦY (chỉ lệch nhẹ < 1.4m và không bị kẹt góc):
+        // Đang đứng ở quầy (cự ly gần <= 2.5m): reset pushAwayTicks
         pushAwayTicks = 0;
 
         boolean isAiming = SignAimHandler.isAimingAtSign(mc);
@@ -2010,18 +2007,6 @@ public class MacroRecorderMod {
                 stopNudgeForward();
             } else {
                 sellNudgeTicks = 0;
-                // Nếu nhích nhẹ quá 20 ticks (1.0s) mà vẫn không chạm được bảng -> dùng #goto cứu ngay, TUYỆT ĐỐI không đứng yên đợi lâu
-                if (notSellingTimer >= 20) {
-                    System.out.println("[MacroRecorder] (F4) Nhích phím W không chạm được bảng (> 1.0s)! Dùng #goto bước về vị trí chuẩn...");
-                    stopNudgeForward();
-                    releaseUseItemKey();
-                    executeClientCommand(afterShopGotoCommand);
-                    stateBeforeRecovery = currentState;
-                    sellState = SellState.RECOVERING_TO_COUNTER;
-                    sellWaitTimer = 0;
-                    notSellingTimer = 0;
-                    sellNudgeTicks = 0;
-                }
             }
         } else {
             // Đã vào cự ly chuẩn và ngắm dính bảng -> dừng nhích ngay!
@@ -2037,81 +2022,11 @@ public class MacroRecorderMod {
      * - Khi có người chơi khác chen đứng trước mặt che bảng (tia trúng ENTITY):
      *   Tự động nhả chuột phải vanilla và sử dụng processRightClickBlock trực tiếp lên bảng sell.
      */
-    /**
-     * Tự động chuyển hotbar sang ô an toàn (ô chứa đồ farm hoặc ô trống),
-     * TUYỆT ĐỐI KHÔNG cầm kiếm, rìu, cung, công cụ khi bán đồ:
-     * - Tránh kích hoạt mcMMO "YOU READY YOUR SWORD"
-     * - Tránh Impact KillAura/Aimbot tự động snap vào người chơi khác
-     * - Đảm bảo chuột phải tương tác chuẩn xác vào bảng bán đồ!
-     */
-    private void switchToSafeSellSlot(Minecraft mc) {
-        if (mc == null || mc.player == null) return;
-        int current = mc.player.inventory.currentItem;
-        ItemStack held = mc.player.inventory.mainInventory.get(current);
-
-        int farmId = ConfigHelper.getFarmItemId();
-        if (!isWeaponOrTool(held)) {
-            if (held.isEmpty() || (farmId > 0 && Item.getIdFromItem(held.getItem()) == farmId)) {
-                return;
-            }
-        }
-
-        // 1. Tìm ô hotbar (0..8) đang chứa đúng đồ farm (mía / thuốc súng)
-        if (farmId > 0) {
-            for (int i = 0; i < 9; i++) {
-                ItemStack stack = mc.player.inventory.mainInventory.get(i);
-                if (!stack.isEmpty() && Item.getIdFromItem(stack.getItem()) == farmId) {
-                    mc.player.inventory.currentItem = i;
-                    System.out.println("[MacroRecorder] Tự động chuyển sang ô hotbar #" + (i + 1) + " (" + stack.getDisplayName() + ") để bán đồ an toàn!");
-                    return;
-                }
-            }
-        }
-
-        // 2. Nếu hotbar chưa có đồ farm, tìm ô trống bất kỳ trên hotbar
-        for (int i = 0; i < 9; i++) {
-            ItemStack stack = mc.player.inventory.mainInventory.get(i);
-            if (stack.isEmpty()) {
-                mc.player.inventory.currentItem = i;
-                System.out.println("[MacroRecorder] Đang cầm vũ khí! Tự động chuyển sang ô trống hotbar #" + (i + 1) + " để bán đồ.");
-                return;
-            }
-        }
-
-        // 3. Nếu hotbar không có ô trống, tìm ô không phải vũ khí/công cụ
-        for (int i = 0; i < 9; i++) {
-            ItemStack stack = mc.player.inventory.mainInventory.get(i);
-            if (!isWeaponOrTool(stack)) {
-                mc.player.inventory.currentItem = i;
-                return;
-            }
-        }
-    }
-
-    private boolean isWeaponOrTool(ItemStack stack) {
-        if (stack == null || stack.isEmpty()) return false;
-        Item item = stack.getItem();
-        return item instanceof net.minecraft.item.ItemSword 
-                || item instanceof net.minecraft.item.ItemTool 
-                || item instanceof net.minecraft.item.ItemBow 
-                || item instanceof net.minecraft.item.ItemShears;
-    }
-
-    /**
-     * Bán đồ 100% như người thật:
-     * - Khi không có ai che VÀ tâm ngắm đang chỉ ĐÚNG VÀO BẢNG SELL: đè chuột phải vanilla (KeyBinding useItem).
-     * - TUYỆT ĐỐI KHÔNG đè chuột phải khi tâm ngắm lệch sang khối khác, tường, item frame, hay bảng khác (tránh mua nhầm cà rốt)!
-     * - Khi có người chơi khác chen đứng trước mặt che bảng (tia trúng ENTITY):
-     *   Tự động nhả chuột phải vanilla và sử dụng processRightClickBlock trực tiếp lên bảng sell.
-     */
     private void performSellClick(Minecraft mc) {
         if (mc == null || mc.player == null || mc.world == null) {
             releaseUseItemKey();
             return;
         }
-
-        // Tuyệt đối không cầm kiếm/vũ khí khi bán đồ
-        switchToSafeSellSlot(mc);
 
         BlockPos targetSignPos = SignAimHandler.targetSignPos;
         if (targetSignPos == null) {
@@ -3186,7 +3101,6 @@ public class MacroRecorderMod {
         }
 
         reloadConfig();
-        switchToSafeSellSlot(mc);
         int cfgFarmId = ConfigHelper.getFarmItemId();
         if (cfgFarmId > 0) {
             SignAimHandler.setupTarget(String.valueOf(cfgFarmId), false, false);
@@ -3284,7 +3198,6 @@ public class MacroRecorderMod {
 
     private void resetAndStartSellMacro() {
         reloadConfig();
-        switchToSafeSellSlot(mc);
 
         vaultsSoldThisSession = 0;
         sellVaultNumber = 1;

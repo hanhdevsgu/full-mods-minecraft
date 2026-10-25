@@ -1,5 +1,19 @@
 # CHANGELOG - AutoAimSellSign 1.12.2
 
+## [1.4.45] - 2026-10-26
+### Bugfix & Feature (Port Exact Original Jar Sell Logic, Preserve GUI F8, Fix Blocked Sign)
+- **Bê y chang 100% logic bán hàng từ file .jar gốc**:
+  - Khôi phục nguyên vẹn cấu trúc bán hàng trong `SELLING_ITEMS` và `SELLING_1E_ITEMS`:
+    - `canSell = !lookingAtBuySign && (isAimingAtSign || isFacingTargetSign)`
+    - Khi `canSell`: giữ `holdUseItemKey()` và mỗi 2 tick gọi `clickTargetSign()` (vung tay và gửi `processRightClickBlock` lên bảng bán).
+    - `notSellingTimer` chỉ đếm khi quá 3 giây không có tiền từ server (`System.currentTimeMillis() - lastSellMoneyTime >= 3000L`).
+    - Chỉ sau 80 ticks (4 giây) không có tiền mới kích hoạt `#goto` F8 để quay về quầy.
+  - Khôi phục trạng thái `RECOVERING_TO_COUNTER` nguyên bản của file .jar: khi cự ly tới tâm $\le 0.64$ hoặc đã ngắm lại được bảng sell $\rightarrow$ dừng `#stop` và tiếp tục bán ngay lập tức.
+- **Giữ nguyên toàn bộ GUI F8 và cấu hình**:
+  - Giữ lại toàn bộ giao diện GUI F8 hiện tại để dễ dàng setup lệnh `#goto`, `/home`, ID nông sản, v.v.
+- **Sửa triệt để lỗi che bảng không bán được**:
+  - Không gọi `releaseUseItemKey()` trong `onEntityInteract`: khi có người chơi khác đứng nhảy nhót che bảng, sự kiện tương tác thực thể bị chặn để không mở giao dịch / không bắn packet, nhưng chuột phải và `clickTargetSign()` vẫn tương tác thẳng vào bảng sell phía sau để nhận tiền liên tục.
+
 ## [1.4.44] - 2026-10-26
 ### Bugfix & Polish (Port Exact Push Recovery from Download Jar & Fix Blocked Sign Selling)
 - **Bê nguyên vẹn logic xử lý khi bị đẩy từ file AutoAimSellSign-1.12.2-1.0.jar (phần download)**:

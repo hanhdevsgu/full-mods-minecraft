@@ -1257,25 +1257,21 @@ public class SignAimHandler {
      */
     public static boolean clickTargetSign() {
         Minecraft mc = Minecraft.getMinecraft();
-        if (mc == null || mc.gameSettings == null) return false;
-        // Tuyệt đối không chiếm chuột / đè phím chuột phải:
-        KeyBinding.setKeyBindState(mc.gameSettings.keyBindUseItem.getKeyCode(), false);
-        if (targetSignPos != null && mc.player != null && mc.world != null) {
-            double eyeX = mc.player.posX;
-            double eyeY = mc.player.posY + mc.player.getEyeHeight();
-            double eyeZ = mc.player.posZ;
-            double dx = (targetSignPos.getX() + 0.5) - eyeX;
-            double dy = (targetSignPos.getY() + 0.5) - eyeY;
-            double dz = (targetSignPos.getZ() + 0.5) - eyeZ;
-            if (dx * dx + dy * dy + dz * dz <= 20.25) {
-                Vec3d hitVec = new Vec3d(targetSignPos.getX() + 0.5, targetSignPos.getY() + 0.5, targetSignPos.getZ() + 0.5);
-                if (mc.playerController != null) {
-                    mc.playerController.processRightClickBlock(mc.player, mc.world, targetSignPos, EnumFacing.UP, hitVec, EnumHand.MAIN_HAND);
-                    if (!mc.player.isSwingInProgress) {
-                        mc.player.swingArm(EnumHand.MAIN_HAND);
-                    }
-                }
-            }
+        if (mc.world == null || mc.player == null || mc.playerController == null || targetSignPos == null) {
+            return false;
+        }
+        if (!SignAimHandler.isAimingAtSign(mc) && !SignAimHandler.isFacingTargetSign(mc)) {
+            return false;
+        }
+        EnumFacing facing = EnumFacing.UP;
+        Vec3d hitVec = new Vec3d((double) targetSignPos.getX() + 0.5, (double) targetSignPos.getY() + 0.5, (double) targetSignPos.getZ() + 0.5);
+        if (mc.objectMouseOver != null && mc.objectMouseOver.typeOfHit == RayTraceResult.Type.BLOCK && targetSignPos.equals(mc.objectMouseOver.getBlockPos())) {
+            facing = mc.objectMouseOver.sideHit;
+            hitVec = mc.objectMouseOver.hitVec;
+        }
+        mc.playerController.processRightClickBlock(mc.player, mc.world, targetSignPos, facing, hitVec, EnumHand.MAIN_HAND);
+        if (mc.player != null && (!mc.player.isSwingInProgress || mc.player.swingProgressInt >= 3)) {
+            mc.player.swingArm(EnumHand.MAIN_HAND);
         }
         return true;
     }

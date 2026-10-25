@@ -259,6 +259,7 @@ public class MacroRecorderMod {
     private int pushAwayTicks = 0; // Đếm số tick bị người khác đẩy lệch khỏi quầy để phản ứng ngay tức thì
     private int signBlockClickCooldown = 0; // Nhịp click controller khi có người chơi đứng che bảng trước mặt
     private int homeYStableTicks = 0; // Đếm số tick Y ổn định khác 151 để đảm bảo đã về nhà và load chunk chặt chẽ
+    private int sellArmSwingTimer = 0; // Đếm nhịp vung tay tự nhiên khi bán đồ (chống hao đói)
     private SellState stateBeforeRecovery = SellState.SELLING_1E_ITEMS;
 
     // Cờ trạng thái thông minh mới:
@@ -1182,21 +1183,36 @@ public class MacroRecorderMod {
                     }
                     return true;
                 }
-                // Bán đồ 100% như người thật: tự động xử lý đè chuột phải vanilla và xuyên người che
-                performSellClick(mc);
+                // Kiểm tra xem đã đứng sát quầy và ngắm dính bảng chưa
+                BlockPos counterTarget1E = parseGotoPos(afterShopGotoCommand);
+                double dCounter1E = 0.0;
+                if (counterTarget1E != null && mc.player != null) {
+                    double cx = (counterTarget1E.getX() + 0.5) - mc.player.posX;
+                    double cz = (counterTarget1E.getZ() + 0.5) - mc.player.posZ;
+                    dCounter1E = Math.sqrt(cx * cx + cz * cz);
+                }
+                boolean atCounter1E = (dCounter1E <= 0.95);
+                boolean isAiming1E = SignAimHandler.isAimingAtSign(mc);
+
+                // CHỈ THỰC HIỆN BÁN KHI ĐÃ ĐỨNG SÁT QUẦY VÀ TÂM DÍNH BẢNG (tránh vung tay/đè chuột giữa đường gây đói):
+                if (atCounter1E && isAiming1E) {
+                    performSellClick(mc);
+                } else {
+                    releaseUseItemKey();
+                }
 
                 // 100% NHƯ NGƯỜI THẬT: NẾU TIỀN ĐANG CỘNG LIÊN TỤC THÌ TUYỆT ĐỐI ĐỨNG YÊN, KHÔNG NHÚC NHÍCH!
                 long now1E = System.currentTimeMillis();
                 boolean isMoneyFlowing1E = (now1E - lastSellMoneyTime < 500L);
 
-                if (isMoneyFlowing1E) {
+                if (isMoneyFlowing1E && atCounter1E && isAiming1E) {
                     // Tiền đang cộng đều đặn -> Aim đang dính bảng và bán cực tốt: ĐỨNG YÊN HOÀN TOÀN!
                     stopAllMovement();
                     pushAwayTicks = 0;
                     notSellingTimer = 0;
                     sellNudgeTicks = 0;
                 } else {
-                    // Tiền đã ngừng cộng quá 0.5s -> phản xạ bước đi bộ lại quầy ngay!
+                    // Tiền đã ngừng cộng hoặc bị xô lệch khỏi quầy -> phản xạ bước đi bộ lại quầy ngay!
                     handleSellPositionRecovery(mc, SellState.SELLING_1E_ITEMS);
                 }
                 return false;
@@ -1315,21 +1331,36 @@ public class MacroRecorderMod {
                     }
                     return true;
                 }
-                // Bán đồ 100% như người thật: tự động xử lý đè chuột phải vanilla và xuyên người che
-                performSellClick(mc);
+                // Kiểm tra xem đã đứng sát quầy và ngắm dính bảng chưa
+                BlockPos counterTargetItems = parseGotoPos(afterShopGotoCommand);
+                double dCounterItems = 0.0;
+                if (counterTargetItems != null && mc.player != null) {
+                    double cx = (counterTargetItems.getX() + 0.5) - mc.player.posX;
+                    double cz = (counterTargetItems.getZ() + 0.5) - mc.player.posZ;
+                    dCounterItems = Math.sqrt(cx * cx + cz * cz);
+                }
+                boolean atCounterItems = (dCounterItems <= 0.95);
+                boolean isAimingItems = SignAimHandler.isAimingAtSign(mc);
+
+                // CHỈ THỰC HIỆN BÁN KHI ĐÃ ĐỨNG SÁT QUẦY VÀ TÂM DÍNH BẢNG (tránh vung tay/đè chuột giữa đường gây đói):
+                if (atCounterItems && isAimingItems) {
+                    performSellClick(mc);
+                } else {
+                    releaseUseItemKey();
+                }
 
                 // 100% NHƯ NGƯỜI THẬT: NẾU TIỀN ĐANG CỘNG LIÊN TỤC THÌ TUYỆT ĐỐI ĐỨNG YÊN, KHÔNG NHÚC NHÍCH!
                 long nowItems = System.currentTimeMillis();
                 boolean isMoneyFlowingItems = (nowItems - lastSellMoneyTime < 500L);
 
-                if (isMoneyFlowingItems) {
+                if (isMoneyFlowingItems && atCounterItems && isAimingItems) {
                     // Tiền đang cộng đều đặn -> Aim đang dính bảng và bán cực tốt: ĐỨNG YÊN HOÀN TOÀN!
                     stopAllMovement();
                     pushAwayTicks = 0;
                     notSellingTimer = 0;
                     sellNudgeTicks = 0;
                 } else {
-                    // Tiền đã ngừng cộng quá 0.5s -> phản xạ bước đi bộ lại quầy ngay!
+                    // Tiền đã ngừng cộng hoặc bị xô lệch khỏi quầy -> phản xạ bước đi bộ lại quầy ngay!
                     handleSellPositionRecovery(mc, SellState.SELLING_ITEMS);
                 }
                 return false;
@@ -2072,6 +2103,15 @@ public class MacroRecorderMod {
             return;
         }
 
+        // Đảm bảo không bao giờ sprint hay jump khi đang bán đồ để không hao thức ăn:
+        if (mc.player != null) {
+            mc.player.setSprinting(false);
+        }
+        if (mc.gameSettings != null) {
+            KeyBinding.setKeyBindState(mc.gameSettings.keyBindSprint.getKeyCode(), false);
+            KeyBinding.setKeyBindState(mc.gameSettings.keyBindJump.getKeyCode(), false);
+        }
+
         // 2. KIỂM TRA TÂM NGẮM: TUYỆT ĐỐI CHỈ ĐÈ CHUỘT PHẢI KHI TÂM NGẮM ĐANG DÍNH ĐÚNG BẢNG SELL MỤC TIÊU!
         if (mc.objectMouseOver != null) {
             if (mc.objectMouseOver.typeOfHit == RayTraceResult.Type.BLOCK) {
@@ -2084,15 +2124,19 @@ public class MacroRecorderMod {
                 }
                 // Tâm ngắm chuẩn xác trên bảng Sell -> đè chuột phải vanilla
                 holdUseItemKey();
-                // Cơ chế vung tay (Arm swing) liên tục như người thật đang click chuột phải bán đồ:
-                if (mc.player != null && (!mc.player.isSwingInProgress || mc.player.swingProgressInt >= 3)) {
-                    mc.player.swingArm(EnumHand.MAIN_HAND);
+                // Cơ chế vung tay (Arm swing) nhịp nhàng tự nhiên (10 ticks = 0.5s/lần) như người thật, không làm hao thức ăn:
+                sellArmSwingTimer++;
+                if (sellArmSwingTimer >= 10) {
+                    sellArmSwingTimer = 0;
+                    if (mc.player != null && !mc.player.isSwingInProgress) {
+                        mc.player.swingArm(EnumHand.MAIN_HAND);
+                    }
                 }
             } else if (mc.objectMouseOver.typeOfHit == RayTraceResult.Type.ENTITY) {
                 // Người chơi khác đứng che trước mặt: nhả chuột phải vanilla để không bấm vào họ hoặc item frame
                 releaseUseItemKey();
                 signBlockClickCooldown++;
-                if (signBlockClickCooldown >= 2) {
+                if (signBlockClickCooldown >= 4) {
                     signBlockClickCooldown = 0;
                     double eyeX = mc.player.posX;
                     double eyeY = mc.player.posY + mc.player.getEyeHeight();
@@ -2105,7 +2149,9 @@ public class MacroRecorderMod {
                         Vec3d hitVec = new Vec3d(targetSignPos.getX() + 0.5, targetSignPos.getY() + 0.5, targetSignPos.getZ() + 0.5);
                         if (mc.playerController != null) {
                             mc.playerController.processRightClickBlock(mc.player, mc.world, targetSignPos, EnumFacing.UP, hitVec, EnumHand.MAIN_HAND);
-                            mc.player.swingArm(EnumHand.MAIN_HAND);
+                            if (mc.player != null && !mc.player.isSwingInProgress) {
+                                mc.player.swingArm(EnumHand.MAIN_HAND);
+                            }
                         }
                     }
                 }
@@ -3247,13 +3293,21 @@ public class MacroRecorderMod {
         // Hủy pathfinding của Baritone và nhả toàn bộ phím di chuyển để player đứng yên
         // 100%:
         executeClientCommand("#stop");
+        // Cài đặt Baritone chỉ đi bộ bình thường, tuyệt đối không sprint gây hao thức ăn:
+        executeClientCommand("#allowSprint false");
+        executeClientCommand("#sprint false");
+
         if (mc.gameSettings != null) {
+            mc.gameSettings.autoJump = false; // Tắt Auto-Jump tránh bị nhảy liên tục khi xô xát gây đói
             KeyBinding.setKeyBindState(mc.gameSettings.keyBindForward.getKeyCode(), false);
             KeyBinding.setKeyBindState(mc.gameSettings.keyBindBack.getKeyCode(), false);
             KeyBinding.setKeyBindState(mc.gameSettings.keyBindLeft.getKeyCode(), false);
             KeyBinding.setKeyBindState(mc.gameSettings.keyBindRight.getKeyCode(), false);
             KeyBinding.setKeyBindState(mc.gameSettings.keyBindJump.getKeyCode(), false);
             KeyBinding.setKeyBindState(mc.gameSettings.keyBindSprint.getKeyCode(), false);
+        }
+        if (mc.player != null) {
+            mc.player.setSprinting(false);
         }
 
         // KÍCH HOẠT AUTO-AIM NGAY LẬP TỨC:

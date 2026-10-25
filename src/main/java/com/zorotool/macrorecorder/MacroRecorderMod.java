@@ -3224,19 +3224,20 @@ public class MacroRecorderMod {
             KeyBinding.setKeyBindState(mc.gameSettings.keyBindSprint.getKeyCode(), false);
         }
 
-        // KÍCH HOẠT AUTO-AIM NGAY LẬP TỨC (CHỈ KHI ĐÃ ĐỨNG ĐÚNG QUẦY BÁN afterShopGotoCommand):
+        // KÍCH HOẠT AUTO-AIM NGAY LẬP TỨC:
         try {
-            if (isAtDestination(afterShopGotoCommand)) {
-                int cfgFarmId = ConfigHelper.getFarmItemId();
-                if (cfgFarmId > 0) {
-                    SignAimHandler.setupTarget(String.valueOf(cfgFarmId), false, false);
-                }
-                String target = SignAimHandler.getEffectiveTarget();
+            int cfgFarmId = ConfigHelper.getFarmItemId();
+            if (cfgFarmId > 0) {
+                SignAimHandler.setupTarget(String.valueOf(cfgFarmId), false, false);
+            }
+            String target = SignAimHandler.getEffectiveTarget();
+            boolean foundSign = SignAimHandler.findTargetSign(target, false);
+            if (isAtDestination(afterShopGotoCommand) || foundSign) {
                 SignAimHandler.startAimLock(target);
-                System.out.println("[MacroRecorder] >>> (F4) ĐÃ TỚI QUẦY BÁN (" + afterShopGotoCommand + ")! Tự động kích hoạt ngay lập tức AutoAim ghim bảng Sell (" + target + ") tại Y=" + (int) mc.player.posY);
+                System.out.println("[MacroRecorder] >>> (F4) Tự động kích hoạt ngay lập tức AutoAim ghim bảng Sell (" + target + ") tại Y=" + (int) mc.player.posY);
             } else {
                 SignAimHandler.stopAimLock(mc);
-                System.out.println("[MacroRecorder] >>> (F4) Chưa đứng đúng vị trí quầy bán (" + afterShopGotoCommand + ") -> Không kích hoạt AutoAim.");
+                System.out.println("[MacroRecorder] >>> (F4) Chưa tới quầy bán và chưa thấy bảng (" + target + ") -> Tạm dừng AutoAim.");
             }
         } catch (Exception e) {
             System.out.println("[MacroRecorder] Lỗi kích hoạt AutoAim: " + e);

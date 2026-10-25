@@ -122,8 +122,8 @@ public class CommandAimSell extends CommandBase {
             mc.player.sendMessage(new TextComponentString(TextFormatting.YELLOW + "/aimsell click" + TextFormatting.WHITE + " - Click phải vào bảng đang ghim"));
             mc.player.sendMessage(new TextComponentString(TextFormatting.YELLOW + "/aimsell debug" + TextFormatting.WHITE + " - Quét danh sách các bảng xung quanh"));
         } else {
-            // Setup ghim item bất kỳ (theo ID như 42, <42> hoặc tên)
-            SignAimHandler.setupTarget(cleaned, true);
+            // Setup và kích hoạt ghim item ngay lập tức (theo ID như 363, 42 hoặc tên như beef, iron_block)
+            SignAimHandler.setupTarget(cleaned, true, true);
         }
     }
 }

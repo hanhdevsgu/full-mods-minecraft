@@ -514,8 +514,11 @@ public class SignAimHandler {
                 targetAliases.add("beef");
                 targetAliases.add("raw_beef");
                 targetAliases.add("raw beef");
+                targetAliases.add("rawbeef");
                 targetAliases.add("thịt bò");
                 targetAliases.add("thit bo");
+                targetAliases.add("thịt bò sống");
+                targetAliases.add("thit bo song");
                 targetAliases.add("bò sống");
                 targetAliases.add("bo song");
                 targetAliases.add("bò");
@@ -525,6 +528,7 @@ public class SignAimHandler {
                 targetAliases.add("steak");
                 targetAliases.add("cooked_beef");
                 targetAliases.add("cooked beef");
+                targetAliases.add("cookedbeef");
                 targetAliases.add("thịt bò chín");
                 targetAliases.add("thit bo chin");
                 targetAliases.add("bít tết");
@@ -532,8 +536,13 @@ public class SignAimHandler {
                 break;
             case 319:
                 targetAliases.add("porkchop");
+                targetAliases.add("pork");
                 targetAliases.add("raw_porkchop");
                 targetAliases.add("raw porkchop");
+                targetAliases.add("rawporkchop");
+                targetAliases.add("raw_pork");
+                targetAliases.add("raw pork");
+                targetAliases.add("rawpork");
                 targetAliases.add("thịt heo");
                 targetAliases.add("thit heo");
                 targetAliases.add("thịt lợn");
@@ -542,7 +551,14 @@ public class SignAimHandler {
             case 320:
                 targetAliases.add("cooked_porkchop");
                 targetAliases.add("cooked porkchop");
+                targetAliases.add("cookedporkchop");
+                targetAliases.add("cooked_pork");
+                targetAliases.add("cooked pork");
+                targetAliases.add("cookedpork");
                 targetAliases.add("thịt heo chín");
+                targetAliases.add("thit heo chin");
+                targetAliases.add("thịt lợn chín");
+                targetAliases.add("thit lon chin");
                 targetAliases.add("thit heo chin");
                 targetAliases.add("thịt lợn chín");
                 targetAliases.add("thit lon chin");
@@ -694,6 +710,7 @@ public class SignAimHandler {
         }
 
         String combined = sb.toString();
+        String combinedNoSpace = combined.replace(" ", "").replace("_", "").toLowerCase();
         for (String alias : targetAliases) {
             if (alias == null || alias.trim().isEmpty()) continue;
             String a = alias.toLowerCase().trim();
@@ -702,7 +719,8 @@ public class SignAimHandler {
                     return true;
                 }
             } else {
-                if (combined.contains(a)) {
+                String aNoSpace = a.replace(" ", "").replace("_", "");
+                if (combined.contains(a) || (!aNoSpace.isEmpty() && combinedNoSpace.contains(aNoSpace))) {
                     return true;
                 }
             }
@@ -762,10 +780,6 @@ public class SignAimHandler {
         if (mc.world == null || mc.player == null) return false;
 
         EntityPlayerSP player = mc.player;
-        // Chỉ quét tìm bảng Sell khi người chơi ở quầy Shop
-        if (!isPlayerAtShop(mc)) {
-            return false;
-        }
 
         if (itemTarget == null || itemTarget.trim().isEmpty()) {
             itemTarget = "gunpowder";
@@ -952,9 +966,8 @@ public class SignAimHandler {
             }
 
             if (activateNow) {
-                boolean isAtShop = isPlayerAtShop(mc);
-                boolean found = isAtShop ? findTargetSign(lastItemTarget, verbose) : false;
-                if (found && isAtShop) {
+                boolean found = findTargetSign(lastItemTarget, verbose);
+                if (found) {
                     isAimLockActive = true;
                     outOfRangeTicks = 0;
                     stuckTicks = 0;
@@ -1049,8 +1062,8 @@ public class SignAimHandler {
      */
     private static void updateCameraSmooth(Minecraft mc, float partialTicks) {
         if (!isAimLockActive || targetSignPos == null || mc.player == null || mc.world == null) return;
-        // Chỉ hoạt động khi người chơi ở khu vực Shop
-        if (!isPlayerAtShop(mc)) return;
+        // Chỉ bám góc nhìn khi người chơi ở gần bảng (trong vòng 10 block)
+        if (mc.player.getDistanceSq(targetSignPos) > 100.0) return;
         // Nếu đang mở menu màn hình (ESC, chat, hòm đồ) -> không can thiệp góc nhìn
         if (mc.currentScreen != null) return;
 

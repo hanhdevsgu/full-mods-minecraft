@@ -1219,17 +1219,11 @@ public class MacroRecorderMod {
                 // 2. Kiểm tra dòng tiền (tiền có đang được server cộng liên tục không)
                 long now1E = System.currentTimeMillis();
                 long timeSinceMoney1E = now1E - lastSellMoneyTime;
-                boolean isMoneyFlowing1E = (timeSinceMoney1E < 2000L); // Server cộng tiền trong 2s gần nhất
+                boolean isMoneyFlowing1E = (timeSinceMoney1E < 800L); // Server cộng tiền đều đặn
 
                 // 3. XỬ LÝ DI CHUYỂN 100% NHƯ NGƯỜI THẬT:
-                // "nếu vẫn trong tầm ngắm đừng có di chuyển wasd lại, đợi khi nào không cộng tiền này kia thì mới bắt đầu nhích wasd"
-                if (inReach1E && (isAiming1E || (isEntityBlocking1E && isMoneyFlowing1E))) {
-                    if (mc.player != null) {
-                        lastGoodSellX = mc.player.posX;
-                        lastGoodSellY = mc.player.posY;
-                        lastGoodSellZ = mc.player.posZ;
-                    }
-
+                // Nếu ở cự ly bán chuẩn (distToSign1E <= 2.5m) VÀ đang ngắm trúng bảng:
+                if (distToSign1E <= 2.5 && (isAiming1E || (isEntityBlocking1E && isMoneyFlowing1E))) {
                     if (isMoneyFlowing1E) {
                         // Tiền đang cộng đều đặn và đang trong tầm ngắm: ĐỨNG YÊN 100%, TUYỆT ĐỐI KHÔNG BẤM PHÍM DI CHUYỂN WASD!
                         stopAllMovement();
@@ -1237,11 +1231,11 @@ public class MacroRecorderMod {
                         notSellingTimer = 0;
                         sellNudgeTicks = 0;
                     } else {
-                        // Tiền đã ngừng cộng quá 2s (không cộng tiền này kia): mới bắt đầu nhích nhẹ WASD để bắt lại nhịp bán
+                        // Tiền ngừng tăng: ngay lập tức nhích WASD lại gần bảng
                         handleSellPositionRecovery(mc, SellState.SELLING_1E_ITEMS);
                     }
                 } else {
-                    // Bị đẩy văng ra xa bảng hoặc lệch hẳn tâm ngắm: phản hồi ngay sau 0.2s bước đi bộ lại quầy
+                    // Bị đẩy văng xa khỏi tầm bán (> 2.5m) hoặc lệch tâm: ngay lập tức nhích WASD lại gần bảng
                     handleSellPositionRecovery(mc, SellState.SELLING_1E_ITEMS);
                 }
                 return false;
@@ -1386,17 +1380,11 @@ public class MacroRecorderMod {
                 // 2. Kiểm tra dòng tiền (tiền có đang được server cộng liên tục không)
                 long nowItems = System.currentTimeMillis();
                 long timeSinceMoneyItems = nowItems - lastSellMoneyTime;
-                boolean isMoneyFlowingItems = (timeSinceMoneyItems < 2000L); // Server cộng tiền trong 2s gần nhất
+                boolean isMoneyFlowingItems = (timeSinceMoneyItems < 800L); // Server cộng tiền đều đặn
 
                 // 3. XỬ LÝ DI CHUYỂN 100% NHƯ NGƯỜI THẬT:
-                // "nếu vẫn trong tầm ngắm đừng có di chuyển wasd lại, đợi khi nào không cộng tiền này kia thì mới bắt đầu nhích wasd"
-                if (inReachItems && (isAimingItems || (isEntityBlockingItems && isMoneyFlowingItems))) {
-                    if (mc.player != null) {
-                        lastGoodSellX = mc.player.posX;
-                        lastGoodSellY = mc.player.posY;
-                        lastGoodSellZ = mc.player.posZ;
-                    }
-
+                // Nếu ở cự ly bán chuẩn (distToSignItems <= 2.5m) VÀ đang ngắm trúng bảng:
+                if (distToSignItems <= 2.5 && (isAimingItems || (isEntityBlockingItems && isMoneyFlowingItems))) {
                     if (isMoneyFlowingItems) {
                         // Tiền đang cộng đều đặn và đang trong tầm ngắm: ĐỨNG YÊN 100%, TUYỆT ĐỐI KHÔNG BẤM PHÍM DI CHUYỂN WASD!
                         stopAllMovement();
@@ -1404,11 +1392,11 @@ public class MacroRecorderMod {
                         notSellingTimer = 0;
                         sellNudgeTicks = 0;
                     } else {
-                        // Tiền đã ngừng cộng quá 2s (không cộng tiền này kia): mới bắt đầu nhích nhẹ WASD để bắt lại nhịp bán
+                        // Tiền ngừng tăng: ngay lập tức nhích WASD lại gần bảng
                         handleSellPositionRecovery(mc, SellState.SELLING_ITEMS);
                     }
                 } else {
-                    // Bị đẩy văng ra xa bảng hoặc lệch hẳn tâm ngắm: phản hồi ngay sau 0.2s bước đi bộ lại quầy
+                    // Bị đẩy văng xa khỏi tầm bán (> 2.5m) hoặc lệch tâm: ngay lập tức nhích WASD lại gần bảng
                     handleSellPositionRecovery(mc, SellState.SELLING_ITEMS);
                 }
                 return false;
@@ -1796,18 +1784,29 @@ public class MacroRecorderMod {
     public boolean isTrashStack(int slotIndex, ItemStack stack, int heldHotbarIndex) {
         if (stack == null || stack.isEmpty()) return false;
         if (isFarmItem(stack)) return false;
+
+        // 1. Ô Hotbar 1 (slotIndex == 0): ô người dùng chuyên dùng để đặt đồ bán hoặc giữ vũ khí -> TUYỆT ĐỐI GIỮ NGUYÊN!
+        if (slotIndex == 0) return false;
+
+        // 2. Ô người chơi đang cầm trên tay (heldHotbarIndex) -> TUYỆT ĐỐI GIỮ NGUYÊN!
+        if (slotIndex == heldHotbarIndex) return false;
+
+        // 3. Kiếm, rìu, cúp, xẻng, cung, giáp, kéo, cuốc, hoặc bất kỳ vật phẩm có độ bền (isDamageable):
+        // KHÔNG BAO GIỜ COI LÀ RÁC dù nằm ở bất cứ đâu trong túi đồ hay hotbar!
+        if (com.autorefill.InventoryUtils.isValuableOrTool(stack)
+                || stack.getItem() instanceof net.minecraft.item.ItemHoe) {
+            return false;
+        }
+
         Item item = stack.getItem();
         int itemId = Item.getIdFromItem(item);
-        // Cây kiếm, công cụ, hoặc cung trên slot đang cầm trên tay -> GIỮ
-        if (slotIndex == heldHotbarIndex && (item instanceof net.minecraft.item.ItemSword || item instanceof net.minecraft.item.ItemTool || item instanceof net.minecraft.item.ItemBow)) {
+
+        // 4. Thức ăn sinh tồn chuẩn (Thịt bò chín Steak 364, Táo vàng 322, Cà rốt vàng 396, Thịt lợn chín 320, Bánh mì 297, Táo 260) -> GIỮ
+        if (itemId == 364 || itemId == 322 || itemId == 396 || itemId == 320 || itemId == 297 || itemId == 260) {
             return false;
         }
-        // Thức ăn sinh tồn chuẩn (Thịt bò chín Steak ID 364, Táo vàng ID 322, Cà rốt vàng ID 396) trên hotbar (slot 0->8) -> GIỮ
-        // (Cà rốt thường ID 391, khoai tây, thịt thối zombie 367, mắt nhện... TUYỆT ĐỐI LÀ RÁC!)
-        if (slotIndex >= 0 && slotIndex <= 8 && (itemId == 364 || itemId == 322 || itemId == 396)) {
-            return false;
-        }
-        // Mọi item khác trong túi (cà rốt thường, giáp sắt rác, cung rác, thịt thối, xương, mob drop...) -> RÁC!
+
+        // Mọi item khác (thịt thối zombie 367, xương 352, mắt nhện 375, cà rốt thường, hoa, hạt giống rác...) -> RÁC!
         return true;
     }
 
@@ -1826,8 +1825,8 @@ public class MacroRecorderMod {
 
     /**
      * Vứt (Q) toàn bộ vật phẩm rác ra khỏi túi đồ bằng phím Ctrl+Q native của Minecraft:
-     * - Giữ nguyên vũ khí trên tay, thức ăn sinh tồn chính thống, và vật phẩm farm.
-     * - VỨT HẾT TẤT CẢ CÁC MÓN RÁC KHÁC (cà rốt thường, giáp sắt, xương, thịt thối, sách, gỗ, đá...)
+     * - Giữ nguyên vũ khí trên tay, kiếm/rìu/cung, Hotbar 1, thức ăn sinh tồn chính thống, và vật phẩm farm.
+     * - Vứt toàn bộ rác khác trong hotbar (1..8) và túi đồ chính (9..35) mà KHÔNG swap chạm vào Hotbar 1!
      */
     private int dropAllTrashFromInventory() {
         if (mc == null || mc.player == null || mc.playerController == null)
@@ -1844,8 +1843,9 @@ public class MacroRecorderMod {
         if (container == null)
             return 0;
 
-        // 1. Vứt toàn bộ rác trên thanh Hotbar (slot 0..8): dùng dropItem(true) native Ctrl+Q
-        for (int hotbarIdx = 0; hotbarIdx < 9; hotbarIdx++) {
+        // 1. Vứt toàn bộ rác trên thanh Hotbar (chỉ slot 1..8, TUYỆT ĐỐI BỎ QUA slot 0 và ô đang cầm originalHeld)
+        for (int hotbarIdx = 1; hotbarIdx < 9; hotbarIdx++) {
+            if (hotbarIdx == originalHeld) continue;
             ItemStack stack = mc.player.inventory.mainInventory.get(hotbarIdx);
             if (isTrashStack(hotbarIdx, stack, originalHeld)) {
                 mc.player.inventory.currentItem = hotbarIdx;
@@ -1855,16 +1855,14 @@ public class MacroRecorderMod {
         }
 
         // 2. Vứt toàn bộ rác trong 27 ô túi đồ chính (slot 9 -> 35):
-        int tempHotbarIdx = (originalHeld == 0) ? 1 : 0;
+        // Dùng ClickType.THROW (mouseButton = 1 tương đương Ctrl+Q) trực tiếp từ slot đồ,
+        // TUYỆT ĐỐI không swap làm ảnh hưởng đến ô Hotbar 1 hoặc ô vũ khí!
         for (int slotNum = 9; slotNum <= 35; slotNum++) {
             Slot slot = container.getSlot(slotNum);
             if (slot != null && slot.getHasStack() && !slot.getStack().isEmpty()) {
                 ItemStack stack = slot.getStack();
                 if (isTrashStack(slotNum, stack, originalHeld)) {
-                    // Swap stack rác xuống hotbar tạm
-                    mc.playerController.windowClick(0, slotNum, tempHotbarIdx, ClickType.SWAP, mc.player);
-                    mc.player.inventory.currentItem = tempHotbarIdx;
-                    mc.player.dropItem(true); // Q vứt ra ngoài đất
+                    mc.playerController.windowClick(0, slotNum, 1, ClickType.THROW, mc.player);
                     droppedCount++;
                 }
             }
@@ -2062,17 +2060,20 @@ public class MacroRecorderMod {
     /**
      * Tự động xử lý vị trí khi bị đẩy - 100% NHƯ NGƯỜI THẬT:
      * - Nếu vẫn trong tầm ngắm VÀ tiền vẫn cộng: ĐỨNG YÊN 100%, KHÔNG di chuyển WASD.
-     * - Khi bị đẩy lệch tâm hoặc tiền không cộng: phản xạ cực nhạy (chỉ sau 4 ticks = 0.2s)
-     *   bước đi bộ lại vị trí bán (WASD) như người thật, không sprint gây đói.
-     * - TUYỆT ĐỐI HẠN CHẾ #GOTO: 100% cự ly thông thường đi bộ bằng WASD,
-     *   chỉ dùng #goto khi bị đẩy văng cực xa (> 8m) và kẹt quá lâu (> 5s).
+     * - Khi bị người khác đẩy xa khỏi tầm bán hoặc tiền không cộng: NGAY LẬP TỨC (0s trễ)
+     *   bước đi bộ (WASD) nhích lại gần bảng sell (targetSignPos),
+     *   TUYỆT ĐỐI KHÔNG quay về vị trí #goto cũ trong F8!
+     * - Khi đã nhích lại sát bảng (distToSign <= 2.4m) và ngắm trúng bảng: ĐỨNG YÊN tiếp tục bán.
      */
     private void handleSellPositionRecovery(Minecraft mc, SellState currentState) {
         if (mc == null || mc.player == null) return;
         notSellingTimer++;
 
         BlockPos targetSignPos = SignAimHandler.targetSignPos;
-        BlockPos counterTarget = parseGotoPos(afterShopGotoCommand);
+        if (targetSignPos == null) {
+            SignAimHandler.findTargetSign(SignAimHandler.getEffectiveTarget(), false);
+            targetSignPos = SignAimHandler.targetSignPos;
+        }
 
         double distToSign = 999.0;
         if (targetSignPos != null) {
@@ -2085,51 +2086,40 @@ public class MacroRecorderMod {
             distToSign = Math.sqrt(dx * dx + dy * dy + dz * dz);
         }
 
-        // Tọa độ mục tiêu quay lại: ưu tiên vị trí bán tốt gần nhất mà player từng đứng bán được tiền
-        double targetX = mc.player.posX;
-        double targetZ = mc.player.posZ;
-        if (!Double.isNaN(lastGoodSellX)) {
-            targetX = lastGoodSellX;
-            targetZ = lastGoodSellZ;
-        } else if (targetSignPos != null) {
-            targetX = targetSignPos.getX() + 0.5;
-            targetZ = targetSignPos.getZ() + 0.5;
-        } else if (counterTarget != null) {
-            targetX = counterTarget.getX() + 0.5;
-            targetZ = counterTarget.getZ() + 0.5;
-        }
-
-        double dx = targetX - mc.player.posX;
-        double dz = targetZ - mc.player.posZ;
-        double distToTarget = Math.sqrt(dx * dx + dz * dz);
-
         boolean isAiming = SignAimHandler.isAimingAtSign(mc);
-        boolean inReachOfSign = (distToSign <= 4.0);
         long timeSinceLastMoney = System.currentTimeMillis() - lastSellMoneyTime;
-        boolean isMoneyFlowing = (timeSinceLastMoney < 2000L);
+        boolean isMoneyFlowing = (timeSinceLastMoney < 800L);
 
-        // 1. NẾU VẪN TRONG TẦM NGẮM VÀ TIỀN ĐANG CỘNG: ĐỨNG YÊN HOÀN TOÀN, KHÔNG DI CHUYỂN WASD!
-        if (inReachOfSign && isAiming && isMoneyFlowing) {
+        // 1. Nếu đã ở cự ly bán chuẩn (<= 2.4m) và đang ngắm trúng bảng: ĐỨNG YÊN HOÀN TOÀN!
+        if (distToSign <= 2.4 && isAiming) {
             stopAllMovement();
             pushAwayTicks = 0;
             sellNudgeTicks = 0;
             return;
         }
 
-        // Nếu đã ở rất sát vị trí bán chuẩn (<= 0.4m) và đang ngắm dính bảng: đứng yên
-        if (distToTarget <= 0.4 && isAiming) {
+        // Nếu đã ở rất sát bảng (<= 1.7m): dừng lại ngay để không đâm sầm vào bảng/quầy
+        if (distToSign <= 1.7) {
             stopAllMovement();
             pushAwayTicks = 0;
             sellNudgeTicks = 0;
             return;
         }
+
+        // Tọa độ mục tiêu bước lại: 100% LÀ TỌA ĐỘ BẢNG SELL (targetSignPos)!
+        // Tuyệt đối KHÔNG quay về vị trí #goto cũ trong F8!
+        double targetX = (targetSignPos != null) ? (targetSignPos.getX() + 0.5) : mc.player.posX;
+        double targetZ = (targetSignPos != null) ? (targetSignPos.getZ() + 0.5) : mc.player.posZ;
 
         pushAwayTicks++;
 
-        // 2. TUYỆT ĐỐI HẠN CHẾ #GOTO:
-        // CHỈ dùng #goto khi bị xô văng CỰC XA (> 8.0m) VÀ tiền không cộng > 5s VÀ đã cố đi bộ 100 ticks (5.0s) mà vẫn bị kẹt
-        if (timeSinceLastMoney > 5000L && pushAwayTicks >= 100 && (distToTarget > 8.0 || distToSign > 8.0)) {
-            System.out.println("[MacroRecorder] (F4) Bị đẩy văng cực xa (>8m) hoặc kẹt chướng ngại vật >5s! Dùng #goto quay lại quầy...");
+        // 2. NGAY LẬP TỨC: bước đi bộ WASD nhích lại gần bảng
+        // Tuyệt đối không sprint gây đói, đi bộ tự nhiên như người chơi thật:
+        walkTowards(targetX, targetZ);
+
+        // 3. Fallback cực đoan: Chỉ dùng #goto khi bị văng mất tích (> 15m) và kẹt quá 8s
+        if (timeSinceLastMoney > 8000L && pushAwayTicks >= 160 && distToSign > 15.0) {
+            System.out.println("[MacroRecorder] (F4) Bị đẩy văng quá xa (>15m) kẹt >8s! Thử #goto quay lại...");
             stopAllMovement();
             releaseUseItemKey();
             executeClientCommand(afterShopGotoCommand);
@@ -2139,13 +2129,6 @@ public class MacroRecorderMod {
             pushAwayTicks = 0;
             notSellingTimer = 0;
             sellNudgeTicks = 0;
-            return;
-        }
-
-        // 3. PHẢN HỒI NHANH CHÓNG (sau 4 ticks = 0.2s - phản xạ tự nhiên của con người):
-        // Khi bị xô đẩy lệch góc hoặc tiền không cộng, bước đi bộ (WASD) trở lại vị trí bán mượt mà như người thật!
-        if (pushAwayTicks >= 4) {
-            walkTowards(targetX, targetZ);
         }
     }
 

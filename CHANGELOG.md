@@ -1,6 +1,18 @@
 # CHANGELOG - AutoAimSellSign 1.12.2
 
-## [1.4.42] - 2026-10-25
+## [1.4.43] - 2026-10-25
+### Bugfix & Polish (Absolute Hotbar 1 & Weapons Protection, Instant Push-Recovery Towards Sign)
+- **Bảo vệ tuyệt đối ô Hotbar 1 và vũ khí / công cụ khỏi bị vứt (Q)**:
+  - Ô Hotbar 1 (`slotIndex == 0`) được cấu hình giữ nguyên 100%, không bao giờ bị coi là rác hay bị vứt (Q) dù người chơi đặt bất kỳ vật phẩm gì vào đây để cầm bán hoặc giữ đồ.
+  - Ô người chơi đang cầm trên tay (`heldHotbarIndex`) được giữ nguyên tuyệt đối.
+  - Toàn bộ kiếm (`ItemSword`), rìu/cúp/xẻng (`ItemTool`), cung (`ItemBow`), giáp (`ItemArmor`), cuốc (`ItemHoe`), kéo (`ItemShears`), hoặc bất kỳ trang bị có độ bền nào (`isDamageable`) ở bất kỳ ô nào trong túi đồ đều được bảo vệ hoàn toàn, không bao giờ bị coi là rác.
+  - Thao tác dọn rác từ 27 ô túi đồ chính chuyển sang sử dụng `ClickType.THROW` (Ctrl+Q trực tiếp từ slot), tuyệt đối không swap rác xuống Hotbar 1 làm mất đồ của người chơi.
+- **Phản ứng tức thì khi bị đẩy (0s trễ) & nhích thẳng lại gần bảng bán (targetSignPos)**:
+  - Khi bị đẩy ra xa cự ly bán (> 2.5m) hoặc tiền ngừng tăng, bot **ngay lập tức (0s trễ)** sử dụng WASD nhích từng bước lại gần bảng sell.
+  - Tọa độ mục tiêu bước lại ưu tiên 100% là tọa độ bảng bán (`targetSignPos`), **tuyệt đối không quay về tọa độ `#goto` cũ trong F8**.
+  - Khi đã nhích lại sát bảng (cự ly <= 2.4m) và tâm ngắm khóa trúng bảng bán: bot đứng yên 100% để tiếp tục bán hàng mượt mà như người thật.
+
+
 ### Feature & Polish (Human-like Sell Movement, Zero-Jitter In-Aim & Instant Push Reaction)
 - **Đứng yên tuyệt đối khi đang trong tầm ngắm và tiền đang cộng**:
   - Khi tâm ngắm đang nhắm trúng bảng bán trong cự ly tương tác (<= 4.2m) và tiền vẫn đang được server cộng liên tục (trong vòng 2 giây): Mod **khóa hoàn toàn di chuyển (`stopAllMovement()`)**, không bấm bất kỳ phím WASD nào.

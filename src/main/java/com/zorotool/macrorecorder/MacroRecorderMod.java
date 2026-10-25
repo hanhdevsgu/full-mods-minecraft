@@ -499,9 +499,24 @@ public class MacroRecorderMod {
     @SubscribeEvent
     public void onEntityInteract(PlayerInteractEvent.EntityInteract event) {
         if (sellMacroRunning && (sellState == SellState.SELLING_ITEMS || sellState == SellState.SELLING_1E_ITEMS)) {
-            // Chặn không tương tác / mở menu người chơi đứng che bảng
+            // Chặn hoàn toàn tương tác vào người chơi khác đứng nhảy nhót che bảng
             event.setCanceled(true);
-            // TUYỆT ĐỐI KHÔNG nhả chuột phải! Vẫn đè chuột phải để bán qua người đó như bình thường
+        }
+    }
+
+    @SubscribeEvent
+    public void onEntityInteractSpecific(PlayerInteractEvent.EntityInteractSpecific event) {
+        if (sellMacroRunning && (sellState == SellState.SELLING_ITEMS || sellState == SellState.SELLING_1E_ITEMS)) {
+            // Chặn click chuẩn xác vào model/hitbox người chơi khác che bảng
+            event.setCanceled(true);
+        }
+    }
+
+    @SubscribeEvent
+    public void onRightClickItem(PlayerInteractEvent.RightClickItem event) {
+        if (sellMacroRunning && (sellState == SellState.SELLING_ITEMS || sellState == SellState.SELLING_1E_ITEMS)) {
+            // Chặn sử dụng vật phẩm trên tay vào khoảng không / người chơi khác
+            event.setCanceled(true);
         }
     }
 
@@ -2125,12 +2140,16 @@ public class MacroRecorderMod {
             KeyBinding.setKeyBindState(mc.gameSettings.keyBindJump.getKeyCode(), false);
         }
 
-        // 2. GIỮ ĐÈ CHUỘT PHẢI BÁN THOẢI MÁI:
-        // Cứ đè chuột phải sell liên tục kể cả có người đứng che trước mặt:
-        holdUseItemKey();
+        // 2. TUYỆT ĐỐI KHÔNG CHIẾM CHUỘT / KHÔNG ĐÈ PHÍM CHUỘT PHẢI (keyBindUseItem):
+        // Việc đè keyBindUseItem làm client liên tục bắn packet tương tác vào người chơi khác đứng nhảy nhót trước mặt,
+        // khiến server kick/đẩy tài khoản ra lobby.
+        // Luôn giải phóng keyBindUseItem để chuột hoàn toàn tự do:
+        releaseUseItemKey();
 
-        // 3. ĐỒNG THỜI GỬI TƯƠNG TÁC TRỰC TIẾP LÊN BẢNG SELL MỤC TIÊU:
-        // Đảm bảo dù người khác có đứng chắn sát mặt thì server vẫn nhận click bán vào bảng!
+        // 3. TƯƠNG TÁC TRỰC TIẾP LÊN CHÍNH XÁC BẢNG SELL MỤC TIÊU:
+        // Sử dụng processRightClickBlock trực tiếp vào targetSignPos mỗi 2 tick.
+        // Bằng cách này, dù có người đứng che trước mặt nhảy nhót hay che bảng thì click vẫn
+        // gửi chính xác vào bảng sell, 100% không chạm vào người khác và 100% không bị văng ra lobby!
         signBlockClickCooldown++;
         if (signBlockClickCooldown >= 2) {
             signBlockClickCooldown = 0;

@@ -273,6 +273,9 @@ public class MacroRecorderMod {
     private Vec3d shopTeleportOriginPos = null; // Tọa độ lúc đứng ở shop để đo khoảng cách rời khỏi shop về nhà
     private Vec3d farmTeleportOriginPos = null; // Tọa độ lúc đứng ở farm để đo khoảng cách đã tới shop sau /shop
     private long lastSellMoneyTime = 0L; // Thời điểm nhận được log cộng tiền bán gần nhất ($80 đã được cộng...)
+    private double lastGoodSellX = Double.NaN; // Tọa độ đứng bán thực tế gần nhất khi tiền đang cộng thành công
+    private double lastGoodSellY = Double.NaN;
+    private double lastGoodSellZ = Double.NaN;
     private long depositGuiCloseUntil = 0L; // Thời điểm đóng GUI kho /pv sau khi đẩy đồ xong (F8 itemTransferDelayMs)
     private boolean npcJumpActive = false; // Đang trong cú nhảy click NPC, đợi tiếp đất mới nhảy tiếp
 
@@ -550,6 +553,11 @@ public class MacroRecorderMod {
                     || (clean.contains("+") && clean.contains("$")) || clean.contains("+$")
                     || clean.contains("đã bán thành công") || clean.contains("da ban thanh cong")) {
                 lastSellMoneyTime = System.currentTimeMillis();
+                if (mc != null && mc.player != null) {
+                    lastGoodSellX = mc.player.posX;
+                    lastGoodSellY = mc.player.posY;
+                    lastGoodSellZ = mc.player.posZ;
+                }
                 return;
             }
         }
@@ -1185,36 +1193,55 @@ public class MacroRecorderMod {
                     }
                     return true;
                 }
-                // Kiểm tra xem đã đứng sát quầy và ngắm dính bảng chưa
-                BlockPos counterTarget1E = parseGotoPos(afterShopGotoCommand);
-                double dCounter1E = 0.0;
-                if (counterTarget1E != null && mc.player != null) {
-                    double cx = (counterTarget1E.getX() + 0.5) - mc.player.posX;
-                    double cz = (counterTarget1E.getZ() + 0.5) - mc.player.posZ;
-                    dCounter1E = Math.sqrt(cx * cx + cz * cz);
+                // 1. Kiểm tra cự ly tới bảng sell mục tiêu:
+                double distToSign1E = 999.0;
+                BlockPos sign1E = SignAimHandler.targetSignPos;
+                if (sign1E != null && mc.player != null) {
+                    double eyeX = mc.player.posX;
+                    double eyeY = mc.player.posY + mc.player.getEyeHeight();
+                    double eyeZ = mc.player.posZ;
+                    double sx = (sign1E.getX() + 0.5) - eyeX;
+                    double sy = (sign1E.getY() + 0.5) - eyeY;
+                    double sz = (sign1E.getZ() + 0.5) - eyeZ;
+                    distToSign1E = Math.sqrt(sx * sx + sy * sy + sz * sz);
                 }
-                boolean atCounter1E = (dCounter1E <= 0.95);
+                boolean inReach1E = (distToSign1E <= 4.2);
                 boolean isAiming1E = SignAimHandler.isAimingAtSign(mc);
+                boolean isEntityBlocking1E = (sign1E != null && mc.objectMouseOver != null && mc.objectMouseOver.typeOfHit == RayTraceResult.Type.ENTITY);
 
-                // CHỈ THỰC HIỆN BÁN KHI ĐÃ ĐỨNG SÁT QUẦY VÀ TÂM DÍNH BẢNG (tránh vung tay/đè chuột giữa đường gây đói):
-                if (atCounter1E && isAiming1E) {
+                // Thực hiện click bán khi ở trong tầm với và tâm đang nhắm vào bảng (hoặc có entity/player đứng trước che)
+                if (inReach1E && (isAiming1E || isEntityBlocking1E)) {
                     performSellClick(mc);
                 } else {
                     releaseUseItemKey();
                 }
 
-                // 100% NHƯ NGƯỜI THẬT: NẾU TIỀN ĐANG CỘNG LIÊN TỤC THÌ TUYỆT ĐỐI ĐỨNG YÊN, KHÔNG NHÚC NHÍCH!
+                // 2. Kiểm tra dòng tiền (tiền có đang được server cộng liên tục không)
                 long now1E = System.currentTimeMillis();
-                boolean isMoneyFlowing1E = (now1E - lastSellMoneyTime < 500L);
+                long timeSinceMoney1E = now1E - lastSellMoneyTime;
+                boolean isMoneyFlowing1E = (timeSinceMoney1E < 2000L); // Server cộng tiền trong 2s gần nhất
 
-                if (isMoneyFlowing1E && atCounter1E && isAiming1E) {
-                    // Tiền đang cộng đều đặn -> Aim đang dính bảng và bán cực tốt: ĐỨNG YÊN HOÀN TOÀN!
-                    stopAllMovement();
-                    pushAwayTicks = 0;
-                    notSellingTimer = 0;
-                    sellNudgeTicks = 0;
+                // 3. XỬ LÝ DI CHUYỂN 100% NHƯ NGƯỜI THẬT:
+                // "nếu vẫn trong tầm ngắm đừng có di chuyển wasd lại, đợi khi nào không cộng tiền này kia thì mới bắt đầu nhích wasd"
+                if (inReach1E && (isAiming1E || (isEntityBlocking1E && isMoneyFlowing1E))) {
+                    if (mc.player != null) {
+                        lastGoodSellX = mc.player.posX;
+                        lastGoodSellY = mc.player.posY;
+                        lastGoodSellZ = mc.player.posZ;
+                    }
+
+                    if (isMoneyFlowing1E) {
+                        // Tiền đang cộng đều đặn và đang trong tầm ngắm: ĐỨNG YÊN 100%, TUYỆT ĐỐI KHÔNG BẤM PHÍM DI CHUYỂN WASD!
+                        stopAllMovement();
+                        pushAwayTicks = 0;
+                        notSellingTimer = 0;
+                        sellNudgeTicks = 0;
+                    } else {
+                        // Tiền đã ngừng cộng quá 2s (không cộng tiền này kia): mới bắt đầu nhích nhẹ WASD để bắt lại nhịp bán
+                        handleSellPositionRecovery(mc, SellState.SELLING_1E_ITEMS);
+                    }
                 } else {
-                    // Tiền đã ngừng cộng hoặc bị xô lệch khỏi quầy -> phản xạ bước đi bộ lại quầy ngay!
+                    // Bị đẩy văng ra xa bảng hoặc lệch hẳn tâm ngắm: phản hồi ngay sau 0.2s bước đi bộ lại quầy
                     handleSellPositionRecovery(mc, SellState.SELLING_1E_ITEMS);
                 }
                 return false;
@@ -1333,36 +1360,55 @@ public class MacroRecorderMod {
                     }
                     return true;
                 }
-                // Kiểm tra xem đã đứng sát quầy và ngắm dính bảng chưa
-                BlockPos counterTargetItems = parseGotoPos(afterShopGotoCommand);
-                double dCounterItems = 0.0;
-                if (counterTargetItems != null && mc.player != null) {
-                    double cx = (counterTargetItems.getX() + 0.5) - mc.player.posX;
-                    double cz = (counterTargetItems.getZ() + 0.5) - mc.player.posZ;
-                    dCounterItems = Math.sqrt(cx * cx + cz * cz);
+                // 1. Kiểm tra cự ly tới bảng sell mục tiêu:
+                double distToSignItems = 999.0;
+                BlockPos signItems = SignAimHandler.targetSignPos;
+                if (signItems != null && mc.player != null) {
+                    double eyeX = mc.player.posX;
+                    double eyeY = mc.player.posY + mc.player.getEyeHeight();
+                    double eyeZ = mc.player.posZ;
+                    double sx = (signItems.getX() + 0.5) - eyeX;
+                    double sy = (signItems.getY() + 0.5) - eyeY;
+                    double sz = (signItems.getZ() + 0.5) - eyeZ;
+                    distToSignItems = Math.sqrt(sx * sx + sy * sy + sz * sz);
                 }
-                boolean atCounterItems = (dCounterItems <= 0.95);
+                boolean inReachItems = (distToSignItems <= 4.2);
                 boolean isAimingItems = SignAimHandler.isAimingAtSign(mc);
+                boolean isEntityBlockingItems = (signItems != null && mc.objectMouseOver != null && mc.objectMouseOver.typeOfHit == RayTraceResult.Type.ENTITY);
 
-                // CHỈ THỰC HIỆN BÁN KHI ĐÃ ĐỨNG SÁT QUẦY VÀ TÂM DÍNH BẢNG (tránh vung tay/đè chuột giữa đường gây đói):
-                if (atCounterItems && isAimingItems) {
+                // Thực hiện click bán khi ở trong tầm với và tâm đang nhắm vào bảng (hoặc có entity/player đứng trước che)
+                if (inReachItems && (isAimingItems || isEntityBlockingItems)) {
                     performSellClick(mc);
                 } else {
                     releaseUseItemKey();
                 }
 
-                // 100% NHƯ NGƯỜI THẬT: NẾU TIỀN ĐANG CỘNG LIÊN TỤC THÌ TUYỆT ĐỐI ĐỨNG YÊN, KHÔNG NHÚC NHÍCH!
+                // 2. Kiểm tra dòng tiền (tiền có đang được server cộng liên tục không)
                 long nowItems = System.currentTimeMillis();
-                boolean isMoneyFlowingItems = (nowItems - lastSellMoneyTime < 500L);
+                long timeSinceMoneyItems = nowItems - lastSellMoneyTime;
+                boolean isMoneyFlowingItems = (timeSinceMoneyItems < 2000L); // Server cộng tiền trong 2s gần nhất
 
-                if (isMoneyFlowingItems && atCounterItems && isAimingItems) {
-                    // Tiền đang cộng đều đặn -> Aim đang dính bảng và bán cực tốt: ĐỨNG YÊN HOÀN TOÀN!
-                    stopAllMovement();
-                    pushAwayTicks = 0;
-                    notSellingTimer = 0;
-                    sellNudgeTicks = 0;
+                // 3. XỬ LÝ DI CHUYỂN 100% NHƯ NGƯỜI THẬT:
+                // "nếu vẫn trong tầm ngắm đừng có di chuyển wasd lại, đợi khi nào không cộng tiền này kia thì mới bắt đầu nhích wasd"
+                if (inReachItems && (isAimingItems || (isEntityBlockingItems && isMoneyFlowingItems))) {
+                    if (mc.player != null) {
+                        lastGoodSellX = mc.player.posX;
+                        lastGoodSellY = mc.player.posY;
+                        lastGoodSellZ = mc.player.posZ;
+                    }
+
+                    if (isMoneyFlowingItems) {
+                        // Tiền đang cộng đều đặn và đang trong tầm ngắm: ĐỨNG YÊN 100%, TUYỆT ĐỐI KHÔNG BẤM PHÍM DI CHUYỂN WASD!
+                        stopAllMovement();
+                        pushAwayTicks = 0;
+                        notSellingTimer = 0;
+                        sellNudgeTicks = 0;
+                    } else {
+                        // Tiền đã ngừng cộng quá 2s (không cộng tiền này kia): mới bắt đầu nhích nhẹ WASD để bắt lại nhịp bán
+                        handleSellPositionRecovery(mc, SellState.SELLING_ITEMS);
+                    }
                 } else {
-                    // Tiền đã ngừng cộng hoặc bị xô lệch khỏi quầy -> phản xạ bước đi bộ lại quầy ngay!
+                    // Bị đẩy văng ra xa bảng hoặc lệch hẳn tâm ngắm: phản hồi ngay sau 0.2s bước đi bộ lại quầy
                     handleSellPositionRecovery(mc, SellState.SELLING_ITEMS);
                 }
                 return false;
@@ -1393,8 +1439,8 @@ public class MacroRecorderMod {
                 }
 
                 // TUYỆT ĐỐI KHÔNG DỪNG SỚM GIỮA ĐƯỜNG!
-                // Chỉ dừng khi ĐÃ VỀ TẬN NƠI (atCenter && inReachOfSign) hoặc sau tối đa 60 ticks (3s):
-                if (sellWaitTimer >= 6 && ((atCenter && inReachOfSign) || sellWaitTimer >= 60)) {
+                // Chỉ dừng khi ĐÃ VỀ TẬN NƠI (atCenter || inReachOfSign) hoặc sau tối đa 60 ticks (3s):
+                if (sellWaitTimer >= 6 && (inReachOfSign || atCenter || sellWaitTimer >= 60)) {
                     executeClientCommand("#stop");
                     if (mc.gameSettings != null) {
                         KeyBinding.setKeyBindState(mc.gameSettings.keyBindForward.getKeyCode(), false);
@@ -2015,10 +2061,11 @@ public class MacroRecorderMod {
 
     /**
      * Tự động xử lý vị trí khi bị đẩy - 100% NHƯ NGƯỜI THẬT:
-     * - Phản xạ lập tức (0-delay): Khi bị đẩy lùi hoặc lệch khỏi quầy,
-     *   nhân vật LẬP TỨC bấm phím di chuyển (WASD) bước đi bộ trở lại quầy như người thật!
-     * - Đi bộ bình thường không sprint, không jump -> 100% không bị đói.
-     * - TUYỆT ĐỐI HẠN CHẾ #GOTO: Chỉ sử dụng #goto khi tiền mãi không được cộng (> 7s) VÀ bị đẩy văng quá xa (> 8m).
+     * - Nếu vẫn trong tầm ngắm VÀ tiền vẫn cộng: ĐỨNG YÊN 100%, KHÔNG di chuyển WASD.
+     * - Khi bị đẩy lệch tâm hoặc tiền không cộng: phản xạ cực nhạy (chỉ sau 4 ticks = 0.2s)
+     *   bước đi bộ lại vị trí bán (WASD) như người thật, không sprint gây đói.
+     * - TUYỆT ĐỐI HẠN CHẾ #GOTO: 100% cự ly thông thường đi bộ bằng WASD,
+     *   chỉ dùng #goto khi bị đẩy văng cực xa (> 8m) và kẹt quá lâu (> 5s).
      */
     private void handleSellPositionRecovery(Minecraft mc, SellState currentState) {
         if (mc == null || mc.player == null) return;
@@ -2027,7 +2074,7 @@ public class MacroRecorderMod {
         BlockPos targetSignPos = SignAimHandler.targetSignPos;
         BlockPos counterTarget = parseGotoPos(afterShopGotoCommand);
 
-        double distSqToSign = 0.0;
+        double distToSign = 999.0;
         if (targetSignPos != null) {
             double eyeX = mc.player.posX;
             double eyeY = mc.player.posY + mc.player.getEyeHeight();
@@ -2035,34 +2082,42 @@ public class MacroRecorderMod {
             double dx = (targetSignPos.getX() + 0.5) - eyeX;
             double dy = (targetSignPos.getY() + 0.5) - eyeY;
             double dz = (targetSignPos.getZ() + 0.5) - eyeZ;
-            distSqToSign = dx * dx + dy * dy + dz * dz;
+            distToSign = Math.sqrt(dx * dx + dy * dy + dz * dz);
         }
 
-        double distSqToCounter = 0.0;
+        // Tọa độ mục tiêu quay lại: ưu tiên vị trí bán tốt gần nhất mà player từng đứng bán được tiền
         double targetX = mc.player.posX;
         double targetZ = mc.player.posZ;
-
-        if (counterTarget != null) {
-            targetX = counterTarget.getX() + 0.5;
-            targetZ = counterTarget.getZ() + 0.5;
-            double cx = targetX - mc.player.posX;
-            double cz = targetZ - mc.player.posZ;
-            distSqToCounter = cx * cx + cz * cz;
+        if (!Double.isNaN(lastGoodSellX)) {
+            targetX = lastGoodSellX;
+            targetZ = lastGoodSellZ;
         } else if (targetSignPos != null) {
             targetX = targetSignPos.getX() + 0.5;
             targetZ = targetSignPos.getZ() + 0.5;
-            double sx = targetX - mc.player.posX;
-            double sz = targetZ - mc.player.posZ;
-            distSqToCounter = sx * sx + sz * sz;
+        } else if (counterTarget != null) {
+            targetX = counterTarget.getX() + 0.5;
+            targetZ = counterTarget.getZ() + 0.5;
         }
 
-        double distToCounter = Math.sqrt(distSqToCounter);
-        double distToSign = Math.sqrt(distSqToSign);
-        boolean isAiming = SignAimHandler.isAimingAtSign(mc);
+        double dx = targetX - mc.player.posX;
+        double dz = targetZ - mc.player.posZ;
+        double distToTarget = Math.sqrt(dx * dx + dz * dz);
 
-        // 1. Nếu đã ở sát quầy (<= 0.85m), trong tầm với của bảng (<= 3.8m) và ngắm dính bảng:
-        // ĐỨNG YÊN 100%, tiếp tục bán không nhúc nhích chân!
-        if (distToCounter <= 0.85 && distToSign <= 3.8 && isAiming) {
+        boolean isAiming = SignAimHandler.isAimingAtSign(mc);
+        boolean inReachOfSign = (distToSign <= 4.0);
+        long timeSinceLastMoney = System.currentTimeMillis() - lastSellMoneyTime;
+        boolean isMoneyFlowing = (timeSinceLastMoney < 2000L);
+
+        // 1. NẾU VẪN TRONG TẦM NGẮM VÀ TIỀN ĐANG CỘNG: ĐỨNG YÊN HOÀN TOÀN, KHÔNG DI CHUYỂN WASD!
+        if (inReachOfSign && isAiming && isMoneyFlowing) {
+            stopAllMovement();
+            pushAwayTicks = 0;
+            sellNudgeTicks = 0;
+            return;
+        }
+
+        // Nếu đã ở rất sát vị trí bán chuẩn (<= 0.4m) và đang ngắm dính bảng: đứng yên
+        if (distToTarget <= 0.4 && isAiming) {
             stopAllMovement();
             pushAwayTicks = 0;
             sellNudgeTicks = 0;
@@ -2071,12 +2126,10 @@ public class MacroRecorderMod {
 
         pushAwayTicks++;
 
-        // 2. CHỈ KHI TIỀN MÃI KHÔNG CỘNG (> 7 giây) VÀ BỊ ĐẨY CỰC KỲ XA (> 8.0m) HOẶC ĐI BỘ QUÁ LÂU (160 TICKS = 8.0s) MÀ VẪN BỊ KẸT:
-        // Lúc này mới cần Baritone #goto để tìm đường vòng qua chướng ngại vật
-        long timeSinceLastMoney = System.currentTimeMillis() - lastSellMoneyTime;
-        boolean moneyStagnant = timeSinceLastMoney > 7000L;
-        if (moneyStagnant && (distToCounter > 8.0 || pushAwayTicks >= 160)) {
-            System.out.println("[MacroRecorder] (F4) Tiền không cộng >7s và bị đẩy xa quầy (" + String.format("%.1f", distToCounter) + "m)! Dùng #goto để bước về quầy...");
+        // 2. TUYỆT ĐỐI HẠN CHẾ #GOTO:
+        // CHỈ dùng #goto khi bị xô văng CỰC XA (> 8.0m) VÀ tiền không cộng > 5s VÀ đã cố đi bộ 100 ticks (5.0s) mà vẫn bị kẹt
+        if (timeSinceLastMoney > 5000L && pushAwayTicks >= 100 && (distToTarget > 8.0 || distToSign > 8.0)) {
+            System.out.println("[MacroRecorder] (F4) Bị đẩy văng cực xa (>8m) hoặc kẹt chướng ngại vật >5s! Dùng #goto quay lại quầy...");
             stopAllMovement();
             releaseUseItemKey();
             executeClientCommand(afterShopGotoCommand);
@@ -2089,9 +2142,11 @@ public class MacroRecorderMod {
             return;
         }
 
-        // 3. CỰ LY BÌNH THƯỜNG: PHẢN XẠ LẬP TỨC TỪ TICK 1 (0-DELAY) - ĐI BỘ TRỞ LẠI QUẦY BẰNG PHÍM (WASD)
-        // 100% như người chơi thật, chân bước tới quầy mượt mà, không sprint gây đói!
-        walkTowards(targetX, targetZ);
+        // 3. PHẢN HỒI NHANH CHÓNG (sau 4 ticks = 0.2s - phản xạ tự nhiên của con người):
+        // Khi bị xô đẩy lệch góc hoặc tiền không cộng, bước đi bộ (WASD) trở lại vị trí bán mượt mà như người thật!
+        if (pushAwayTicks >= 4) {
+            walkTowards(targetX, targetZ);
+        }
     }
 
     /**
@@ -3227,7 +3282,9 @@ public class MacroRecorderMod {
         }
 
         // Nếu không cài đặt goto NPC: kiểm tra nếu đang ở quầy thì bán ngay, chưa ở thì đi tới quầy
-        if (isAtDestination(afterShopGotoCommand)) {
+        boolean alreadyAtCounter = isAtDestination(afterShopGotoCommand)
+                || (SignAimHandler.isPlayerAtShop(mc) && SignAimHandler.targetSignPos != null && mc.player != null && mc.player.getDistanceSq(SignAimHandler.targetSignPos) <= 25.0);
+        if (alreadyAtCounter) {
             System.out.println(
                     "[MacroRecorder] >>> (F4) Đang đứng tại quầy bán đồ (" + afterShopGotoCommand + "), kích hoạt AutoAim và bắt đầu bán ngay!");
             preStartActive = false;
@@ -3250,7 +3307,9 @@ public class MacroRecorderMod {
 
     private void processPreStartSequence() {
         preStartTimer++;
-        if (preStartTimer >= 10 && isAtDestination(afterShopGotoCommand)) {
+        boolean arrived = isAtDestination(afterShopGotoCommand)
+                || (preStartTimer >= 10 && SignAimHandler.isPlayerAtShop(mc) && SignAimHandler.targetSignPos != null && mc.player != null && mc.player.getDistanceSq(SignAimHandler.targetSignPos) <= 16.0);
+        if (preStartTimer >= 10 && arrived) {
             System.out.println("[MacroRecorder] >>> (F4) Đã tới quầy bán đồ (" + afterShopGotoCommand + "), kích hoạt AutoAim và bắt đầu bán ngay...");
             preStartActive = false;
             resetAndStartSellMacro();
@@ -3326,16 +3385,23 @@ public class MacroRecorderMod {
             mc.player.setSprinting(false);
         }
 
-        // KÍCH HOẠT AUTO-AIM: CHỈ BẬT KHI ĐÃ ĐỨNG TẬN QUẦY BÁN (isAtDestination == true):
+        // KÍCH HOẠT AUTO-AIM: CHỈ BẬT KHI ĐÃ ĐỨNG TẬN QUẦY BÁN (isAtDestination == true hoặc gần bảng):
         try {
             int cfgFarmId = ConfigHelper.getFarmItemId();
             if (cfgFarmId > 0) {
                 SignAimHandler.setupTarget(String.valueOf(cfgFarmId), false, false);
             }
             String target = SignAimHandler.getEffectiveTarget();
-            if (isAtDestination(afterShopGotoCommand)) {
+            boolean atCounter = isAtDestination(afterShopGotoCommand)
+                    || (SignAimHandler.isPlayerAtShop(mc) && SignAimHandler.targetSignPos != null && mc.player != null && mc.player.getDistanceSq(SignAimHandler.targetSignPos) <= 25.0);
+            if (atCounter) {
                 SignAimHandler.startAimLock(target);
-                System.out.println("[MacroRecorder] >>> (F4) ĐÃ TỚI QUẦY BÁN (" + afterShopGotoCommand + ")! Tự động kích hoạt AutoAim ghim bảng (" + target + ")");
+                if (mc.player != null) {
+                    lastGoodSellX = mc.player.posX;
+                    lastGoodSellY = mc.player.posY;
+                    lastGoodSellZ = mc.player.posZ;
+                }
+                System.out.println("[MacroRecorder] >>> (F4) ĐÃ TỚI QUẦY BÁN! Tự động kích hoạt AutoAim ghim bảng (" + target + ")");
             } else {
                 SignAimHandler.stopAimLock(mc);
                 System.out.println("[MacroRecorder] >>> (F4) Chưa tới quầy bán (" + afterShopGotoCommand + ") -> Đợi tới nơi mới bật AutoAim.");

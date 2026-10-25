@@ -1,5 +1,22 @@
 # CHANGELOG - AutoAimSellSign 1.12.2
 
+## [1.4.42] - 2026-10-25
+### Feature & Polish (Human-like Sell Movement, Zero-Jitter In-Aim & Instant Push Reaction)
+- **Đứng yên tuyệt đối khi đang trong tầm ngắm và tiền đang cộng**:
+  - Khi tâm ngắm đang nhắm trúng bảng bán trong cự ly tương tác (<= 4.2m) và tiền vẫn đang được server cộng liên tục (trong vòng 2 giây): Mod **khóa hoàn toàn di chuyển (`stopAllMovement()`)**, không bấm bất kỳ phím WASD nào.
+  - Khắc phục triệt để tình trạng nhân vật liên tục giật chân/strafing sang hai bên giống macro bot khi đứng bán đồ.
+- **Chỉ nhích WASD khi tiền ngừng cộng**:
+  - Chỉ khi server không cộng tiền quá 2.0s (hoặc bị xô lệch khỏi bảng) thì nhân vật mới bắt đầu nhích nhẹ WASD bước lại gần bảng để bắt lại nhịp bán.
+- **Phản xạ cực nhạy khi bị người khác xô đẩy (0.2s)**:
+  - Khi bị người chơi khác xô đẩy lệch góc hoặc văng khỏi quầy: Mod nhận diện và kích hoạt bước chân WASD đi bộ quay lại quầy chỉ sau **4 ticks (0.2s)** thay vì phải đợi 7-8 giây như trước.
+  - Lưu lại chính xác tọa độ đứng bán tốt nhất (`lastGoodSellX, Y, Z`) ngay khi nhận tiền để bước thẳng về đúng vị trí đã bán thành công.
+- **Tuyệt đối hạn chế lệnh `#goto` Baritone**:
+  - 100% các tình huống bị đẩy bình thường (cự ly gần và trung bình <= 8.0m) đều tự động đi bộ tự nhiên bằng phím WASD, không bao giờ spam lệnh Baritone `#goto`.
+  - Chỉ kích hoạt `#goto` như phương án cứu kẹt khẩn cấp duy nhất khi bị văng cực xa (> 8.0m) và kẹt chướng ngại vật quá 5 giây.
+- **Bắt đầu bán ngay tại chỗ nếu đã đứng sẵn ở quầy**:
+  - Khi bật F4 nếu nhân vật đã đứng gần quầy bán hoặc gần bảng mục tiêu, mod kích hoạt ngay AutoAim và bán đồ tại chỗ, không chạy lại lệnh `#goto` thừa.
+
+
 ## [1.4.41] - 2026-10-24
 ### Feature & Bugfix (Custom /sethome & /home on GUI F8 & Multi-Item Farm Fix)
 - **Đưa lệnh `/sethome` và `/home` lên trực tiếp giao diện GUI F8 (Không còn lệnh set cứng)**:

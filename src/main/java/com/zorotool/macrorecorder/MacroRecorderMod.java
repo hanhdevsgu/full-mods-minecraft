@@ -1183,13 +1183,11 @@ public class MacroRecorderMod {
                     }
                     return true;
                 }
+                SignAimHandler.ensureSignMouseOver(mc);
                 boolean lookingAtBuySign1E = SignAimHandler.isLookingAtAnyBuySign(mc);
-                boolean canSell1E = !lookingAtBuySign1E && (SignAimHandler.isAimingAtSign(mc) || SignAimHandler.isFacingTargetSign(mc));
+                boolean canSell1E = !lookingAtBuySign1E && SignAimHandler.isPlayerAtSignToSell(mc);
                 if (canSell1E) {
                     holdUseItemKey();
-                    if (mc.player != null && mc.player.ticksExisted % 2 == 0) {
-                        SignAimHandler.clickTargetSign();
-                    }
                 } else {
                     releaseUseItemKey();
                 }
@@ -1328,13 +1326,11 @@ public class MacroRecorderMod {
                     }
                     return true;
                 }
+                SignAimHandler.ensureSignMouseOver(mc);
                 boolean lookingAtBuySign = SignAimHandler.isLookingAtAnyBuySign(mc);
-                boolean canSell = !lookingAtBuySign && (SignAimHandler.isAimingAtSign(mc) || SignAimHandler.isFacingTargetSign(mc));
+                boolean canSell = !lookingAtBuySign && SignAimHandler.isPlayerAtSignToSell(mc);
                 if (canSell) {
                     holdUseItemKey();
-                    if (mc.player != null && mc.player.ticksExisted % 2 == 0) {
-                        SignAimHandler.clickTargetSign();
-                    }
                 } else {
                     releaseUseItemKey();
                 }
@@ -1363,7 +1359,7 @@ public class MacroRecorderMod {
                     distSqToCenter = ddx * ddx + ddz * ddz;
                 }
                 boolean atCenter = distSqToCenter <= 0.64;
-                boolean canAimAgain = (SignAimHandler.isAimingAtSign(mc) || SignAimHandler.isFacingTargetSign(mc)) && !SignAimHandler.isLookingAtAnyBuySign(mc);
+                boolean canAimAgain = SignAimHandler.isPlayerAtSignToSell(mc) && !SignAimHandler.isLookingAtAnyBuySign(mc);
                 if (sellWaitTimer >= 8 && (atCenter || canAimAgain || sellWaitTimer >= 60)) {
                     executeClientCommand("#stop");
                     if (mc.gameSettings != null) {

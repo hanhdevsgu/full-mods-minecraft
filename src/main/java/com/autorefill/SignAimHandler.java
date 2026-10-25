@@ -1165,22 +1165,21 @@ public class SignAimHandler {
 
         // 2. NẾU BỊ CHE BẢNG (người chơi khác hoặc entity đứng che chắn phía trước):
         // Server cho phép bán khi bị che trước mặt.
-        // Kiểm tra xem góc nhìn (pitch/yaw) đang hướng thẳng về bảng sell và cự ly trong tầm với:
-        double eyeX = mc.player.posX;
-        double eyeY = mc.player.posY + mc.player.getEyeHeight();
-        double eyeZ = mc.player.posZ;
+        // Chỉ cho phép khi cự ly sát quầy <= 2.3m (distSq <= 5.3):
+        double distSq = mc.player.getDistanceSqToCenter(targetSignPos);
+        if (distSq <= 5.3) {
+            double eyeX = mc.player.posX;
+            double eyeY = mc.player.posY + mc.player.getEyeHeight();
+            double eyeZ = mc.player.posZ;
 
-        double signCenterX = targetSignPos.getX() + 0.5;
-        double signCenterY = targetSignPos.getY() + 0.5 + yOffset;
-        double signCenterZ = targetSignPos.getZ() + 0.5;
+            double signCenterX = targetSignPos.getX() + 0.5;
+            double signCenterY = targetSignPos.getY() + 0.5 + yOffset;
+            double signCenterZ = targetSignPos.getZ() + 0.5;
 
-        double dx = signCenterX - eyeX;
-        double dy = signCenterY - eyeY;
-        double dz = signCenterZ - eyeZ;
-        double distSq = dx * dx + dy * dy + dz * dz;
+            double dx = signCenterX - eyeX;
+            double dy = signCenterY - eyeY;
+            double dz = signCenterZ - eyeZ;
 
-        // Cự ly tới bảng trong tầm với (<= 4.2m -> distSq <= 17.64):
-        if (distSq <= 17.64) {
             float targetYaw = (float) (MathHelper.atan2(dz, dx) * (180.0 / Math.PI)) - 90.0F;
             double distXZ = Math.sqrt(dx * dx + dz * dz);
             float targetPitch = (float) (-(MathHelper.atan2(dy, distXZ) * (180.0 / Math.PI)));
@@ -1228,8 +1227,8 @@ public class SignAimHandler {
     public static boolean isFacingTargetSign(Minecraft mc) {
         if (mc == null || mc.player == null || targetSignPos == null) return false;
         EntityPlayerSP player = mc.player;
-        double distSq = player.getDistanceSq(targetSignPos);
-        if (distSq > 36.0) return false; // trong cự ly 6 block
+        double distSq = player.getDistanceSqToCenter(targetSignPos);
+        if (distSq > 5.3) return false; // Chỉ trong cự ly sát quầy <= 2.3m
 
         double eyeX = player.posX;
         double eyeY = player.posY + player.getEyeHeight();
@@ -1247,33 +1246,66 @@ public class SignAimHandler {
         float targetPitch = (float) (MathHelper.atan2(dy, dist) * (180.0 / Math.PI));
         float deltaYaw = Math.abs(MathHelper.wrapDegrees(targetYaw - player.rotationYaw));
         float deltaPitch = Math.abs(targetPitch - player.rotationPitch);
-        return deltaYaw <= 50.0F && deltaPitch <= 50.0F;
+        return deltaYaw <= 35.0F && deltaPitch <= 35.0F;
     }
 
     /**
-     * Bán đồ tự động 100% NHƯ NGƯỜI THẬT:
-     * Sử dụng phím chuột phải chuẩn của Minecraft (KeyBinding useItem),
-     * TUYỆT ĐỐI KHÔNG can thiệp bắn packet thủ công để không bao giờ bị server diss/kick ra lobby!
+     * Kiểm tra người chơi có đang đứng đúng vị trí quầy bán và hướng về bảng không.
+     * Cực kỳ chặt chẽ: nếu bị đẩy lùi > 2.3m thì NGAY LẬP TỨC trả về false để nhả chuột phải!
+     */
+    public static boolean isPlayerAtSignToSell(Minecraft mc) {
+        if (mc == null || mc.player == null || mc.world == null || targetSignPos == null) return false;
+        double distSq = mc.player.getDistanceSqToCenter(targetSignPos);
+        if (distSq > 5.3) {
+            return false;
+        }
+        return isAimingAtSign(mc) || isFacingTargetSign(mc);
+    }
+
+    /**
+     * Khi có người chơi khác đứng nhảy nhót chắn trước mặt:
+     * Tự động raytrace xuyên qua entity để tìm block bảng bán phía sau.
+     * Nếu tìm thấy, gán mc.objectMouseOver = blockHit để vanilla Minecraft tự động
+     * kích hoạt chuột phải vào bảng 100% tự nhiên mà không cần can thiệp packet!
+     */
+    public static void ensureSignMouseOver(Minecraft mc) {
+        if (mc == null || mc.player == null || mc.world == null || targetSignPos == null) return;
+        double distSq = mc.player.getDistanceSqToCenter(targetSignPos);
+        if (distSq > 5.3) return; // Chỉ áp dụng trong cự ly sát quầy
+
+        if (mc.objectMouseOver != null && mc.objectMouseOver.typeOfHit == RayTraceResult.Type.ENTITY) {
+            Vec3d eye = mc.player.getPositionEyes(1.0F);
+            Vec3d look = mc.player.getLook(1.0F);
+            Vec3d reachVec = eye.addVector(look.x * 3.5, look.y * 3.5, look.z * 3.5);
+            RayTraceResult blockHit = mc.world.rayTraceBlocks(eye, reachVec, false, false, false);
+            if (blockHit != null && blockHit.typeOfHit == RayTraceResult.Type.BLOCK && targetSignPos.equals(blockHit.getBlockPos())) {
+                mc.objectMouseOver = blockHit;
+            }
+        }
+    }
+
+    /**
+     * Bán đồ an toàn chuẩn vanilla:
+     * Chỉ thực hiện khi có objectMouseOver thực sự trúng bảng và ở cự ly <= 2.3m.
+     * Tuyệt đối không bao giờ gửi packet dị dạng EnumFacing.UP ở cự ly xa!
      */
     public static boolean clickTargetSign() {
         Minecraft mc = Minecraft.getMinecraft();
-        if (mc.world == null || mc.player == null || mc.playerController == null || targetSignPos == null) {
+        if (mc == null || mc.world == null || mc.player == null || mc.playerController == null || targetSignPos == null) {
             return false;
         }
-        if (!SignAimHandler.isAimingAtSign(mc) && !SignAimHandler.isFacingTargetSign(mc)) {
+        if (!isPlayerAtSignToSell(mc)) {
             return false;
         }
-        EnumFacing facing = EnumFacing.UP;
-        Vec3d hitVec = new Vec3d((double) targetSignPos.getX() + 0.5, (double) targetSignPos.getY() + 0.5, (double) targetSignPos.getZ() + 0.5);
+        ensureSignMouseOver(mc);
         if (mc.objectMouseOver != null && mc.objectMouseOver.typeOfHit == RayTraceResult.Type.BLOCK && targetSignPos.equals(mc.objectMouseOver.getBlockPos())) {
-            facing = mc.objectMouseOver.sideHit;
-            hitVec = mc.objectMouseOver.hitVec;
+            mc.playerController.processRightClickBlock(mc.player, mc.world, targetSignPos, mc.objectMouseOver.sideHit, mc.objectMouseOver.hitVec, EnumHand.MAIN_HAND);
+            if (!mc.player.isSwingInProgress || mc.player.swingProgressInt >= 3) {
+                mc.player.swingArm(EnumHand.MAIN_HAND);
+            }
+            return true;
         }
-        mc.playerController.processRightClickBlock(mc.player, mc.world, targetSignPos, facing, hitVec, EnumHand.MAIN_HAND);
-        if (mc.player != null && (!mc.player.isSwingInProgress || mc.player.swingProgressInt >= 3)) {
-            mc.player.swingArm(EnumHand.MAIN_HAND);
-        }
-        return true;
+        return false;
     }
 
     @SubscribeEvent
@@ -1281,6 +1313,7 @@ public class SignAimHandler {
         if (event.phase != TickEvent.Phase.START) return;
         Minecraft mc = Minecraft.getMinecraft();
         updateCameraSmooth(mc, event.renderTickTime);
+        ensureSignMouseOver(mc);
     }
 
     private static boolean isAnotherPlayerBlocking(Minecraft mc, EntityPlayerSP player) {
@@ -1326,7 +1359,7 @@ public class SignAimHandler {
             double dz = player.posZ - ((double) targetSignPos.getZ() + 0.5);
             double distXZ = Math.sqrt(dx * dx + dz * dz);
             boolean playerBlockingAhead = SignAimHandler.isAnotherPlayerBlocking(mc, player);
-            if (distXZ > 2.2) {
+            if (distXZ > 1.8) {
                 double toSignX = (double) targetSignPos.getX() + 0.5 - player.posX;
                 double toSignZ = (double) targetSignPos.getZ() + 0.5 - player.posZ;
                 float moveAngle = (float) (MathHelper.atan2(toSignZ, toSignX) * (180.0 / Math.PI)) - 90.0f;
@@ -1364,6 +1397,7 @@ public class SignAimHandler {
         if (mc.player == null || mc.world == null || mc.gameSettings == null) return;
         if (mc.currentScreen != null) return; // Tạm dừng nếu đang mở chat/menu
 
+        ensureSignMouseOver(mc);
         EntityPlayerSP player = mc.player;
 
         // Quét tự động chuyển bảng mỗi 5 tick (0.25s) khi người chơi bước sang bảng khác

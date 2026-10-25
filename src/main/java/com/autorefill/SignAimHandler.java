@@ -1247,17 +1247,6 @@ public class SignAimHandler {
      * không bao giờ bị server kick văng ra lobby.
      */
     @SubscribeEvent
-    public void onInputUpdate(InputUpdateEvent event) {
-        if (!isAimLockActive || targetSignPos == null) return;
-        Minecraft mc = Minecraft.getMinecraft();
-        if (mc.player == null) return;
-        if (isPlayerAtShop(mc)) {
-            if (isAutoWalking) stopAutoWalk(mc);
-            return;
-        }
-    }
-
-    @SubscribeEvent
     public void onClientTick(TickEvent.ClientTickEvent event) {
         if (event.phase != TickEvent.Phase.END) return;
         if (!isAimLockActive) return;
@@ -1267,8 +1256,9 @@ public class SignAimHandler {
         if (mc.currentScreen != null) return; // Tạm dừng nếu đang mở chat/menu
 
         EntityPlayerSP player = mc.player;
-        // Chỉ hoạt động khi người chơi ở quầy Shop
-        if (!isPlayerAtShop(mc)) {
+
+        // Chỉ tắt AimLock khi người chơi ở quá xa bảng mục tiêu (> 25 block)
+        if (targetSignPos != null && player.getDistanceSq(targetSignPos) > 625.0) {
             stopAimLock(mc);
             return;
         }
@@ -1276,70 +1266,6 @@ public class SignAimHandler {
         // Quét tự động chuyển bảng mỗi 5 tick (0.25s) khi người chơi bước sang bảng khác
         if (player.ticksExisted % 5 == 0) {
             scanAndSwitchTargetSign(mc);
-        }
-
-        if (targetSignPos == null) {
-            if (isAutoWalking) stopAutoWalk(mc);
-            if (player.ticksExisted % 5 == 0) {
-                if (findTargetSign(getEffectiveTarget())) {
-                    if (mc.player != null) {
-                        anchorPos = new Vec3d(mc.player.posX, mc.player.posY, mc.player.posZ);
-                        mc.player.sendMessage(new TextComponentString(TextFormatting.GREEN + 
-                            "[AutoAim] Đã tới quầy! Tự động chỉa và ghim vào bảng: " + targetDisplayName));
-                    }
-                }
-            }
-            return;
-        }
-
-        // ĐIỀU KIỆN 100% NGƯỜI THẬT:
-        // "miễn sao vẫn trong tầm ngắm thì ko di chuyển gì hết"
-        // "nếu ra khỏi tầm nhắm bán ko lên tiền thì mới bắt đầu di chuyển"
-        if (isAimingAtSign(mc) || isFacingTargetSign(mc)) {
-            // ĐANG TRONG TẦM NGẮM BÁN ĐƯỢC TIỀN: ĐỨNG YÊN HOÀN TOÀN!
-            if (isAutoWalking) {
-                stopAutoWalk(mc);
-            }
-            outOfRangeTicks = 0;
-            stuckTicks = 0;
-        } else {
-            // RA KHỎI TẦM NGẮM (bị đẩy ra quá xa hoặc bị người khác che chắn không bán được):
-            if (autoReturnEnabled && !isWarmupActive) {
-                outOfRangeTicks++;
-
-                // Phản xạ tự nhiên: sau 8 tick (0.4s) không ngắm được bảng mới bắt đầu di chuyển tìm lại góc ngắm
-                if (!isAutoWalking && outOfRangeTicks >= 8) {
-                    isAutoWalking = true;
-                    stuckTicks = 0;
-                    lastCheckX = player.posX;
-                    lastCheckZ = player.posZ;
-                }
-
-                if (isAutoWalking) {
-                    player.setSprinting(false);
-
-                    // Khi vừa vào lại tầm ngắm trúng bảng: DỪNG LẠI NGAY LẬP TỨC!
-                    if (isAimingAtSign(mc)) {
-                        stopAutoWalk(mc);
-                        outOfRangeTicks = 0;
-                        stuckTicks = 0;
-                    } else if (player.collidedHorizontally) {
-                        double moved = Math.sqrt(Math.pow(player.posX - lastCheckX, 2) + Math.pow(player.posZ - lastCheckZ, 2));
-                        if (moved < 0.03) {
-                            stuckTicks++;
-                        }
-                        if (stuckTicks >= 6) {
-                            stopAutoWalk(mc);
-                            outOfRangeTicks = 0;
-                            stuckTicks = 0;
-                        }
-                    } else {
-                        stuckTicks = 0;
-                    }
-                    lastCheckX = player.posX;
-                    lastCheckZ = player.posZ;
-                }
-            }
         }
     }
 

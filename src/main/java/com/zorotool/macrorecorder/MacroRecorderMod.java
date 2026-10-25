@@ -1090,7 +1090,9 @@ public class MacroRecorderMod {
 
             case WAITING_AFTER_SHOP_GOTO_DELAY:
                 waitTimer++;
-                if (isAtDestination(afterShopGotoCommand)) {
+                // Chờ ít nhất 10 ticks (0.5s) sau khi gửi lệnh để Baritone thực sự bắt đầu bước đi,
+                // và CHỈ chuyển sang bán khi ĐÃ TỚI TẬN QUẦY (isAtDestination == true):
+                if (waitTimer >= 10 && isAtDestination(afterShopGotoCommand)) {
                     System.out.println(
                             "[MacroRecorder] Đã tới vị trí bán đồ sau shop (" + afterShopGotoCommand + "), kích hoạt AutoAim và bắt đầu bán F4 ngay...");
                     isRunning = false;
@@ -1674,10 +1676,11 @@ public class MacroRecorderMod {
             return true;
         double dx = mc.player.posX - (target.getX() + 0.5);
         double dz = mc.player.posZ - (target.getZ() + 0.5);
-        boolean horizontalMatch = (dx * dx + dz * dz) <= 4.0; // Trong cự ly 2.0 block
+        // Trong cự ly 0.8 block (dx^2 + dz^2 <= 0.64) - phải tới tận nơi mới coi là đã đến quầy
+        boolean horizontalMatch = (dx * dx + dz * dz) <= 0.64;
         if (target.getY() != -999) {
             double dy = Math.abs(mc.player.posY - target.getY());
-            return horizontalMatch && (dy <= 2.5); // Khớp cả độ cao Y nếu lệnh có tọa độ Y
+            return horizontalMatch && (dy <= 1.5); // Khớp cả độ cao Y nếu lệnh có tọa độ Y
         }
         return horizontalMatch;
     }
@@ -1950,7 +1953,6 @@ public class MacroRecorderMod {
     private void releaseUseItemKey() {
         if (mc != null && mc.gameSettings != null) {
             KeyBinding.setKeyBindState(mc.gameSettings.keyBindUseItem.getKeyCode(), false);
-            KeyBinding.setKeyBindState(mc.gameSettings.keyBindForward.getKeyCode(), false);
         }
     }
 
@@ -1958,10 +1960,19 @@ public class MacroRecorderMod {
 
     private void walkTowards(double targetX, double targetZ) {
         if (mc == null || mc.gameSettings == null || mc.player == null) return;
+        // Tuyệt đối không sprint hoặc jump khi đi bộ lại quầy -> 100% không hao thức ăn (giữ nguyên thanh feed)
         mc.player.setSprinting(false);
+        if (mc.gameSettings.keyBindSprint != null) {
+            KeyBinding.setKeyBindState(mc.gameSettings.keyBindSprint.getKeyCode(), false);
+        }
+        if (mc.gameSettings.keyBindJump != null) {
+            KeyBinding.setKeyBindState(mc.gameSettings.keyBindJump.getKeyCode(), false);
+        }
+
         double dx = targetX - mc.player.posX;
         double dz = targetZ - mc.player.posZ;
-        float desiredYaw = (float) (MathHelper.atan2(dx, -dz) * (180.0 / Math.PI));
+        // Chuẩn hệ tọa độ Minecraft: Yaw 0 = +Z (Nam), 90 = -X (Tây), 180 = -Z (Bắc), 270/-90 = +X (Đông)
+        float desiredYaw = (float) (MathHelper.atan2(dz, dx) * (180.0 / Math.PI)) - 90.0F;
         float diffYaw = MathHelper.wrapDegrees(desiredYaw - mc.player.rotationYaw);
 
         boolean pressW = false;
@@ -1969,7 +1980,7 @@ public class MacroRecorderMod {
         boolean pressA = false;
         boolean pressD = false;
 
-        // Góc nhìn trùng hướng tới quầy: bấm W tiến tới
+        // Góc nhìn hướng về quầy: bấm W tiến tới tự nhiên 100% như người chơi thật
         if (diffYaw >= -67.5f && diffYaw <= 67.5f) {
             pressW = true;
         } else if (diffYaw > 112.5f || diffYaw < -112.5f) {
@@ -1994,15 +2005,20 @@ public class MacroRecorderMod {
             KeyBinding.setKeyBindState(mc.gameSettings.keyBindBack.getKeyCode(), false);
             KeyBinding.setKeyBindState(mc.gameSettings.keyBindLeft.getKeyCode(), false);
             KeyBinding.setKeyBindState(mc.gameSettings.keyBindRight.getKeyCode(), false);
+            KeyBinding.setKeyBindState(mc.gameSettings.keyBindJump.getKeyCode(), false);
+            KeyBinding.setKeyBindState(mc.gameSettings.keyBindSprint.getKeyCode(), false);
+        }
+        if (mc != null && mc.player != null) {
+            mc.player.setSprinting(false);
         }
     }
 
     /**
      * Tự động xử lý vị trí khi bị đẩy - 100% NHƯ NGƯỜI THẬT:
-     * - Phản xạ lập tức (0.2s): Khi bị đẩy lùi hoặc lệch góc không bán được tiền,
+     * - Phản xạ lập tức (0-delay): Khi bị đẩy lùi hoặc lệch khỏi quầy,
      *   nhân vật LẬP TỨC bấm phím di chuyển (WASD) bước đi bộ trở lại quầy như người thật!
-     * - Cự ly gần & trung bình (<= 6.5m): 100% ĐI BỘ BẰNG PHÍM, TUYỆT ĐỐI KHÔNG spam #goto Baritone tránh lộ bot.
-     * - CHỈ KHI BỊ ĐẨY CỰC XA (> 6.5m) hoặc đi bộ 3s mà vẫn bị kẹt góc: Lúc này mới dùng #goto.
+     * - Đi bộ bình thường không sprint, không jump -> 100% không bị đói.
+     * - TUYỆT ĐỐI HẠN CHẾ #GOTO: Chỉ sử dụng #goto khi tiền mãi không được cộng (> 7s) VÀ bị đẩy văng quá xa (> 8m).
      */
     private void handleSellPositionRecovery(Minecraft mc, SellState currentState) {
         if (mc == null || mc.player == null) return;
@@ -2055,10 +2071,12 @@ public class MacroRecorderMod {
 
         pushAwayTicks++;
 
-        // 2. CHỈ KHI BỊ ĐẨY CỰC KỲ XA (> 6.5m) HOẶC ĐI BỘ QUÁ 60 TICKS (3.0s) MÀ VẪN BỊ KẸT:
+        // 2. CHỈ KHI TIỀN MÃI KHÔNG CỘNG (> 7 giây) VÀ BỊ ĐẨY CỰC KỲ XA (> 8.0m) HOẶC ĐI BỘ QUÁ LÂU (160 TICKS = 8.0s) MÀ VẪN BỊ KẸT:
         // Lúc này mới cần Baritone #goto để tìm đường vòng qua chướng ngại vật
-        if (distToCounter > 6.5 || pushAwayTicks >= 60) {
-            System.out.println("[MacroRecorder] (F4) Bị đẩy văng quá xa quầy (" + String.format("%.1f", distToCounter) + "m)! Dùng #goto để bước về quầy...");
+        long timeSinceLastMoney = System.currentTimeMillis() - lastSellMoneyTime;
+        boolean moneyStagnant = timeSinceLastMoney > 7000L;
+        if (moneyStagnant && (distToCounter > 8.0 || pushAwayTicks >= 160)) {
+            System.out.println("[MacroRecorder] (F4) Tiền không cộng >7s và bị đẩy xa quầy (" + String.format("%.1f", distToCounter) + "m)! Dùng #goto để bước về quầy...");
             stopAllMovement();
             releaseUseItemKey();
             executeClientCommand(afterShopGotoCommand);
@@ -2071,11 +2089,9 @@ public class MacroRecorderMod {
             return;
         }
 
-        // 3. CỰ LY BÌNH THƯỜNG (0.85m - 6.5m): PHẢN XẠ LẬP TỨC SAU 4 TICKS (0.2s) - ĐI BỘ TRỞ LẠI QUẦY BẰNG PHÍM
-        // Tuyệt đối không dùng #goto, chân bước tới quầy mượt mà tự nhiên 100% như người chơi thật bấm phím!
-        if (pushAwayTicks >= 4) {
-            walkTowards(targetX, targetZ);
-        }
+        // 3. CỰ LY BÌNH THƯỜNG: PHẢN XẠ LẬP TỨC TỪ TICK 1 (0-DELAY) - ĐI BỘ TRỞ LẠI QUẦY BẰNG PHÍM (WASD)
+        // 100% như người chơi thật, chân bước tới quầy mượt mà, không sprint gây đói!
+        walkTowards(targetX, targetZ);
     }
 
     /**
@@ -3234,7 +3250,7 @@ public class MacroRecorderMod {
 
     private void processPreStartSequence() {
         preStartTimer++;
-        if (isAtDestination(afterShopGotoCommand)) {
+        if (preStartTimer >= 10 && isAtDestination(afterShopGotoCommand)) {
             System.out.println("[MacroRecorder] >>> (F4) Đã tới quầy bán đồ (" + afterShopGotoCommand + "), kích hoạt AutoAim và bắt đầu bán ngay...");
             preStartActive = false;
             resetAndStartSellMacro();
@@ -3310,20 +3326,19 @@ public class MacroRecorderMod {
             mc.player.setSprinting(false);
         }
 
-        // KÍCH HOẠT AUTO-AIM NGAY LẬP TỨC:
+        // KÍCH HOẠT AUTO-AIM: CHỈ BẬT KHI ĐÃ ĐỨNG TẬN QUẦY BÁN (isAtDestination == true):
         try {
             int cfgFarmId = ConfigHelper.getFarmItemId();
             if (cfgFarmId > 0) {
                 SignAimHandler.setupTarget(String.valueOf(cfgFarmId), false, false);
             }
             String target = SignAimHandler.getEffectiveTarget();
-            boolean foundSign = SignAimHandler.findTargetSign(target, false);
-            if (isAtDestination(afterShopGotoCommand) || foundSign) {
+            if (isAtDestination(afterShopGotoCommand)) {
                 SignAimHandler.startAimLock(target);
-                System.out.println("[MacroRecorder] >>> (F4) Tự động kích hoạt ngay lập tức AutoAim ghim bảng Sell (" + target + ") tại Y=" + (int) mc.player.posY);
+                System.out.println("[MacroRecorder] >>> (F4) ĐÃ TỚI QUẦY BÁN (" + afterShopGotoCommand + ")! Tự động kích hoạt AutoAim ghim bảng (" + target + ")");
             } else {
                 SignAimHandler.stopAimLock(mc);
-                System.out.println("[MacroRecorder] >>> (F4) Chưa tới quầy bán và chưa thấy bảng (" + target + ") -> Tạm dừng AutoAim.");
+                System.out.println("[MacroRecorder] >>> (F4) Chưa tới quầy bán (" + afterShopGotoCommand + ") -> Đợi tới nơi mới bật AutoAim.");
             }
         } catch (Exception e) {
             System.out.println("[MacroRecorder] Lỗi kích hoạt AutoAim: " + e);

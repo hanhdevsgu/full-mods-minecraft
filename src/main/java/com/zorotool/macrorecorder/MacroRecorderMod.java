@@ -1161,18 +1161,6 @@ public class MacroRecorderMod {
      * cho AutoEject của Impact vứt rác -> chạy F9.
      */
     private boolean processSellState() {
-        // KIỂM TRA RÁC THỜI GIAN THỰC (REAL-TIME TRASH DETECTION):
-        // Nếu phát hiện dính rác trong túi đồ (ngoài cây kiếm/vũ khí đang cầm trên tay và thức ăn sinh tồn):
-        if (sellState != SellState.SENDING_HOME && sellState != SellState.WAITING_TELEPORT_HOME
-                && sellState != SellState.WAITING_HOME_SETTLE) {
-            if (hasTrashInInventory()) {
-                int dropped = dropAllTrashFromInventory();
-                if (dropped > 0) {
-                    System.out.println("[MacroRecorder] (F4) Phát hiện túi đồ dính rác -> Đã tự động Q vứt " + dropped + " stack rác ra ngoài đất!");
-                }
-            }
-        }
-
         switch (sellState) {
 
             case SELLING_1E_ITEMS:
@@ -1820,7 +1808,7 @@ public class MacroRecorderMod {
         if (container == null)
             return 0;
 
-        // 1. Vứt toàn bộ rác trên thanh Hotbar (chỉ slot 1..8, TUYỆT ĐỐI BỎ QUA slot 0 và ô đang cầm originalHeld)
+        // 1. Vứt rác trên Hotbar (chỉ slot 1..8, bỏ qua slot 0 và ô đang cầm originalHeld)
         for (int hotbarIdx = 1; hotbarIdx < 9; hotbarIdx++) {
             if (hotbarIdx == originalHeld) continue;
             ItemStack stack = mc.player.inventory.mainInventory.get(hotbarIdx);
@@ -1831,16 +1819,16 @@ public class MacroRecorderMod {
             }
         }
 
-        // 2. Vứt toàn bộ rác trong 27 ô túi đồ chính (slot 9 -> 35):
-        // Dùng ClickType.THROW (mouseButton = 1 tương đương Ctrl+Q) trực tiếp từ slot đồ,
-        // TUYỆT ĐỐI không swap làm ảnh hưởng đến ô Hotbar 1 hoặc ô vũ khí!
+        // 2. Vứt rác trong 27 ô túi đồ chính của ContainerPlayer (slot 9..35 trong container):
         for (int slotNum = 9; slotNum <= 35; slotNum++) {
             Slot slot = container.getSlot(slotNum);
             if (slot != null && slot.getHasStack() && !slot.getStack().isEmpty()) {
                 ItemStack stack = slot.getStack();
+                // Chỉ số trong mainInventory tương ứng là slotNum:
                 if (isTrashStack(slotNum, stack, originalHeld)) {
                     mc.playerController.windowClick(0, slotNum, 1, ClickType.THROW, mc.player);
                     droppedCount++;
+                    break; // Mỗi lần chỉ vứt 1 stack để không spam packet khiến server kick!
                 }
             }
         }
@@ -2146,12 +2134,10 @@ public class MacroRecorderMod {
         // Luôn giải phóng keyBindUseItem để chuột hoàn toàn tự do:
         releaseUseItemKey();
 
-        // 3. TƯƠNG TÁC TRỰC TIẾP LÊN CHÍNH XÁC BẢNG SELL MỤC TIÊU:
-        // Sử dụng processRightClickBlock trực tiếp vào targetSignPos mỗi 2 tick.
-        // Bằng cách này, dù có người đứng che trước mặt nhảy nhót hay che bảng thì click vẫn
-        // gửi chính xác vào bảng sell, 100% không chạm vào người khác và 100% không bị văng ra lobby!
+        // 3. TƯƠNG TÁC LÊN BẢNG SELL MỤC TIÊU VỚI TỐC ĐỘ CHUẨN (4 ticks = 5 CPS):
+        // Không spam liên tục 2 ticks (10 CPS) làm kích hoạt packet limiter của server/BungeeCord!
         signBlockClickCooldown++;
-        if (signBlockClickCooldown >= 2) {
+        if (signBlockClickCooldown >= 4) {
             signBlockClickCooldown = 0;
             Vec3d hitVec = new Vec3d(targetSignPos.getX() + 0.5, targetSignPos.getY() + 0.5, targetSignPos.getZ() + 0.5);
             if (mc.playerController != null) {

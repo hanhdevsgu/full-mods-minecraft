@@ -1120,11 +1120,10 @@ public class MacroRecorderMod {
                     }
                     return true;
                 }
-                // Đè chuột phải người thật (khi tâm ngắm đang trúng bảng BÁN):
+                // Đè chuột phải người thật:
                 // Nếu đang nhìn vào bảng Buy hoặc bảng phía dưới: TUYỆT ĐỐI KHÔNG CLICK!
-                SignAimHandler.ensureSignMouseOver(mc);
-                boolean lookingAtBuySign1E = SignAimHandler.isLookingAtAnyBuySign(mc);
-                boolean canSell1E = !lookingAtBuySign1E && SignAimHandler.canSellTargetSign(mc);
+                // Bán xuyên người chơi đứng che chắn phía trước bảng:
+                boolean canSell1E = SignAimHandler.canSellTargetSign(mc);
 
                 if (canSell1E) {
                     holdUseItemKey();
@@ -1268,11 +1267,10 @@ public class MacroRecorderMod {
                     }
                     return true;
                 }
-                // Đè chuột phải người thật (khi tâm ngắm đang trúng bảng BÁN):
+                // Đè chuột phải người thật:
                 // Nếu đang nhìn vào bảng Buy hoặc bảng phía dưới: TUYỆT ĐỐI KHÔNG CLICK!
-                SignAimHandler.ensureSignMouseOver(mc);
-                boolean lookingAtBuySign = SignAimHandler.isLookingAtAnyBuySign(mc);
-                boolean canSell = !lookingAtBuySign && SignAimHandler.canSellTargetSign(mc);
+                // Bán xuyên người chơi đứng che chắn phía trước bảng:
+                boolean canSell = SignAimHandler.canSellTargetSign(mc);
 
                 if (canSell) {
                     holdUseItemKey();

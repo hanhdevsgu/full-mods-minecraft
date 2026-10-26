@@ -706,18 +706,11 @@ public class SignAimHandler {
         // Nếu đang mở menu màn hình (ESC, chat, hòm đồ) -> không can thiệp góc nhìn
         if (mc.currentScreen != null) return;
 
-        // TUYỆT ĐỐI KHÔNG CHIẾM CHUỘT:
-        // Cho phép dung sai rung tay chuột (threshold 10 khi đang chạy macro bán đồ, 4 khi ghim tay)
-        // để chuột có DPI cao/tay chạm nhẹ không bị đứng im góc nhìn
-        int mouseThreshold = (com.zorotool.macrorecorder.MacroRecorderMod.getInstance() != null 
-                && com.zorotool.macrorecorder.MacroRecorderMod.getInstance().isSellMacroRunning()) ? 12 : 4;
-        if (mc.inGameHasFocus && mc.mouseHelper != null && (Math.abs(mc.mouseHelper.deltaX) > mouseThreshold || Math.abs(mc.mouseHelper.deltaY) > mouseThreshold)) {
+        if (mc.inGameHasFocus && mc.mouseHelper != null && (Math.abs(mc.mouseHelper.deltaX) > 1 || Math.abs(mc.mouseHelper.deltaY) > 1)) {
             return;
         }
 
-        // Khi người chơi đã ngắm trúng bảng (hoặc ngắm xuyên qua entity trúng bảng) VÀ không bị ai xô đẩy:
-        // TUYỆT ĐỐI KHÔNG can thiệp xoay hay rung lắc camera, để người chơi hoàn toàn tự do lia chuột!
-        if ((isAimingAtSign(mc) || isAimingThroughEntitiesAtSign(mc)) && !isAutoWalking) {
+        if (canSellTargetSign(mc) && !isAutoWalking) {
             return;
         }
 
@@ -859,35 +852,12 @@ public class SignAimHandler {
     }
 
     /**
-     * Khi có người chơi khác đứng nhảy nhót chắn trước mặt:
-     * Tự động raytrace xuyên qua entity để tìm block bảng bán phía sau.
-     * Nếu tìm thấy, gán mc.objectMouseOver = blockHit để vanilla Minecraft tự động
-     * kích hoạt chuột phải vào bảng 100% tự nhiên mà không bao giờ bị AntiCheat kick!
-     */
-    public static void ensureSignMouseOver(Minecraft mc) {
-        if (mc == null || mc.player == null || mc.world == null || targetSignPos == null) return;
-        double distSq = mc.player.getDistanceSqToCenter(targetSignPos);
-        if (distSq > 25.0) return; // Chỉ áp dụng trong cự ly sát quầy (5 block)
-
-        if (mc.objectMouseOver != null && mc.objectMouseOver.typeOfHit == RayTraceResult.Type.ENTITY) {
-            Vec3d eye = mc.player.getPositionEyes(1.0F);
-            Vec3d look = mc.player.getLook(1.0F);
-            Vec3d reachVec = eye.addVector(look.x * 4.5, look.y * 4.5, look.z * 4.5);
-            RayTraceResult blockHit = mc.world.rayTraceBlocks(eye, reachVec, false, false, false);
-            if (blockHit != null && blockHit.typeOfHit == RayTraceResult.Type.BLOCK && targetSignPos.equals(blockHit.getBlockPos())) {
-                mc.objectMouseOver = blockHit;
-            }
-        }
-    }
-
-    /**
      * Xác định người chơi có thể bán vào bảng mục tiêu hay không.
-     * Trả về true nếu tâm ngắm đang trúng bảng HOẶC tia nhìn xuyên entity trúng bảng.
+     * Trả về true nếu tâm ngắm đang trúng bảng, HOẶC tia nhìn xuyên entity trúng bảng, HOẶC đang quay mặt về phía bảng.
      */
     public static boolean canSellTargetSign(Minecraft mc) {
         if (isLookingAtAnyBuySign(mc)) return false;
-        ensureSignMouseOver(mc);
-        return isAimingAtSign(mc) || isAimingThroughEntitiesAtSign(mc);
+        return isAimingAtSign(mc) || isAimingThroughEntitiesAtSign(mc) || isFacingTargetSign(mc);
     }
 
     /**
@@ -924,26 +894,11 @@ public class SignAimHandler {
             return false;
         }
 
-        EnumFacing facing = null;
-        Vec3d hitVec = null;
-
+        EnumFacing facing = EnumFacing.UP;
+        Vec3d hitVec = new Vec3d((double)targetSignPos.getX() + 0.5, (double)targetSignPos.getY() + 0.5, (double)targetSignPos.getZ() + 0.5);
         if (mc.objectMouseOver != null && mc.objectMouseOver.typeOfHit == RayTraceResult.Type.BLOCK && targetSignPos.equals(mc.objectMouseOver.getBlockPos())) {
             facing = mc.objectMouseOver.sideHit;
             hitVec = mc.objectMouseOver.hitVec;
-        } else {
-            Vec3d eye = mc.player.getPositionEyes(1.0F);
-            Vec3d look = mc.player.getLook(1.0F);
-            Vec3d reachVec = eye.addVector(look.x * 4.5, look.y * 4.5, look.z * 4.5);
-            RayTraceResult blockHit = mc.world.rayTraceBlocks(eye, reachVec, false, false, false);
-            if (blockHit != null && blockHit.typeOfHit == RayTraceResult.Type.BLOCK && targetSignPos.equals(blockHit.getBlockPos())) {
-                facing = blockHit.sideHit;
-                hitVec = blockHit.hitVec;
-                mc.objectMouseOver = blockHit;
-            }
-        }
-
-        if (facing == null || hitVec == null) {
-            return false;
         }
 
         mc.playerController.processRightClickBlock(mc.player, mc.world, targetSignPos, facing, hitVec, EnumHand.MAIN_HAND);
@@ -964,9 +919,7 @@ public class SignAimHandler {
     public void onRenderTick(TickEvent.RenderTickEvent event) {
         if (event.phase != TickEvent.Phase.START) return;
         Minecraft mc = Minecraft.getMinecraft();
-        ensureSignMouseOver(mc);
         updateCameraSmooth(mc, event.renderTickTime);
-        ensureSignMouseOver(mc);
     }
 
     /**
@@ -1053,7 +1006,6 @@ public class SignAimHandler {
         Minecraft mc = Minecraft.getMinecraft();
         if (mc.player == null || mc.world == null || mc.gameSettings == null) return;
         if (mc.currentScreen != null) return; // Tạm dừng nếu đang mở chat/menu
-        ensureSignMouseOver(mc);
 
         EntityPlayerSP player = mc.player;
 

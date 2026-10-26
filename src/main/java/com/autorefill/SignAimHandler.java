@@ -15,7 +15,6 @@ import net.minecraft.util.math.RayTraceResult;
 import net.minecraft.util.math.Vec3d;
 import net.minecraft.util.text.TextComponentString;
 import net.minecraft.util.text.TextFormatting;
-import net.minecraft.network.play.client.CPacketPlayerTryUseItemOnBlock;
 import net.minecraftforge.client.event.InputUpdateEvent;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.common.gameevent.TickEvent;
@@ -33,36 +32,11 @@ public class SignAimHandler {
     // Trạng thái ghim camera theo thời gian thực (AimLock)
     public static boolean isAimLockActive = false;
     public static BlockPos targetSignPos = null;
-    public static String configuredTarget = "gunpowder";
-    public static boolean hasUserConfiguredTarget = false;
     public static String lastItemTarget = "gunpowder";
     public static int targetItemId = 289;
     public static String targetDisplayName = "Thuốc súng (Gunpowder) [ID: 289]";
     public static final List<String> targetAliases = new ArrayList<String>();
     public static double yOffset = 0.0;
-
-    public static String getEffectiveTarget() {
-        if (hasUserConfiguredTarget && configuredTarget != null && !configuredTarget.trim().isEmpty()) {
-            return configuredTarget;
-        }
-        int cfgId = com.zorotool.macrorecorder.ConfigHelper.getFarmItemId();
-        if (cfgId > 0 && cfgId != 289) {
-            return String.valueOf(cfgId);
-        }
-        return "gunpowder";
-    }
-
-    public static void resetToDefaultTarget() {
-        hasUserConfiguredTarget = false;
-        configuredTarget = "gunpowder";
-        lastItemTarget = "gunpowder";
-        targetItemId = 289;
-        targetDisplayName = "Thuốc súng (Gunpowder) [ID: 289]";
-        resolveTarget("gunpowder");
-        try {
-            com.zorotool.macrorecorder.ConfigHelper.setFarmItemId(289);
-        } catch (Exception ignored) {}
-    }
 
     // Vị trí gốc đứng bán (anchor) để chỉ bước lại khi bị đẩy lùi khỏi điểm này
     public static Vec3d anchorPos = null;
@@ -133,42 +107,6 @@ public class SignAimHandler {
                 parsedId = 289;
             } else if (isReedsTarget(lower)) {
                 parsedId = 338;
-            } else if (lower.equals("beef") || lower.equals("raw_beef") || lower.equals("raw beef") || lower.equals("thit bo") || lower.equals("thịt bò") || lower.equals("bo") || lower.equals("bò")) {
-                parsedId = 363;
-            } else if (lower.equals("steak") || lower.equals("cooked_beef") || lower.equals("cooked beef") || lower.equals("thit bo chin") || lower.equals("thịt bò chín") || lower.equals("bit tet") || lower.equals("bít tết")) {
-                parsedId = 364;
-            } else if (lower.equals("porkchop") || lower.equals("raw_porkchop") || lower.equals("raw porkchop") || lower.equals("thit heo") || lower.equals("thịt heo") || lower.equals("thit lon") || lower.equals("thịt lợn")) {
-                parsedId = 319;
-            } else if (lower.equals("cooked_porkchop") || lower.equals("cooked porkchop") || lower.equals("thit heo chin") || lower.equals("thịt heo chín") || lower.equals("thit lon chin") || lower.equals("thịt lợn chín")) {
-                parsedId = 320;
-            } else if (lower.equals("chicken") || lower.equals("raw_chicken") || lower.equals("raw chicken") || lower.equals("thit ga") || lower.equals("thịt gà") || lower.equals("ga") || lower.equals("gà")) {
-                parsedId = 365;
-            } else if (lower.equals("cooked_chicken") || lower.equals("cooked chicken") || lower.equals("thit ga chin") || lower.equals("thịt gà chín")) {
-                parsedId = 366;
-            } else if (lower.equals("mutton") || lower.equals("raw_mutton") || lower.equals("raw mutton") || lower.equals("thit cuu") || lower.equals("thịt cừu")) {
-                parsedId = 423;
-            } else if (lower.equals("cooked_mutton") || lower.equals("cooked mutton") || lower.equals("thit cuu chin") || lower.equals("thịt cừu chín")) {
-                parsedId = 424;
-            } else if (lower.equals("rabbit") || lower.equals("raw_rabbit") || lower.equals("thit tho") || lower.equals("thịt thỏ")) {
-                parsedId = 411;
-            } else if (lower.equals("cooked_rabbit") || lower.equals("thit tho chin") || lower.equals("thịt thỏ chín")) {
-                parsedId = 412;
-            } else if (lower.equals("leather") || lower.equals("da") || lower.equals("da bo") || lower.equals("da bò") || lower.equals("da thuoc") || lower.equals("da thuộc")) {
-                parsedId = 334;
-            } else if (lower.equals("feather") || lower.equals("long ga") || lower.equals("lông gà") || lower.equals("long vu") || lower.equals("lông vũ")) {
-                parsedId = 288;
-            } else if (lower.equals("string") || lower.equals("to") || lower.equals("tơ") || lower.equals("to nhen") || lower.equals("tơ nhện") || lower.equals("chi") || lower.equals("chỉ")) {
-                parsedId = 287;
-            } else if (lower.equals("bone") || lower.equals("xuong") || lower.equals("xương")) {
-                parsedId = 352;
-            } else if (lower.equals("spider_eye") || lower.equals("spider eye") || lower.equals("mat nhen") || lower.equals("mắt nhện")) {
-                parsedId = 375;
-            } else if (lower.equals("rotten_flesh") || lower.equals("rotten flesh") || lower.equals("thit thoi") || lower.equals("thịt thối")) {
-                parsedId = 367;
-            } else if (lower.equals("egg") || lower.equals("trung") || lower.equals("trứng")) {
-                parsedId = 344;
-            } else if (lower.equals("slimeball") || lower.equals("slime ball") || lower.equals("bong slime") || lower.equals("bóng slime")) {
-                parsedId = 341;
             } else if (lower.equals("sat") || lower.equals("sắt") || lower.equals("khoi sat") || lower.equals("khối sắt") || lower.equals("iron_block") || lower.equals("iron block")) {
                 parsedId = 42;
             } else if (lower.equals("thoi sat") || lower.equals("thỏi sắt") || lower.equals("iron_ingot") || lower.equals("iron ingot") || lower.equals("iron")) {
@@ -252,60 +190,6 @@ public class SignAimHandler {
             targetDisplayName = "Thuốc súng (Gunpowder) [ID: 289]";
         } else if (parsedId == 338) {
             targetDisplayName = "Mía (Sugar Cane) [ID: 338]";
-        } else if (parsedId == 363) {
-            targetDisplayName = "Thịt bò (Raw Beef) [ID: 363]";
-        } else if (parsedId == 364) {
-            targetDisplayName = "Bít tết (Steak) [ID: 364]";
-        } else if (parsedId == 319) {
-            targetDisplayName = "Thịt heo (Raw Porkchop) [ID: 319]";
-        } else if (parsedId == 320) {
-            targetDisplayName = "Thịt heo chín (Cooked Porkchop) [ID: 320]";
-        } else if (parsedId == 365) {
-            targetDisplayName = "Thịt gà (Raw Chicken) [ID: 365]";
-        } else if (parsedId == 366) {
-            targetDisplayName = "Thịt gà chín (Cooked Chicken) [ID: 366]";
-        } else if (parsedId == 423) {
-            targetDisplayName = "Thịt cừu (Raw Mutton) [ID: 423]";
-        } else if (parsedId == 424) {
-            targetDisplayName = "Thịt cừu chín (Cooked Mutton) [ID: 424]";
-        } else if (parsedId == 411) {
-            targetDisplayName = "Thịt thỏ (Raw Rabbit) [ID: 411]";
-        } else if (parsedId == 412) {
-            targetDisplayName = "Thịt thỏ chín (Cooked Rabbit) [ID: 412]";
-        } else if (parsedId == 334) {
-            targetDisplayName = "Da thuộc (Leather) [ID: 334]";
-        } else if (parsedId == 288) {
-            targetDisplayName = "Lông gà (Feather) [ID: 288]";
-        } else if (parsedId == 287) {
-            targetDisplayName = "Tơ nhện (String) [ID: 287]";
-        } else if (parsedId == 352) {
-            targetDisplayName = "Xương (Bone) [ID: 352]";
-        } else if (parsedId == 375) {
-            targetDisplayName = "Mắt nhện (Spider Eye) [ID: 375]";
-        } else if (parsedId == 367) {
-            targetDisplayName = "Thịt thối (Rotten Flesh) [ID: 367]";
-        } else if (parsedId == 344) {
-            targetDisplayName = "Trứng gà (Egg) [ID: 344]";
-        } else if (parsedId == 341) {
-            targetDisplayName = "Bóng Slime (Slimeball) [ID: 341]";
-        } else if (parsedId == 368) {
-            targetDisplayName = "Ngọc Ender (Ender Pearl) [ID: 368]";
-        } else if (parsedId == 369) {
-            targetDisplayName = "Que quỷ lửa (Blaze Rod) [ID: 369]";
-        } else if (parsedId == 372) {
-            targetDisplayName = "Bướu địa ngục (Nether Wart) [ID: 372]";
-        } else if (parsedId == 81) {
-            targetDisplayName = "Xương rồng (Cactus) [ID: 81]";
-        } else if (parsedId == 391) {
-            targetDisplayName = "Cà rốt (Carrot) [ID: 391]";
-        } else if (parsedId == 392) {
-            targetDisplayName = "Khoai tây (Potato) [ID: 392]";
-        } else if (parsedId == 296) {
-            targetDisplayName = "Lúa mì (Wheat) [ID: 296]";
-        } else if (parsedId == 360) {
-            targetDisplayName = "Dưa hấu (Melon) [ID: 360]";
-        } else if (parsedId == 86) {
-            targetDisplayName = "Bí ngô (Pumpkin) [ID: 86]";
         } else if (parsedId == 265) {
             targetDisplayName = "Thỏi sắt (Iron Ingot) [ID: 265]";
         } else if (parsedId == 41) {
@@ -350,6 +234,7 @@ public class SignAimHandler {
                 targetAliases.add("cục sắt");
                 targetAliases.add("cuc sat");
                 targetAliases.add("block of iron");
+                targetAliases.add("iron");
                 break;
             case 265:
                 targetAliases.add("iron_ingot");
@@ -367,7 +252,7 @@ public class SignAimHandler {
                 targetAliases.add("khoi vang");
                 targetAliases.add("vàng khối");
                 targetAliases.add("vang khoi");
-                targetAliases.add("block of gold");
+                targetAliases.add("gold");
                 break;
             case 266:
                 targetAliases.add("gold_ingot");
@@ -381,7 +266,7 @@ public class SignAimHandler {
                 targetAliases.add("diamond block");
                 targetAliases.add("khối kim cương");
                 targetAliases.add("khoi kim cuong");
-                targetAliases.add("block of diamond");
+                targetAliases.add("diamond");
                 break;
             case 264:
                 targetAliases.add("diamond");
@@ -395,7 +280,7 @@ public class SignAimHandler {
                 targetAliases.add("emerald block");
                 targetAliases.add("khối ngọc lục bảo");
                 targetAliases.add("khoi ngoc luc bao");
-                targetAliases.add("block of emerald");
+                targetAliases.add("emerald");
                 break;
             case 388:
                 targetAliases.add("emerald");
@@ -407,7 +292,7 @@ public class SignAimHandler {
                 targetAliases.add("redstone block");
                 targetAliases.add("khối đá đỏ");
                 targetAliases.add("khoi da do");
-                targetAliases.add("block of redstone");
+                targetAliases.add("redstone");
                 break;
             case 331:
                 targetAliases.add("redstone");
@@ -419,7 +304,7 @@ public class SignAimHandler {
                 targetAliases.add("coal block");
                 targetAliases.add("khối than");
                 targetAliases.add("khoi than");
-                targetAliases.add("block of coal");
+                targetAliases.add("coal");
                 break;
             case 263:
                 targetAliases.add("coal");
@@ -510,143 +395,6 @@ public class SignAimHandler {
                 targetAliases.add("lúa mì");
                 targetAliases.add("lua mi");
                 break;
-            case 363:
-                targetAliases.add("beef");
-                targetAliases.add("raw_beef");
-                targetAliases.add("raw beef");
-                targetAliases.add("rawbeef");
-                targetAliases.add("thịt bò");
-                targetAliases.add("thit bo");
-                targetAliases.add("thịt bò sống");
-                targetAliases.add("thit bo song");
-                targetAliases.add("bò sống");
-                targetAliases.add("bo song");
-                targetAliases.add("bò");
-                targetAliases.add("bo");
-                break;
-            case 364:
-                targetAliases.add("steak");
-                targetAliases.add("cooked_beef");
-                targetAliases.add("cooked beef");
-                targetAliases.add("cookedbeef");
-                targetAliases.add("thịt bò chín");
-                targetAliases.add("thit bo chin");
-                targetAliases.add("bít tết");
-                targetAliases.add("bit tet");
-                break;
-            case 319:
-                targetAliases.add("porkchop");
-                targetAliases.add("pork");
-                targetAliases.add("raw_porkchop");
-                targetAliases.add("raw porkchop");
-                targetAliases.add("rawporkchop");
-                targetAliases.add("raw_pork");
-                targetAliases.add("raw pork");
-                targetAliases.add("rawpork");
-                targetAliases.add("thịt heo");
-                targetAliases.add("thit heo");
-                targetAliases.add("thịt lợn");
-                targetAliases.add("thit lon");
-                break;
-            case 320:
-                targetAliases.add("cooked_porkchop");
-                targetAliases.add("cooked porkchop");
-                targetAliases.add("cookedporkchop");
-                targetAliases.add("cooked_pork");
-                targetAliases.add("cooked pork");
-                targetAliases.add("cookedpork");
-                targetAliases.add("thịt heo chín");
-                targetAliases.add("thit heo chin");
-                targetAliases.add("thịt lợn chín");
-                targetAliases.add("thit lon chin");
-                targetAliases.add("thit heo chin");
-                targetAliases.add("thịt lợn chín");
-                targetAliases.add("thit lon chin");
-                break;
-            case 365:
-                targetAliases.add("chicken");
-                targetAliases.add("raw_chicken");
-                targetAliases.add("raw chicken");
-                targetAliases.add("thịt gà");
-                targetAliases.add("thit ga");
-                targetAliases.add("gà sống");
-                targetAliases.add("ga song");
-                break;
-            case 366:
-                targetAliases.add("cooked_chicken");
-                targetAliases.add("cooked chicken");
-                targetAliases.add("thịt gà chín");
-                targetAliases.add("thit ga chin");
-                break;
-            case 423:
-                targetAliases.add("mutton");
-                targetAliases.add("raw_mutton");
-                targetAliases.add("raw mutton");
-                targetAliases.add("thịt cừu");
-                targetAliases.add("thit cuu");
-                break;
-            case 424:
-                targetAliases.add("cooked_mutton");
-                targetAliases.add("cooked mutton");
-                targetAliases.add("thịt cừu chín");
-                targetAliases.add("thit cuu chin");
-                break;
-            case 411:
-                targetAliases.add("rabbit");
-                targetAliases.add("raw_rabbit");
-                targetAliases.add("raw rabbit");
-                targetAliases.add("thịt thỏ");
-                targetAliases.add("thit tho");
-                break;
-            case 412:
-                targetAliases.add("cooked_rabbit");
-                targetAliases.add("cooked rabbit");
-                targetAliases.add("thịt thỏ chín");
-                targetAliases.add("thit tho chin");
-                break;
-            case 334:
-                targetAliases.add("leather");
-                targetAliases.add("da");
-                targetAliases.add("da bò");
-                targetAliases.add("da bo");
-                targetAliases.add("da thuộc");
-                targetAliases.add("da thuoc");
-                break;
-            case 288:
-                targetAliases.add("feather");
-                targetAliases.add("lông gà");
-                targetAliases.add("long ga");
-                targetAliases.add("lông vũ");
-                targetAliases.add("long vu");
-                break;
-            case 287:
-                targetAliases.add("string");
-                targetAliases.add("tơ");
-                targetAliases.add("to");
-                targetAliases.add("tơ nhện");
-                targetAliases.add("to nhen");
-                targetAliases.add("chỉ");
-                targetAliases.add("chi");
-                break;
-            case 375:
-                targetAliases.add("spider_eye");
-                targetAliases.add("spider eye");
-                targetAliases.add("mắt nhện");
-                targetAliases.add("mat nhen");
-                break;
-            case 367:
-                targetAliases.add("rotten_flesh");
-                targetAliases.add("rotten flesh");
-                targetAliases.add("thịt thối");
-                targetAliases.add("thit thoi");
-                break;
-            case 344:
-                targetAliases.add("egg");
-                targetAliases.add("trứng");
-                targetAliases.add("trung");
-                targetAliases.add("trứng gà");
-                targetAliases.add("trung ga");
-                break;
         }
     }
 
@@ -710,7 +458,6 @@ public class SignAimHandler {
         }
 
         String combined = sb.toString();
-        String combinedNoSpace = combined.replace(" ", "").replace("_", "").toLowerCase();
         for (String alias : targetAliases) {
             if (alias == null || alias.trim().isEmpty()) continue;
             String a = alias.toLowerCase().trim();
@@ -719,8 +466,7 @@ public class SignAimHandler {
                     return true;
                 }
             } else {
-                String aNoSpace = a.replace(" ", "").replace("_", "");
-                if (combined.contains(a) || (!aNoSpace.isEmpty() && combinedNoSpace.contains(aNoSpace))) {
+                if (combined.contains(a)) {
                     return true;
                 }
             }
@@ -749,38 +495,10 @@ public class SignAimHandler {
      * Tìm bảng phù hợp gần nhất khi khởi động ghim
      */
     public static boolean findTargetSign(String itemTarget) {
-        return findTargetSign(itemTarget, false);
-    }
-
-    public static boolean isPlayerAtShop(Minecraft mc) {
-        if (mc == null || mc.player == null) return false;
-        try {
-            String afterShopGoto = com.zorotool.macrorecorder.ConfigHelper.getAfterShopGotoCommand();
-            net.minecraft.util.math.BlockPos pos = com.zorotool.macrorecorder.MacroRecorderMod.parseGotoPos(afterShopGoto);
-            if (pos == null) {
-                String shopGoto = com.zorotool.macrorecorder.ConfigHelper.getShopGotoCommand();
-                pos = com.zorotool.macrorecorder.MacroRecorderMod.parseGotoPos(shopGoto);
-            }
-            if (pos != null) {
-                double dx = mc.player.posX - (pos.getX() + 0.5);
-                double dz = mc.player.posZ - (pos.getZ() + 0.5);
-                double distSq = dx * dx + dz * dz;
-                if (pos.getY() > -900) {
-                    double dy = mc.player.posY - (pos.getY() + 0.5);
-                    distSq += dy * dy;
-                }
-                return distSq <= 400.0;
-            }
-        } catch (Throwable ignored) {}
-        return Math.abs(mc.player.posY - 151.0) <= 6.0;
-    }
-
-    public static boolean findTargetSign(String itemTarget, boolean verbose) {
         Minecraft mc = Minecraft.getMinecraft();
         if (mc.world == null || mc.player == null) return false;
 
         EntityPlayerSP player = mc.player;
-
         if (itemTarget == null || itemTarget.trim().isEmpty()) {
             itemTarget = "gunpowder";
         }
@@ -801,32 +519,7 @@ public class SignAimHandler {
             }
         }
 
-        // Nếu chưa tìm thấy: Quét xem trong túi đồ người chơi có món nông sản nào (mía, thuốc súng...) có bảng sell gần đây không
-        if (matchedSigns.isEmpty() && player.inventory != null) {
-            for (ItemStack invStack : player.inventory.mainInventory) {
-                if (invStack != null && !invStack.isEmpty()) {
-                    int invId = Item.getIdFromItem(invStack.getItem());
-                    // Bỏ qua kiếm, giáp, công cụ
-                    if (invId > 0 && !InventoryUtils.isValuableOrTool(invStack)) {
-                        for (TileEntity te : mc.world.loadedTileEntityList) {
-                            if (te instanceof TileEntitySign) {
-                                TileEntitySign sign = (TileEntitySign) te;
-                                double distSq = player.getDistanceSq(sign.getPos());
-                                if (distSq <= maxDistSq && isMatchingSellSign(sign, String.valueOf(invId))) {
-                                    matchedSigns.add(sign);
-                                }
-                            }
-                        }
-                        if (!matchedSigns.isEmpty()) {
-                            resolveTarget(String.valueOf(invId));
-                            break;
-                        }
-                    }
-                }
-            }
-        }
-
-        // Fallback: Chỉ tìm bảng sell bất kỳ khi người dùng cố ý cấu hình là "any" hoặc "all"
+        // Nếu không tìm thấy bảng khớp từ khóa và itemTarget là "any" thì mới tìm bất kỳ bảng sell nào
         if (matchedSigns.isEmpty() && (lastItemTarget.equals("any") || lastItemTarget.equals("all"))) {
             for (TileEntity te : mc.world.loadedTileEntityList) {
                 if (te instanceof TileEntitySign) {
@@ -842,10 +535,8 @@ public class SignAimHandler {
         }
 
         if (matchedSigns.isEmpty()) {
-            if (verbose) {
-                player.sendMessage(new TextComponentString(TextFormatting.RED + 
-                    "[AutoAim] Không tìm thấy bảng Sell cho '" + targetDisplayName + "' trong khu vực xung quanh!"));
-            }
+            player.sendMessage(new TextComponentString(TextFormatting.RED + 
+                "[AutoAim] Không tìm thấy bảng Sell cho '" + targetDisplayName + "' trong khu vực xung quanh!"));
             return false;
         }
 
@@ -939,83 +630,41 @@ public class SignAimHandler {
         player.sendMessage(new TextComponentString(TextFormatting.YELLOW + "[AutoAim Debug] Tìm thấy " + count + " bảng."));
     }
 
-    private static boolean isSyncingTarget = false;
-
-    public static void setupTarget(String input, boolean verbose, boolean activateNow) {
-        if (isSyncingTarget) return;
-        try {
-            isSyncingTarget = true;
-            Minecraft mc = Minecraft.getMinecraft();
-            if (input == null || input.trim().isEmpty()) {
-                input = "gunpowder";
-            }
-            String clean = input.replaceAll("[<>\\[\\]]", "").trim();
-            if (clean.isEmpty()) {
-                clean = "gunpowder";
-            }
-            hasUserConfiguredTarget = true;
-            configuredTarget = clean;
-            resolveTarget(clean);
-
-            if (targetItemId > 0) {
-                try {
-                    if (com.zorotool.macrorecorder.ConfigHelper.getFarmItemId() != targetItemId) {
-                        com.zorotool.macrorecorder.ConfigHelper.setFarmItemId(targetItemId);
-                    }
-                } catch (Exception ignored) {}
-            }
-
-            if (activateNow) {
-                boolean found = findTargetSign(lastItemTarget, verbose);
-                if (found) {
-                    isAimLockActive = true;
-                    outOfRangeTicks = 0;
-                    stuckTicks = 0;
-                    isWarmupActive = false;
-                    if (mc.player != null) {
-                        anchorPos = new Vec3d(mc.player.posX, mc.player.posY, mc.player.posZ);
-                    }
-                    if (mc.gameSettings != null) {
-                        mc.gameSettings.pauseOnLostFocus = false;
-                    }
-                    if (mc.player != null) {
-                        mc.player.setSprinting(false);
-                        if (verbose) {
-                            mc.player.sendMessage(new TextComponentString(TextFormatting.GREEN + 
-                                "[AutoAim] ĐÃ BẬT GHIM BẢNG [Sell] " + targetDisplayName));
-                            mc.player.sendMessage(new TextComponentString(TextFormatting.AQUA + 
-                                "-> Camera ghim vào bảng mượt như người thật. Bạn thoải mái đè chuột phải để bán đồ!"));
-                        }
-                    }
-                } else {
-                    targetSignPos = null;
-                    isAimLockActive = false;
-                    if (mc.player != null && verbose) {
-                        mc.player.sendMessage(new TextComponentString(TextFormatting.RED + 
-                            "[AutoAim] Chưa tìm thấy bảng [Sell] " + targetDisplayName + " quanh vị trí này!"));
-                    }
-                }
-            } else {
-                // CHỈ SETUP CẤU HÌNH, TUYỆT ĐỐI KHÔNG TỰ TIỆN BẬT AIMLOCK!
-                isAimLockActive = false;
-                if (mc.player != null && verbose) {
-                    mc.player.sendMessage(new TextComponentString(TextFormatting.YELLOW + 
-                        "[AutoAim] ĐÃ SETUP MỤC TIÊU: " + targetDisplayName));
-                    mc.player.sendMessage(new TextComponentString(TextFormatting.AQUA + 
-                        "-> Khi #goto tới quầy bán đồ, camera sẽ tự động kích hoạt ghim đúng vào bảng [Sell]!"));
-                }
-            }
-        } finally {
-            isSyncingTarget = false;
-        }
-    }
-
-    public static void setupTarget(String itemTarget, boolean verbose) {
-        setupTarget(itemTarget, verbose, false);
-    }
-
     public static void startAimLock(String itemTarget) {
-        setupTarget(itemTarget, false, true);
+        Minecraft mc = Minecraft.getMinecraft();
+        if (mc.player == null) return;
+
+        if (itemTarget == null || itemTarget.trim().isEmpty()) {
+            itemTarget = "gunpowder";
+        }
+        resolveTarget(itemTarget);
+
+        boolean found = findTargetSign(lastItemTarget);
+        if (found) {
+            isAimLockActive = true;
+            outOfRangeTicks = 0;
+            stuckTicks = 0;
+            isWarmupActive = false;
+
+            // Lưu lại vị trí đứng bán ban đầu làm anchor
+            if (mc.player != null) {
+                anchorPos = new Vec3d(mc.player.posX, mc.player.posY, mc.player.posZ);
+            }
+
+            // Đảm bảo game tiếp tục chạy ngầm khi Alt-Tab làm việc khác (F3 + P off)
+            if (mc.gameSettings != null) {
+                mc.gameSettings.pauseOnLostFocus = false;
+            }
+
+            // Tắt sprint ngay khi bật để giữ thanh feed
+            mc.player.setSprinting(false);
+            mc.player.sendMessage(new TextComponentString(TextFormatting.GREEN + 
+                "[AutoAim] ĐÃ BẬT GHIM BẢNG [Sell] " + targetDisplayName));
+            mc.player.sendMessage(new TextComponentString(TextFormatting.AQUA + 
+                "-> Camera ghim vào bảng mượt như người thật. Bạn thoải mái đè chuột phải để bán đồ!"));
+            mc.player.sendMessage(new TextComponentString(TextFormatting.GOLD + 
+                "-> Tự bước lại quầy nếu bị đẩy. Chuột hoàn toàn tự do, không bị chiếm chuột."));
+        }
     }
 
     public static void toggleAimLock(String itemTarget) {
@@ -1033,7 +682,6 @@ public class SignAimHandler {
 
     public static void stopAimLock(Minecraft mc) {
         isAimLockActive = false;
-        targetSignPos = null;
         outOfRangeTicks = 0;
         stuckTicks = 0;
         isWarmupActive = false;
@@ -1048,13 +696,6 @@ public class SignAimHandler {
         }
     }
 
-    public static Vec3d getBestAimPointOnSign(Minecraft mc, BlockPos signPos, AxisAlignedBB bbox) {
-        double centerX = signPos.getX() + (bbox.minX + bbox.maxX) / 2.0;
-        double centerY = signPos.getY() + 0.35 + yOffset;
-        double centerZ = signPos.getZ() + (bbox.minZ + bbox.maxZ) / 2.0;
-        return new Vec3d(centerX, centerY, centerZ);
-    }
-
     /**
      * Cập nhật góc nhìn mô phỏng 100% chuyển động chuột người thật (Human-like Aiming):
      * - Khi Alt-Tab ra ngoài làm việc khác: camera vẫn bám bảng ngầm, TUYỆT ĐỐI KHÔNG can thiệp chuột Windows
@@ -1062,8 +703,6 @@ public class SignAimHandler {
      */
     private static void updateCameraSmooth(Minecraft mc, float partialTicks) {
         if (!isAimLockActive || targetSignPos == null || mc.player == null || mc.world == null) return;
-        // Chỉ bám góc nhìn khi người chơi ở gần bảng (trong vòng 10 block)
-        if (mc.player.getDistanceSq(targetSignPos) > 100.0) return;
         // Nếu đang mở menu màn hình (ESC, chat, hòm đồ) -> không can thiệp góc nhìn
         if (mc.currentScreen != null) return;
 
@@ -1073,9 +712,9 @@ public class SignAimHandler {
             return;
         }
 
-        // Khi người chơi đã ngắm trúng bảng VÀ không bị ai xô đẩy:
+        // Khi người chơi đã ngắm trúng bảng (hoặc đang hướng thẳng vào bảng) VÀ không bị ai xô đẩy:
         // TUYỆT ĐỐI KHÔNG can thiệp xoay hay rung lắc camera, để người chơi hoàn toàn tự do lia chuột!
-        if (isAimingAtSign(mc) && !isAutoWalking) {
+        if (canSellTargetSign(mc) && !isAutoWalking) {
             return;
         }
 
@@ -1087,7 +726,11 @@ public class SignAimHandler {
 
         IBlockState state = mc.world.getBlockState(targetSignPos);
         AxisAlignedBB bbox = state.getBoundingBox(mc.world, targetSignPos);
-        Vec3d target = getBestAimPointOnSign(mc, targetSignPos, bbox);
+        Vec3d target = new Vec3d(
+            targetSignPos.getX() + (bbox.minX + bbox.maxX) / 2.0,
+            targetSignPos.getY() + 0.35 + yOffset,
+            targetSignPos.getZ() + (bbox.minZ + bbox.maxZ) / 2.0
+        );
 
         double dx = eyeX - target.x;
         double dy = eyeY - target.y;
@@ -1161,6 +804,67 @@ public class SignAimHandler {
     }
 
     /**
+     * Kiểm tra tia nhìn xuyên qua thực thể (người chơi khác đứng chắn phía trước/che bảng).
+     * Bắn RayTrace chỉ xét các khối (Block) bỏ qua hoàn toàn hitbox Entity.
+     */
+    public static boolean isAimingThroughEntitiesAtSign(Minecraft mc) {
+        if (mc == null || mc.world == null || mc.player == null || targetSignPos == null) return false;
+        Vec3d eyes = mc.player.getPositionEyes(1.0F);
+        Vec3d look = mc.player.getLook(1.0F);
+        double reach = 5.5;
+        Vec3d end = eyes.addVector(look.x * reach, look.y * reach, look.z * reach);
+        RayTraceResult hit = mc.world.rayTraceBlocks(eyes, end, false, false, false);
+        if (hit != null && hit.typeOfHit == RayTraceResult.Type.BLOCK && targetSignPos.equals(hit.getBlockPos())) {
+            TileEntity te = mc.world.getTileEntity(hit.getBlockPos());
+            if (te instanceof TileEntitySign) {
+                TileEntitySign sign = (TileEntitySign) te;
+                if (isBuySign(sign)) return false;
+                if (!isMatchingSellSign(sign, lastItemTarget)) return false;
+            }
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * Kiểm tra góc nhìn của người chơi có đang đối diện và hướng trực tiếp vào bảng bán hay không
+     * (Hỗ trợ bán xuyên người chơi đứng che trước mặt/che trước bảng).
+     */
+    public static boolean isFacingTargetSign(Minecraft mc) {
+        if (mc == null || mc.player == null || mc.world == null || targetSignPos == null) return false;
+        EntityPlayerSP player = mc.player;
+        double distSq = player.getDistanceSq(targetSignPos);
+        if (distSq > 25.0) return false; // Trong cự ly 5 block
+
+        double eyeX = player.posX;
+        double eyeY = player.posY + player.getEyeHeight();
+        double eyeZ = player.posZ;
+        Vec3d target = new Vec3d(
+            targetSignPos.getX() + 0.5,
+            targetSignPos.getY() + 0.35 + yOffset,
+            targetSignPos.getZ() + 0.5
+        );
+        double dx = eyeX - target.x;
+        double dy = eyeY - target.y;
+        double dz = eyeZ - target.z;
+        float targetYaw = (float) (MathHelper.atan2(dx, -dz) * (180.0 / Math.PI));
+        double dist = Math.sqrt(dx * dx + dz * dz);
+        float targetPitch = (float) (MathHelper.atan2(dy, dist) * (180.0 / Math.PI));
+        float deltaYaw = Math.abs(MathHelper.wrapDegrees(targetYaw - player.rotationYaw));
+        float deltaPitch = Math.abs(targetPitch - player.rotationPitch);
+        return deltaYaw < 12.0F && deltaPitch < 12.0F;
+    }
+
+    /**
+     * Xác định người chơi có thể bán vào bảng mục tiêu hay không.
+     * Trả về true nếu tâm ngắm đang trúng bảng, HOẶC tia nhìn xuyên entity trúng bảng, HOẶC đang quay mặt về phía bảng.
+     */
+    public static boolean canSellTargetSign(Minecraft mc) {
+        if (isLookingAtAnyBuySign(mc)) return false;
+        return isAimingAtSign(mc) || isAimingThroughEntitiesAtSign(mc) || isFacingTargetSign(mc);
+    }
+
+    /**
      * Kiểm tra xem tâm ngắm hiện tại có đang chỉ vào bất kỳ bảng Mua (Buy sign) nào không,
      * hoặc bảng nằm ở dưới (Y < targetSignPos.getY()).
      * Dùng để ngắt chuột phải NGAY LẬP TỨC nếu bị đẩy lệch tâm xuống các bảng phía dưới.
@@ -1180,55 +884,36 @@ public class SignAimHandler {
         return false;
     }
 
-    public static boolean isFacingTargetSign(Minecraft mc) {
-        if (mc == null || mc.player == null || targetSignPos == null) return false;
-        EntityPlayerSP player = mc.player;
-        double distSq = player.getDistanceSq(targetSignPos);
-        if (distSq > 36.0) return false; // trong cự ly 6 block
-
-        double eyeX = player.posX;
-        double eyeY = player.posY + player.getEyeHeight();
-        double eyeZ = player.posZ;
-        Vec3d target = new Vec3d(
-            targetSignPos.getX() + 0.5,
-            targetSignPos.getY() + 0.35 + yOffset,
-            targetSignPos.getZ() + 0.5
-        );
-        double dx = eyeX - target.x;
-        double dy = eyeY - target.y;
-        double dz = eyeZ - target.z;
-        float targetYaw = (float) (MathHelper.atan2(dx, -dz) * (180.0 / Math.PI));
-        double dist = Math.sqrt(dx * dx + dz * dz);
-        float targetPitch = (float) (MathHelper.atan2(dy, dist) * (180.0 / Math.PI));
-        float deltaYaw = Math.abs(MathHelper.wrapDegrees(targetYaw - player.rotationYaw));
-        float deltaPitch = Math.abs(targetPitch - player.rotationPitch);
-        return deltaYaw <= 50.0F && deltaPitch <= 50.0F;
-    }
-
     /**
-     * Bán đồ tự động 100% NHƯ NGƯỜI THẬT:
-     * Sử dụng phím chuột phải chuẩn của Minecraft (KeyBinding useItem),
-     * TUYỆT ĐỐI KHÔNG can thiệp bắn packet thủ công để không bao giờ bị server diss/kick ra lobby!
+     * Bán đồ tự động bằng tương tác gói tin nội bộ của game (Packet / ProcessRightClick)
+     * TUYỆT ĐỐI KHÔNG SỬ DỤNG CHUỘT HỆ ĐIỀU HÀNH (OS MOUSE).
+     * Cho phép click bán xuyên người chơi đứng che chắn phía trước bảng!
      */
     public static boolean clickTargetSign() {
         Minecraft mc = Minecraft.getMinecraft();
-        if (mc == null || mc.gameSettings == null) return false;
-        KeyBinding.setKeyBindState(mc.gameSettings.keyBindUseItem.getKeyCode(), true);
-        if (targetSignPos != null && mc.player != null && mc.world != null) {
-            if (mc.objectMouseOver != null && mc.objectMouseOver.typeOfHit == RayTraceResult.Type.ENTITY) {
-                double eyeX = mc.player.posX;
-                double eyeY = mc.player.posY + mc.player.getEyeHeight();
-                double eyeZ = mc.player.posZ;
-                double dx = (targetSignPos.getX() + 0.5) - eyeX;
-                double dy = (targetSignPos.getY() + 0.5) - eyeY;
-                double dz = (targetSignPos.getZ() + 0.5) - eyeZ;
-                if (dx * dx + dy * dy + dz * dz <= 20.25) {
-                    Vec3d hitVec = new Vec3d(targetSignPos.getX() + 0.5, targetSignPos.getY() + 0.8, targetSignPos.getZ() + 0.5);
-                    if (mc.playerController != null) {
-                        mc.playerController.processRightClickBlock(mc.player, mc.world, targetSignPos, EnumFacing.UP, hitVec, EnumHand.MAIN_HAND);
-                        mc.player.swingArm(EnumHand.MAIN_HAND);
-                    }
-                }
+        if (mc.world == null || mc.player == null || mc.playerController == null || targetSignPos == null) return false;
+
+        // Cho phép click nếu tâm ngắm đang trúng bảng HOẶC góc mặt đang chỉa thẳng vào bảng (dù có người đứng che)
+        if (!canSellTargetSign(mc)) {
+            return false;
+        }
+
+        EnumFacing facing = EnumFacing.UP;
+        Vec3d hitVec = new Vec3d(targetSignPos.getX() + 0.5, targetSignPos.getY() + 0.5, targetSignPos.getZ() + 0.5);
+        if (mc.objectMouseOver != null && mc.objectMouseOver.typeOfHit == RayTraceResult.Type.BLOCK && targetSignPos.equals(mc.objectMouseOver.getBlockPos())) {
+            facing = mc.objectMouseOver.sideHit;
+            hitVec = mc.objectMouseOver.hitVec;
+        }
+
+        mc.playerController.processRightClickBlock(mc.player, mc.world, targetSignPos, facing, hitVec, EnumHand.MAIN_HAND);
+
+        // Vung tay visual trên màn hình (Client-side ONLY) - KHÔNG gửi CPacketAnimation lên server
+        // để AntiCheat (GrimAC, Vulcan) không phát hiện BadPackets / AutoClicker
+        if (mc.player != null) {
+            if (!mc.player.isSwingInProgress || mc.player.swingProgressInt >= 3) {
+                mc.player.isSwingInProgress = true;
+                mc.player.swingProgressInt = -1;
+                mc.player.swingingHand = EnumHand.MAIN_HAND;
             }
         }
         return true;
@@ -1242,10 +927,81 @@ public class SignAimHandler {
     }
 
     /**
-     * Ở khu vực quầy shop: TUYỆT ĐỐI KHÔNG can thiệp phím di chuyển,
-     * để người chơi đứng yên tự nhiên 100%, người khác đẩy chỉ dịch chuyển bình thường,
-     * không bao giờ bị server kick văng ra lobby.
+     * Kiểm tra xem có người chơi khác đang đứng chắn ngay phía trước mặt/hướng về quầy không
+     * -> Nếu chỗ đó có người đứng rồi thì thôi, không đứng chỗ đó nữa (người thật không chen lấn)
      */
+    private static boolean isAnotherPlayerBlocking(Minecraft mc, EntityPlayerSP player) {
+        if (mc.world == null || player == null || targetSignPos == null) return false;
+        double toSignX = (targetSignPos.getX() + 0.5) - player.posX;
+        double toSignZ = (targetSignPos.getZ() + 0.5) - player.posZ;
+        for (net.minecraft.entity.player.EntityPlayer other : mc.world.playerEntities) {
+            if (other == null || other == player) continue;
+            double d = player.getDistance(other);
+            if (d < 1.3) {
+                double dx = other.posX - player.posX;
+                double dz = other.posZ - player.posZ;
+                double dot = dx * toSignX + dz * toSignZ;
+                if (dot > 0) {
+                    return true; // Có người chơi đang đứng chắn phía trước
+                }
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Can thiệp trực tiếp vào Input movement của Minecraft để tự động di chuyển mượt mà
+     * TUYỆT ĐỐI KHÔNG SPRINT -> KHÔNG TIÊU HAO ĐỘ ĐÓI (FEED)
+     */
+    @SubscribeEvent
+    public void onInputUpdate(InputUpdateEvent event) {
+        if (!isAimLockActive || targetSignPos == null) return;
+
+        Minecraft mc = Minecraft.getMinecraft();
+        if (mc.currentScreen != null) return; // Không can thiệp nếu đang mở GUI/Chat
+
+        if (isAutoWalking && !isWarmupActive && targetSignPos != null && mc.player != null) {
+            // Nếu đã ngắm trúng hoặc đang hướng vào bảng bán thì tuyệt đối không di chuyển
+            if (canSellTargetSign(mc)) {
+                if (isAutoWalking) stopAutoWalk(mc);
+                return;
+            }
+
+            EntityPlayerSP player = mc.player;
+            double dx = player.posX - (targetSignPos.getX() + 0.5);
+            double dz = player.posZ - (targetSignPos.getZ() + 0.5);
+            double distXZ = Math.sqrt(dx * dx + dz * dz);
+
+            if (distXZ > 2.2) {
+                // Nếu bị đẩy lùi khỏi quầy: bước xích lại gần quầy
+                double toSignX = (targetSignPos.getX() + 0.5) - player.posX;
+                double toSignZ = (targetSignPos.getZ() + 0.5) - player.posZ;
+                float moveAngle = (float) (MathHelper.atan2(toSignZ, toSignX) * (180.0D / Math.PI)) - 90.0F;
+                float diff = MathHelper.wrapDegrees(moveAngle - player.rotationYaw);
+
+                if (Math.abs(diff) <= 60.0F) {
+                    event.getMovementInput().moveForward = 0.8F;
+                    event.getMovementInput().forwardKeyDown = true;
+                    event.getMovementInput().moveStrafe = 0.0F;
+                } else if (diff > 60.0F && diff < 120.0F) {
+                    event.getMovementInput().moveForward = 0.2F;
+                    event.getMovementInput().moveStrafe = -0.8F;
+                } else if (diff < -60.0F && diff > -120.0F) {
+                    event.getMovementInput().moveForward = 0.2F;
+                    event.getMovementInput().moveStrafe = 0.8F;
+                } else {
+                    event.getMovementInput().moveForward = -0.8F;
+                }
+            }
+            // Không lạng lách né sang ngang khi có người chắn - đứng yên bán thẳng qua họ!
+
+            mc.player.setSprinting(false);
+            if (mc.gameSettings != null) {
+                KeyBinding.setKeyBindState(mc.gameSettings.keyBindSprint.getKeyCode(), false);
+            }
+        }
+    }
+
     @SubscribeEvent
     public void onClientTick(TickEvent.ClientTickEvent event) {
         if (event.phase != TickEvent.Phase.END) return;
@@ -1257,15 +1013,64 @@ public class SignAimHandler {
 
         EntityPlayerSP player = mc.player;
 
-        // Chỉ tắt AimLock khi người chơi ở quá xa bảng mục tiêu (> 25 block)
-        if (targetSignPos != null && player.getDistanceSq(targetSignPos) > 625.0) {
-            stopAimLock(mc);
-            return;
-        }
-
         // Quét tự động chuyển bảng mỗi 5 tick (0.25s) khi người chơi bước sang bảng khác
         if (player.ticksExisted % 5 == 0) {
             scanAndSwitchTargetSign(mc);
+        }
+
+        if (targetSignPos == null) {
+            if (isAutoWalking) stopAutoWalk(mc);
+            return;
+        }
+
+        // ĐIỀU KIỆN 100% NGƯỜI THẬT:
+        // "miễn sao vẫn trong tầm ngắm thì ko di chuyển gì hết"
+        // "nếu ra khỏi tầm nhắm bán ko lên tiền thì mới bắt đầu di chuyển"
+        if (canSellTargetSign(mc)) {
+            // ĐANG TRONG TẦM NGẮM BÁN ĐƯỢC TIỀN: ĐỨNG YÊN HOÀN TOÀN!
+            if (isAutoWalking) {
+                stopAutoWalk(mc);
+            }
+            outOfRangeTicks = 0;
+            stuckTicks = 0;
+        } else {
+            // RA KHỎI TẦM NGẮM (bị đẩy ra quá xa):
+            if (autoReturnEnabled && !isWarmupActive) {
+                outOfRangeTicks++;
+
+                // Phản xạ tự nhiên: sau 8 tick (0.4s) không ngắm được bảng mới bắt đầu di chuyển tìm lại góc ngắm
+                if (!isAutoWalking && outOfRangeTicks >= 8) {
+                    isAutoWalking = true;
+                    stuckTicks = 0;
+                    lastCheckX = player.posX;
+                    lastCheckZ = player.posZ;
+                }
+
+                if (isAutoWalking) {
+                    player.setSprinting(false);
+
+                    // Khi vừa vào lại tầm ngắm trúng bảng: DỪNG LẠI NGAY LẬP TỨC!
+                    if (canSellTargetSign(mc)) {
+                        stopAutoWalk(mc);
+                        outOfRangeTicks = 0;
+                        stuckTicks = 0;
+                    } else if (player.collidedHorizontally) {
+                        double moved = Math.sqrt(Math.pow(player.posX - lastCheckX, 2) + Math.pow(player.posZ - lastCheckZ, 2));
+                        if (moved < 0.03) {
+                            stuckTicks++;
+                        }
+                        if (stuckTicks >= 6) {
+                            stopAutoWalk(mc);
+                            outOfRangeTicks = 0;
+                            stuckTicks = 0;
+                        }
+                    } else {
+                        stuckTicks = 0;
+                    }
+                    lastCheckX = player.posX;
+                    lastCheckZ = player.posZ;
+                }
+            }
         }
     }
 

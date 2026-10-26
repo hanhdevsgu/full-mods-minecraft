@@ -1097,31 +1097,6 @@ public class MacroRecorderMod {
      */
     private boolean processSellState() {
         // KIỂM TRA RÁC THỜI GIAN THỰC (REAL-TIME TRASH DETECTION):
-        // Nếu đang ở shop và phát hiện dính rác trong túi đồ (ngoài cây kiếm đang cầm
-        // trên tay):
-        if (sellState != SellState.SENDING_HOME && sellState != SellState.WAITING_TELEPORT_HOME
-                && sellState != SellState.WAITING_HOME_SETTLE) {
-            if (hasTrashInInventory()) {
-                if (!onlySell1E) {
-                    onlySell1E = true;
-                    System.out.println(
-                            "[MacroRecorder] (F4) CẢNH BÁO: Phát hiện túi đồ dính rác! Kích hoạt chế độ CHỈ BÁN HẾT INVENTORY rồi về nhà ngay, hủy toàn bộ /pv!");
-                }
-                // Nếu đang ở bất kỳ bước /pv nào -> hủy ngay, đóng GUI và chuyển sang bán hết
-                // thuốc súng trong inventory
-                if (sellState == SellState.OPENING_VAULT || sellState == SellState.WAITING_VAULT_OPEN
-                        || sellState == SellState.TAKING_ITEMS || sellState == SellState.CHECK_VAULT_DONE
-                        || sellState == SellState.SELLING_ITEMS) {
-                    closeCurrentScreen();
-                    releaseUseItemKey();
-                    SignAimHandler.isWarmupActive = false;
-                    sellState = SellState.SELLING_1E_ITEMS;
-                    lastSellMoneyTime = System.currentTimeMillis();
-                    notSellingTimer = 0;
-                }
-            }
-        }
-
         switch (sellState) {
 
             case SELLING_1E_ITEMS:
@@ -1145,14 +1120,14 @@ public class MacroRecorderMod {
                     }
                     return true;
                 }
-                // Đè chuột phải người thật:
+                // Đè chuột phải người thật (khi tâm ngắm đang trúng bảng BÁN):
                 // Nếu đang nhìn vào bảng Buy hoặc bảng phía dưới: TUYỆT ĐỐI KHÔNG CLICK!
-                // Bán xuyên người chơi đứng che chắn phía trước bảng:
-                boolean canSell1E = SignAimHandler.canSellTargetSign(mc);
+                SignAimHandler.ensureSignMouseOver(mc);
+                boolean lookingAtBuySign1E = SignAimHandler.isLookingAtAnyBuySign(mc);
+                boolean canSell1E = !lookingAtBuySign1E && SignAimHandler.canSellTargetSign(mc);
 
                 if (canSell1E) {
                     holdUseItemKey();
-                    // Click trực tiếp vào block sign để vượt qua hitbox người chơi đứng che:
                     if (mc.player != null && mc.player.ticksExisted % 2 == 0) {
                         SignAimHandler.clickTargetSign();
                     }
@@ -1293,14 +1268,14 @@ public class MacroRecorderMod {
                     }
                     return true;
                 }
-                // Đè chuột phải người thật:
+                // Đè chuột phải người thật (khi tâm ngắm đang trúng bảng BÁN):
                 // Nếu đang nhìn vào bảng Buy hoặc bảng phía dưới: TUYỆT ĐỐI KHÔNG CLICK!
-                // Bán xuyên người chơi đứng che chắn phía trước bảng:
-                boolean canSell = SignAimHandler.canSellTargetSign(mc);
+                SignAimHandler.ensureSignMouseOver(mc);
+                boolean lookingAtBuySign = SignAimHandler.isLookingAtAnyBuySign(mc);
+                boolean canSell = !lookingAtBuySign && SignAimHandler.canSellTargetSign(mc);
 
                 if (canSell) {
                     holdUseItemKey();
-                    // Click trực tiếp vào block sign để vượt qua hitbox người chơi đứng che:
                     if (mc.player != null && mc.player.ticksExisted % 2 == 0) {
                         SignAimHandler.clickTargetSign();
                     }
@@ -1647,17 +1622,16 @@ public class MacroRecorderMod {
     public boolean isTrashStack(int slotIndex, ItemStack stack, int heldHotbarIndex) {
         if (stack == null || stack.isEmpty()) return false;
         if (isFarmItem(stack)) return false;
+        // Bảo vệ toàn bộ thanh hotbar (slots 0-8) của người chơi:
+        // Kiếm, cúp, rìu, xẻng, thức ăn, đuốc, xô nước, ender chest... trên hotbar KHÔNG BAO GIỜ là rác!
+        if (slotIndex >= 0 && slotIndex <= 8) return false;
         Item item = stack.getItem();
-        // Cây kiếm hoặc công cụ trên slot đang cầm trên tay -> GIỮ
-        if (slotIndex == heldHotbarIndex && (item instanceof net.minecraft.item.ItemSword || item instanceof net.minecraft.item.ItemTool)) {
-            return false;
-        }
-        // Thức ăn (Steak) trên hotbar (slot 0->8) -> GIỮ
-        if (slotIndex >= 0 && slotIndex <= 8 && item instanceof net.minecraft.item.ItemFood) {
-            return false;
-        }
-        // Mọi item khác trong túi (giáp sắt rác, cung rác, thịt thối, xương, mob drop...) -> RÁC!
-        return true;
+        if (item instanceof net.minecraft.item.ItemArmor) return false;
+        if (item instanceof net.minecraft.item.ItemTool || item instanceof net.minecraft.item.ItemSword || item instanceof net.minecraft.item.ItemFood) return false;
+        // Chỉ coi là rác nếu là mob drops rơi vào túi
+        return (item == Items.ROTTEN_FLESH || item == Items.BONE || item == Items.STRING
+                || item == Items.SPIDER_EYE || item == Items.BOW || item == Items.ARROW
+                || item == Items.GLASS_BOTTLE);
     }
 
     private boolean hasTrashInInventory() {

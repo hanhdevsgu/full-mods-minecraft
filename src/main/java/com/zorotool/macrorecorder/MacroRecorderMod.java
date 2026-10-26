@@ -326,6 +326,7 @@ public class MacroRecorderMod {
     // /sethome nhieu lan neu /shop bi cham gioi han lenh va phai thu lai o tick
     // sau.
     private boolean sethomeSentBeforeShop = false;
+    private boolean preHomeCommandSent = false;
 
     private Minecraft mc;
     private int totalSugarCaneTaken = 0;
@@ -1419,10 +1420,27 @@ public class MacroRecorderMod {
 
             case SENDING_HOME:
                 releaseUseItemKey();
+                String preHomeCmd = ConfigHelper.getPreHomeCommand();
+                if (preHomeCmd != null && !preHomeCmd.trim().isEmpty() && !preHomeCommandSent) {
+                    if (!trySendCommand(preHomeCmd.trim())) {
+                        return false;
+                    }
+                    preHomeCommandSent = true;
+                    sellWaitTimer = 0;
+                    System.out.println("[MacroRecorder] (F4) Đã gửi lệnh tiền trạm trước khi /home: " + preHomeCmd.trim());
+                    return false;
+                }
+
+                if (preHomeCommandSent && sellWaitTimer < 10) {
+                    sellWaitTimer++;
+                    return false;
+                }
+
                 String homeMiaCommand = ConfigHelper.getHomeMiaCommand();
                 if (!trySendCommand(homeMiaCommand)) {
                     return false;
                 }
+                preHomeCommandSent = false;
                 try {
                     SignAimHandler.stopAimLock(mc);
                 } catch (Exception ignored) {
@@ -2765,6 +2783,7 @@ public class MacroRecorderMod {
         totalSugarCaneTaken = 0;
         stableLookTicks = 0;
         sethomeSentBeforeShop = false;
+        preHomeCommandSent = false;
         dropAllTrashFromInventory(); // Xả sạch rác trước khi bắt đầu lấy đồ
         if (targetVaultsToFill < 0) {
             targetVaultsToFill = (maxVaults > 0) ? maxVaults : 1;
@@ -2904,6 +2923,7 @@ public class MacroRecorderMod {
         sellWaitTimer = 0;
         sellClickCooldown = 0;
         notSellingTimer = 0;
+        preHomeCommandSent = false;
         lastSellMoneyTime = System.currentTimeMillis();
         sellMacroRunning = true;
 
@@ -2984,6 +3004,7 @@ public class MacroRecorderMod {
             KeyBinding.setKeyBindState(mc.gameSettings.keyBindJump.getKeyCode(), false);
         }
         resetHud(); // F10 = dung han + dua ruong/tien/thoi gian ve lai 0
+        preHomeCommandSent = false;
         try {
             if (mc != null && mc.currentScreen != null) {
                 mc.player.closeScreen();
@@ -2991,6 +3012,9 @@ public class MacroRecorderMod {
         } catch (Exception e) {
             System.out.println("[MacroRecorder] (F4) Lỗi khi dừng macro bán mía: " + e);
             e.printStackTrace();
+        }
+        if (mc != null && mc.player != null) {
+            mc.player.sendMessage(new TextComponentString("§c[Macro] ⏹ ĐÃ DỪNG Macro (F10)."));
         }
         System.out.println("[MacroRecorder] ========================================");
         System.out.println("[MacroRecorder] >>> ĐÃ DỪNG Macro Bán Mía (F4) tại kho /pv " + sellVaultNumber);
@@ -3022,9 +3046,13 @@ public class MacroRecorderMod {
             SignAimHandler.stopAimLock(mc);
         } catch (Exception ignored) {
         }
+        executeClientCommand("#pause");
         if (hudSessionStartMillis > 0) {
             hudAccumulatedMillis += System.currentTimeMillis() - hudSessionStartMillis;
             hudSessionStartMillis = 0;
+        }
+        if (mc != null && mc.player != null) {
+            mc.player.sendMessage(new TextComponentString("§e[Macro] ⏸ ĐÃ TẠM DỪNG Macro (F4). Nhấn F4 để tiếp tục!"));
         }
         System.out.println("[MacroRecorder] >>> TẠM DỪNG (F4). Nhấn F4 để chạy tiếp, F10 để dừng hẳn + reset.");
     }
@@ -3038,6 +3066,7 @@ public class MacroRecorderMod {
             return;
         macroPaused = false;
         hudSessionStartMillis = System.currentTimeMillis();
+        executeClientCommand("#resume");
         if (sellMacroRunning) {
             try {
                 int farmId = ConfigHelper.getFarmItemId();
@@ -3045,6 +3074,9 @@ public class MacroRecorderMod {
                 SignAimHandler.startAimLock(target);
             } catch (Exception ignored) {
             }
+        }
+        if (mc != null && mc.player != null) {
+            mc.player.sendMessage(new TextComponentString("§a[Macro] ▶ ĐÃ TIẾP TỤC Macro (F4)."));
         }
         System.out.println("[MacroRecorder] >>> CHẠY TIẾP (F4).");
     }
@@ -3173,13 +3205,15 @@ public class MacroRecorderMod {
         }
 
         if (sellMacroKey != null && sellMacroKey.isPressed()) {
-            // F4 CHI CO MOT CHUC NANG: khoi dong macro Ban Mia + toan bo vong lap.
-            // Khong con che do F4 = pause/resume nua.
-            // Khi macro dang chay, an F4 tiep theo se KHONG tat / pause bat ky logic nao.
             if (!isRunning && !sellMacroRunning && !preStartActive) {
+                if (mc != null && mc.player != null) {
+                    mc.player.sendMessage(new TextComponentString("§b[Macro] 🚀 BẮT ĐẦU Macro Bán Đồ (F4)..."));
+                }
                 startF4Sequence();
+            } else if (macroPaused) {
+                resumeMacro();
             } else {
-                System.out.println("[MacroRecorder] F4: Macro dang bat - bo qua, khong tat/pause.");
+                pauseMacro();
             }
         }
 
@@ -3215,6 +3249,7 @@ public class MacroRecorderMod {
             KeyBinding.setKeyBindState(mc.gameSettings.keyBindJump.getKeyCode(), false);
         }
         resetHud(); // F10 = dung han + dua ruong/tien/thoi gian ve lai 0
+        preHomeCommandSent = false;
         try {
             if (mc != null && mc.currentScreen != null) {
                 mc.player.closeScreen();
@@ -3222,6 +3257,9 @@ public class MacroRecorderMod {
         } catch (Exception e) {
             System.out.println("[MacroRecorder] Lỗi khi dừng macro: " + e);
             e.printStackTrace();
+        }
+        if (mc != null && mc.player != null) {
+            mc.player.sendMessage(new TextComponentString("§c[Macro] ⏹ ĐÃ DỪNG Macro (F10)."));
         }
         System.out.println("[MacroRecorder] ========================================");
         System.out.println("[MacroRecorder] >>> ĐÃ DỪNG tại rương #" + (chestIndex + 1) + ", kho /pv " + vaultNumber);

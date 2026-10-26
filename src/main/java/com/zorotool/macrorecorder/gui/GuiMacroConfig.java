@@ -17,20 +17,22 @@ import java.io.IOException;
  */
 public class GuiMacroConfig extends GuiScreen {
 
-    // === Panel Trái: Kho & Vật phẩm (6 ô) ===
+    // === Panel Trái: Kho & Vật phẩm (7 ô) ===
     private GuiTextField farmItemIdField;
     private GuiTextField vaultCountField;
+    private GuiTextField sethomeCommandField;
+    private GuiTextField homeMiaCommandField;
     private GuiTextField itemTransferDelayField;
-    private GuiTextField queueDistanceThresholdField;
     private GuiTextField moveDelayField;
     private GuiTextField shopToSethomeDelayField;
 
-    // === Panel Phải: Điều hướng & Quầy bán (6 ô) ===
+    // === Panel Phải: Điều hướng & Quầy bán (7 ô) ===
     private GuiTextField shopGotoField;
     private GuiTextField shopLookField;
     private GuiTextField beforeShopDelayField;
     private GuiTextField afterShopGotoField;
     private GuiTextField afterShopGotoWaitField;
+    private GuiTextField preHomeCommandField;
     private GuiTextField nextChestGotoField;
 
     // === Nút bấm điều khiển ===
@@ -50,10 +52,10 @@ public class GuiMacroConfig extends GuiScreen {
         cardLeftX = (this.width - totalCardsW) / 2;
         cardRightX = cardLeftX + cardW + 14;
 
-        cardTopY = 30;
-        int maxRows = 6;
-        int availH = this.height - cardTopY - 42;
-        rowHeight = Math.max(22, Math.min(25, availH / maxRows));
+        cardTopY = 26;
+        int maxRows = 7;
+        int availH = this.height - cardTopY - 40;
+        rowHeight = Math.max(21, Math.min(24, availH / maxRows));
         cardH = 18 + rowHeight * maxRows + 2;
 
         fieldW = cardW - 16;
@@ -69,21 +71,23 @@ public class GuiMacroConfig extends GuiScreen {
         ConfigHelper.reloadConfig();
         calculateLayout();
 
-        // 1. Panel Trái: Kho & Vật phẩm (6 ô)
+        // 1. Panel Trái: Kho & Vật phẩm (7 ô)
         farmItemIdField = makeField(0, cardLeftX + 8, getFieldY(0), String.valueOf(ConfigHelper.getFarmItemId()), 6);
         vaultCountField = makeField(1, cardLeftX + 8, getFieldY(1), String.valueOf(ConfigHelper.getVaults()), 4);
-        itemTransferDelayField = makeField(2, cardLeftX + 8, getFieldY(2), String.valueOf(ConfigHelper.getItemTransferDelayMs()), 6);
-        queueDistanceThresholdField = makeField(3, cardLeftX + 8, getFieldY(3), formatDelay(ConfigHelper.getQueueDistanceThreshold()), 8);
-        moveDelayField = makeField(4, cardLeftX + 8, getFieldY(4), formatDelay(ConfigHelper.getMoveDelaySeconds()), 8);
-        shopToSethomeDelayField = makeField(5, cardLeftX + 8, getFieldY(5), formatDelay(ConfigHelper.getShopToSethomeDelaySeconds()), 8);
+        sethomeCommandField = makeField(2, cardLeftX + 8, getFieldY(2), ConfigHelper.getSethomeCommand(), 64);
+        homeMiaCommandField = makeField(3, cardLeftX + 8, getFieldY(3), ConfigHelper.getHomeMiaCommand(), 64);
+        itemTransferDelayField = makeField(4, cardLeftX + 8, getFieldY(4), String.valueOf(ConfigHelper.getItemTransferDelayMs()), 6);
+        moveDelayField = makeField(5, cardLeftX + 8, getFieldY(5), formatDelay(ConfigHelper.getMoveDelaySeconds()), 8);
+        shopToSethomeDelayField = makeField(6, cardLeftX + 8, getFieldY(6), formatDelay(ConfigHelper.getShopToSethomeDelaySeconds()), 8);
 
-        // 2. Panel Phải: Điều hướng & Quầy bán (6 ô)
-        shopGotoField = makeField(6, cardRightX + 8, getFieldY(0), ConfigHelper.getShopGotoCommand(), 64);
-        shopLookField = makeField(7, cardRightX + 8, getFieldY(1), ConfigHelper.getShopLookCommand(), 64);
-        beforeShopDelayField = makeField(8, cardRightX + 8, getFieldY(2), formatDelay(ConfigHelper.getBeforeShopDelaySeconds()), 8);
-        afterShopGotoField = makeField(9, cardRightX + 8, getFieldY(3), ConfigHelper.getAfterShopGotoCommand(), 64);
-        afterShopGotoWaitField = makeField(10, cardRightX + 8, getFieldY(4), formatDelay(ConfigHelper.getAfterShopGotoWaitSeconds()), 8);
-        nextChestGotoField = makeField(11, cardRightX + 8, getFieldY(5), ConfigHelper.getNextChestGotoCommand(), 64);
+        // 2. Panel Phải: Điều hướng & Quầy bán (7 ô)
+        shopGotoField = makeField(7, cardRightX + 8, getFieldY(0), ConfigHelper.getShopGotoCommand(), 64);
+        shopLookField = makeField(8, cardRightX + 8, getFieldY(1), ConfigHelper.getShopLookCommand(), 64);
+        beforeShopDelayField = makeField(9, cardRightX + 8, getFieldY(2), formatDelay(ConfigHelper.getBeforeShopDelaySeconds()), 8);
+        afterShopGotoField = makeField(10, cardRightX + 8, getFieldY(3), ConfigHelper.getAfterShopGotoCommand(), 64);
+        afterShopGotoWaitField = makeField(11, cardRightX + 8, getFieldY(4), formatDelay(ConfigHelper.getAfterShopGotoWaitSeconds()), 8);
+        preHomeCommandField = makeField(12, cardRightX + 8, getFieldY(5), ConfigHelper.getPreHomeCommand(), 64);
+        nextChestGotoField = makeField(13, cardRightX + 8, getFieldY(6), ConfigHelper.getNextChestGotoCommand(), 64);
 
         // 3. Nút bấm điều khiển (Lưu, Bắt đầu, Hủy)
         int btnW = Math.max(76, Math.min(100, (cardW * 2 - 20) / 3));
@@ -121,10 +125,10 @@ public class GuiMacroConfig extends GuiScreen {
 
     private GuiTextField[] allFields() {
         return new GuiTextField[] {
-                farmItemIdField, vaultCountField, itemTransferDelayField, queueDistanceThresholdField,
-                moveDelayField, shopToSethomeDelayField,
+                farmItemIdField, vaultCountField, sethomeCommandField, homeMiaCommandField,
+                itemTransferDelayField, moveDelayField, shopToSethomeDelayField,
                 shopGotoField, shopLookField, beforeShopDelayField,
-                afterShopGotoField, afterShopGotoWaitField, nextChestGotoField
+                afterShopGotoField, afterShopGotoWaitField, preHomeCommandField, nextChestGotoField
         };
     }
 
@@ -174,8 +178,9 @@ public class GuiMacroConfig extends GuiScreen {
         try {
             int farmItemId = clampInt(Integer.parseInt(farmItemIdField.getText().trim()), 1, 32767);
             int vaults = clampInt(Integer.parseInt(vaultCountField.getText().trim()), 1, 9999);
+            String sethomeCmd = sethomeCommandField.getText().trim();
+            String homeCmd = homeMiaCommandField.getText().trim();
             int itemTransferDelayMs = clampInt(Integer.parseInt(itemTransferDelayField.getText().trim()), 0, 60000);
-            float queueDistance = clampFloat(parseFloat(queueDistanceThresholdField), 0f, 256f);
             float moveDelay = clampFloat(parseFloat(moveDelayField), 0f, 10f);
             float shopToSethomeDelay = clampFloat(parseFloat(shopToSethomeDelayField), 0f, 60f);
 
@@ -184,12 +189,13 @@ public class GuiMacroConfig extends GuiScreen {
             float beforeShopDelay = clampFloat(parseFloat(beforeShopDelayField), 0f, 60f);
             String afterShopGoto = afterShopGotoField.getText().trim();
             float afterShopGotoWait = clampFloat(parseFloat(afterShopGotoWaitField), 0f, 60f);
+            String preHomeCmd = preHomeCommandField.getText().trim();
             String nextChestGoto = nextChestGotoField.getText().trim();
 
             ConfigHelper.setFarmItemId(farmItemId);
             ConfigHelper.setItemTransferDelayMs(itemTransferDelayMs);
             ConfigHelper.setConfig(vaults, moveDelay, 0f, 0f);
-            ConfigHelper.setQueueDistanceThreshold(queueDistance);
+            ConfigHelper.setCommands(sethomeCmd, homeCmd, preHomeCmd);
 
             ConfigHelper.setGotoLookConfig(
                     shopGoto,
@@ -205,6 +211,9 @@ public class GuiMacroConfig extends GuiScreen {
             MacroRecorderMod.getInstance().reloadConfig();
             System.out.println("[MacroRecorder] F8 CONFIG SAVED: ID=" + farmItemId
                     + " | vaults=" + vaults
+                    + " | sethome=" + sethomeCmd
+                    + " | home=" + homeCmd
+                    + " | preHome=" + preHomeCmd
                     + " | gotoShop=" + shopGoto
                     + " | lookShop=" + shopLook
                     + " | gotoSell=" + afterShopGoto
@@ -251,26 +260,28 @@ public class GuiMacroConfig extends GuiScreen {
         // 3. Vẽ Card Phải: Điều hướng & Quầy bán
         drawCard(cardRightX, cardTopY, cardW, cardH, "§b§l🧭 ĐIỀU HƯỚNG & QUẦY BÁN", 0xFF38BDF8);
 
-        // 4. Vẽ Labels & Fields cho Card Trái (6 ô)
+        // 4. Vẽ Labels & Fields cho Card Trái (7 ô)
         drawFormField("ID vật phẩm (F3+H)", "§8[Mía: 338, Súng: 289]", cardLeftX + 8, getLabelY(0), farmItemIdField);
         drawFormField("Số kho /pv cần lấy", "§8(1 - 9999 kho)", cardLeftX + 8, getLabelY(1), vaultCountField);
-        drawFormField("Delay đẩy kho (ở nhà)", "§8(ms) — 0 = nhanh nhất (shop luôn 0ms)", cardLeftX + 8, getLabelY(2), itemTransferDelayField);
-        drawFormField("Khoảng cách chờ hàng đợi", "§8(mét)", cardLeftX + 8, getLabelY(3), queueDistanceThresholdField);
-        drawFormField("Delay di chuyển #goto rương", "§8(giây)", cardLeftX + 8, getLabelY(4), moveDelayField);
-        drawFormField("Delay /shop -> /sethome", "§8(giây)", cardLeftX + 8, getLabelY(5), shopToSethomeDelayField);
+        drawFormField("Lệnh lưu sethome", "§8(vd: /sethome home)", cardLeftX + 8, getLabelY(2), sethomeCommandField);
+        drawFormField("Lệnh dịch chuyển về nhà", "§8(vd: /home home)", cardLeftX + 8, getLabelY(3), homeMiaCommandField);
+        drawFormField("Delay đẩy kho (ở nhà)", "§8(ms) — 0 = nhanh nhất (shop luôn 0ms)", cardLeftX + 8, getLabelY(4), itemTransferDelayField);
+        drawFormField("Delay di chuyển #goto rương", "§8(giây)", cardLeftX + 8, getLabelY(5), moveDelayField);
+        drawFormField("Delay /shop -> /sethome", "§8(giây)", cardLeftX + 8, getLabelY(6), shopToSethomeDelayField);
 
-        // 5. Vẽ Labels & Fields cho Card Phải (6 ô đầy đủ, đối xứng với Panel Trái)
+        // 5. Vẽ Labels & Fields cho Card Phải (7 ô)
         drawFormField("#goto tới NPC shop", "§8(tọa độ đứng trước NPC)", cardRightX + 8, getLabelY(0), shopGotoField);
-        drawFormField("Lệnh nhìn vào NPC shop", "§8(vd: .look -101 152 126)", cardRightX + 8, getLabelY(1), shopLookField);
+        drawFormField("Lệnh nhìn vào NPC shop", "§8(vd: .look 110 -30)", cardRightX + 8, getLabelY(1), shopLookField);
         drawFormField("Delay trước #goto shop", "§8(giây)", cardRightX + 8, getLabelY(2), beforeShopDelayField);
         drawFormField("#goto quầy bán đồ", "§8(vị trí sau khi thoát shop)", cardRightX + 8, getLabelY(3), afterShopGotoField);
         drawFormField("Delay ổn định trước khi bán", "§8(giây)", cardRightX + 8, getLabelY(4), afterShopGotoWaitField);
-        drawFormField("#goto rương kế tiếp", "§8(vd: #goto ~-1 ~ ~)", cardRightX + 8, getLabelY(5), nextChestGotoField);
+        drawFormField("Lệnh trước khi /home", "§8(vd: /f money deposit <tiền> — trống = tắt)", cardRightX + 8, getLabelY(5), preHomeCommandField);
+        drawFormField("#goto rương kế tiếp", "§8(vd: #goto ~-1 ~ ~)", cardRightX + 8, getLabelY(6), nextChestGotoField);
 
         // 6. Footer hướng dẫn phím tắt & trạng thái
         drawRect(0, this.height - 12, this.width, this.height, 0xD00A0D14);
         this.drawCenteredString(this.fontRenderer,
-                "§7Phím tắt: §e[ENTER] §7Lưu & Thoát  •  §c[ESC] §7Hủy  •  §b[F4] §7Macro Bán  •  §6[F9] §7Macro Kho  •  §d[F10] §7Dừng",
+                "§7Phím tắt: §e[ENTER] §7Lưu & Thoát  •  §c[ESC] §7Hủy  •  §b[F4] §7Bật / Tạm dừng Macro  •  §6[F9] §7Lấy Đồ  •  §d[F10] §7Dừng Hẳn",
                 this.width / 2, this.height - 10, 0xCBD5E1);
 
         super.drawScreen(mouseX, mouseY, partialTicks);

@@ -76,9 +76,10 @@ public class ConfigHelper {
     // String cung trong code (vd trySendCommand("/shop")) nen sua file JSON
     // khong co tac dung gi. Gio dua vao JSON giong shopGotoCommand/shopLookCommand
     // de co the doi noi dung lenh ma khong can build lai jar.
-    public static final String DEFAULT_SETHOME_COMMAND = "/sethome";
+    public static final String DEFAULT_SETHOME_COMMAND = "/sethome home";
     public static final String DEFAULT_SHOP_COMMAND = "/shop";
-    public static final String DEFAULT_HOME_MIA_COMMAND = "/HOME MIA";
+    public static final String DEFAULT_HOME_MIA_COMMAND = "/home home";
+    public static final String DEFAULT_PRE_HOME_COMMAND = "";
 
     // ===== DANH SACH THU TU TAI KHOAN (nhieu nick mo cung luc F4) - GUI phim U =====
     // ===== (xem GuiAccountOrder). accountOrder la thu tu "ai chay truoc, ai chay =====
@@ -122,6 +123,7 @@ public class ConfigHelper {
         String sethomeCommand = DEFAULT_SETHOME_COMMAND;
         String shopCommand = DEFAULT_SHOP_COMMAND;
         String homeMiaCommand = DEFAULT_HOME_MIA_COMMAND;
+        String preHomeCommand = DEFAULT_PRE_HOME_COMMAND;
 
         // Danh sach username theo THU TU chay (nick dau tien chay truoc), dung
         // chung 1 file JSON cho CA 3 nick (moi client tu doc file cua rieng no,
@@ -291,6 +293,7 @@ public class ConfigHelper {
         data.sethomeCommand = nonBlankOrDefault(data.sethomeCommand, DEFAULT_SETHOME_COMMAND);
         data.shopCommand = nonBlankOrDefault(data.shopCommand, DEFAULT_SHOP_COMMAND);
         data.homeMiaCommand = nonBlankOrDefault(data.homeMiaCommand, DEFAULT_HOME_MIA_COMMAND);
+        data.preHomeCommand = data.preHomeCommand == null ? "" : data.preHomeCommand.trim();
     }
 
     private static String nonBlankOrDefault(String value, String defaultValue) {
@@ -405,6 +408,22 @@ public class ConfigHelper {
 
     public static String getHomeMiaCommand() {
         return data.homeMiaCommand;
+    }
+
+    public static String getPreHomeCommand() {
+        return data.preHomeCommand == null ? "" : data.preHomeCommand;
+    }
+
+    public static void setPreHomeCommand(String cmd) {
+        data.preHomeCommand = (cmd == null) ? "" : cmd.trim();
+        saveConfig();
+    }
+
+    public static void setCommands(String sethomeCmd, String homeCmd, String preHomeCmd) {
+        data.sethomeCommand = (sethomeCmd == null || sethomeCmd.trim().isEmpty()) ? DEFAULT_SETHOME_COMMAND : sethomeCmd.trim();
+        data.homeMiaCommand = (homeCmd == null || homeCmd.trim().isEmpty()) ? DEFAULT_HOME_MIA_COMMAND : homeCmd.trim();
+        data.preHomeCommand = (preHomeCmd == null) ? "" : preHomeCmd.trim();
+        saveConfig();
     }
 
     // ===== DANH SACH THU TU TAI KHOAN - dung cho GUI (phim U, xem GuiAccountOrder) =====

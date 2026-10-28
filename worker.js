@@ -1014,9 +1014,10 @@ class BotInstance {
             const lockedAlive = locked && !(locked.health !== undefined && locked.health <= 0);
 
             if (lockedAlive) {
-                const dist = eyePos.distanceTo(locked.position.offset(0, 0.15, 0));
-                // ⭐ Dùng farm_range (tầm đánh thật), KHÔNG dùng farm_radius (tầm quét)
-                if (dist <= this.farm_range) {
+                const targetHeight = (locked.height && locked.height > 0) ? locked.height * 0.5 : 0.5;
+                const dist = eyePos.distanceTo(locked.position.offset(0, targetHeight, 0));
+                const maxReach = Math.min(this.farm_range, 2.95);
+                if (dist <= maxReach) {
                     this._lockedTargetExpiresAt = now + this._lockDurationMs;
                     this._lastHadTargetAt = now;
                     return { id: this._lockedTargetId, entity: locked, dist };
@@ -1053,10 +1054,10 @@ class BotInstance {
 
     // ⭐ ANTI-CHEAT SAFE ATTACK: cơ chế chém chuẩn Vanilla Client để vượt qua GrimAC / Vulcan / Matrix:
     // 1. Tầm đánh (Reach): Giới hạn cứng tối đa 2.95m (Survival chuẩn 3.0m). Tuyệt đối không chém xa quá 3.0m.
-    // 2. Góc nhìn (Angle/Raycast): Tính toán yaw/pitch chuẩn Notchian và gửi trực tiếp packet 'look'
-    //    lên server trước, chờ tối thiểu 60ms để server cập nhật hướng nhìn của người chơi.
-    // 3. Thứ tự packet (Attack Order / NoSwing): Client chuẩn luôn gửi 'arm_animation' (swing) TRƯỚC
-    //    khi gửi 'use_entity' (attack). Mineflayer mặc định ở 1.9+ gửi ngược lại nên bị AntiCheat kick.
+    // 2. Góc nhìn (Angle/Raycast): Cập nhật góc nhìn đồng bộ qua bot.lookAt(targetCenterPos, true) và
+    //    đợi physics tick (waitForTicks) để Mineflayer tự gửi packet look chính thức. Tuyệt đối không
+    //    gửi packet look thô vì sẽ bị physics loop của Mineflayer gửi đè góc cũ gây lệch tâm (Killaura snap).
+    // 3. Thứ tự packet (Attack Order / NoSwing): Client chuẩn luôn gửi arm_animation (swing) TRƯỚC khi gửi use_entity.
     async _attemptAttack(candidateId) {
         if (this._attack_in_progress) return;
         if (!this.bot || !this.running) return;
@@ -1070,7 +1071,7 @@ class BotInstance {
             const predictedPos = target.velocity
                 ? target.position.plus(target.velocity.scaled(latency))
                 : target.position;
-            const margin = Math.min(latency * 2, 0.1) + this._adaptiveReachMargin;
+            const margin = Math.min(latency * 2, 0.05) + this._adaptiveReachMargin;
 
             const eyePos = this.bot.entity.position.offset(0, 1.62, 0);
             const targetLookHeight = (target.height && target.height > 0) ? target.height * 0.5 : 0.5;
@@ -1083,43 +1084,27 @@ class BotInstance {
 
             if (dist > maxAllowedReach) {
                 if (this.farm_debug) {
-                    this.log(`🔍 [debug] Bỏ qua (ngoài tầm an toàn ${maxAllowedReach.toFixed(2)}m): ${target.name || '?'} dist=${dist.toFixed(2)}`, '#8b949e');
+                    this.log("🔍 [debug] Bỏ qua (ngoài tầm an toàn " + maxAllowedReach.toFixed(2) + "m): " + (target.name || "?") + " dist=" + dist.toFixed(2), "#8b949e");
                 }
+                // Giảm tần suất gọi khi mục tiêu ngoài tầm, tránh spam loop 66 lần/s
+                this.last_attack_time = (Date.now() / 1000) - this.next_attack_delay + 0.15;
                 return;
             }
 
             if (this.farm_lookat || this.farm_smart_aim) {
+                const isNewTarget = candidateId !== this._lastAttackTargetId;
                 try {
-                    // Tính yaw/pitch chuẩn Notchian
-                    const delta = targetCenterPos.minus(eyePos);
-                    const rawYaw = Math.atan2(-delta.x, -delta.z);
-                    const groundDist = Math.sqrt(delta.x * delta.x + delta.z * delta.z);
-                    const rawPitch = Math.atan2(delta.y, groundDist);
-
-                    this.bot.entity.yaw = rawYaw;
-                    this.bot.entity.pitch = rawPitch;
-
-                    const toDegrees = rad => rad * (180 / Math.PI);
-                    const notchYaw = Math.fround(toDegrees(Math.PI - rawYaw));
-                    let notchPitch = Math.fround(toDegrees(-rawPitch));
-                    notchPitch = Math.max(-90, Math.min(90, notchPitch));
-
-                    // Gửi trực tiếp packet look lên server ngay để server cập nhật góc nhìn
-                    if (this.bot._client) {
-                        this.bot._client.write('look', {
-                            yaw: notchYaw,
-                            pitch: notchPitch,
-                            onGround: Boolean(this.bot.entity.onGround)
-                        });
-                    }
+                    // Đồng bộ góc nhìn qua lookAt của Mineflayer (cập nhật chính xác lastSentYaw/Pitch nội bộ)
+                    await this.bot.lookAt(targetCenterPos, true);
                 } catch (e) {}
 
-                const isNewTarget = candidateId !== this._lastAttackTargetId;
-                const settleMs = isNewTarget
-                    ? Math.max(this._lookSettleMs, this._lookSettleSwitchMs)
-                    : this._lookSettleMs;
-                // Chờ tối thiểu 60ms để gói look kịp đồng bộ tới server trước đòn chém
-                await this.sleep(Math.max(60, settleMs));
+                // Đợi 1-2 tick physics để Mineflayer gửi packet look chuẩn và server ghi nhận góc nhìn của player
+                const waitTicks = isNewTarget ? 2 : 1;
+                try {
+                    await this.bot.waitForTicks(waitTicks);
+                } catch (e) {
+                    await this.sleep(waitTicks * 50);
+                }
             }
 
             if (!this.bot || !this.running) return;
@@ -1131,7 +1116,7 @@ class BotInstance {
             const finalPredictedPos = stillTarget.velocity
                 ? stillTarget.position.plus(stillTarget.velocity.scaled(finalLatency))
                 : stillTarget.position;
-            const finalMargin = Math.min(finalLatency * 2, 0.1) + this._adaptiveReachMargin;
+            const finalMargin = Math.min(finalLatency * 2, 0.05) + this._adaptiveReachMargin;
             const finalCenterPos = finalPredictedPos.offset(0, targetLookHeight, 0);
             const finalDist = this.bot.entity.position
                 .offset(0, 1.62, 0)
@@ -1140,8 +1125,9 @@ class BotInstance {
             const finalAllowedReach = Math.min(this.ATTACK_REACH + finalMargin, MAX_SURVIVAL_REACH);
             if (finalDist > finalAllowedReach) {
                 if (this.farm_debug) {
-                    this.log(`🔍 [debug] Bỏ qua lúc chém (ngoài tầm an toàn ${finalAllowedReach.toFixed(2)}m sau settle): ${stillTarget.name || '?'} dist=${finalDist.toFixed(2)}`, '#8b949e');
+                    this.log("🔍 [debug] Bỏ qua lúc chém (ngoài tầm an toàn " + finalAllowedReach.toFixed(2) + "m sau settle): " + (stillTarget.name || "?") + " dist=" + finalDist.toFixed(2), "#8b949e");
                 }
+                this.last_attack_time = (Date.now() / 1000) - this.next_attack_delay + 0.15;
                 return;
             }
 
@@ -1162,23 +1148,21 @@ class BotInstance {
             this._lastAttackSentAt.set(attackTargetId, sentNow);
 
             // ⭐ FIX NOSWING / ATTACK ORDER:
-            // 1. Luôn vung tay trước (arm_animation)
+            // 1. Luôn vung tay trước (arm_animation) chuẩn Vanilla client
             try {
-                this.bot.swingArm('right');
+                this.bot.swingArm("right");
             } catch (e) {}
 
-            // 2. Gửi packet attack sau khi đã vung tay
+            // 2. Tấn công qua bot.attack chuẩn của Mineflayer (gửi use_entity với đầy đủ metadata)
             try {
+                this.bot.attack(attackTarget);
+            } catch (e) {
                 if (this.bot._client) {
-                    this.bot._client.write('use_entity', {
+                    this.bot._client.write("use_entity", {
                         target: attackTargetId,
                         mouse: 1
                     });
-                } else {
-                    this.bot.attack(attackTarget);
                 }
-            } catch (e) {
-                this.bot.attack(attackTarget);
             }
 
             this._lastAttackTargetId = attackTargetId;
@@ -1188,11 +1172,13 @@ class BotInstance {
             this._missCount = 0;
 
             if (this.farm_debug) {
-                this.log(`⚔️ [debug] Chém: ${attackTarget.name || '?'} (id=${attackTargetId}) dist=${finalDist.toFixed(2)} ping=${(finalLatency * 1000).toFixed(0)}ms adaptiveMargin=${this._adaptiveReachMargin.toFixed(2)}${expectConfirm ? '' : ' (invuln, không kỳ vọng confirm)'}${retargeted ? ` (đổi mục tiêu qua raycast, ban đầu chọn id=${stillTarget.id})` : ''}`, '#58a6ff');
+                const retargetMsg = retargeted ? (" (đổi mục tiêu qua raycast, ban đầu chọn id=" + stillTarget.id + ")") : "";
+                const confirmMsg = expectConfirm ? "" : " (invuln, không kỳ vọng confirm)";
+                this.log("⚔️ [debug] Chém: " + (attackTarget.name || "?") + " (id=" + attackTargetId + ") dist=" + finalDist.toFixed(2) + " ping=" + (finalLatency * 1000).toFixed(0) + "ms adaptiveMargin=" + this._adaptiveReachMargin.toFixed(2) + confirmMsg + retargetMsg, "#58a6ff");
             }
         } catch (e) {
             if (this.farm_debug) {
-                this.log(`⚠️ [debug] Lỗi khi chém: ${e && e.message ? e.message : e}`, '#f5c842');
+                this.log("⚠️ [debug] Lỗi khi chém: " + (e && e.message ? e.message : e), "#f5c842");
             }
         } finally {
             this._attack_in_progress = false;
@@ -1345,10 +1331,12 @@ class BotInstance {
                 const pos = entity.position;
                 if (!pos) continue;
 
-                const targetPos = pos.offset(0, 0.15, 0);
+                const targetHeight = (entity.height && entity.height > 0) ? entity.height * 0.5 : 0.5;
+                const targetPos = pos.offset(0, targetHeight, 0);
                 const dist = eyePos.distanceTo(targetPos);
+                const maxScanReach = Math.min(this.farm_range, 2.95);
 
-                if (dist < nearestDist && dist <= this.farm_radius) {
+                if (dist < nearestDist && dist <= maxScanReach) {
                     nearestDist = dist;
                     nearest = { id, entity, dist };
                 }

@@ -1,4 +1,4 @@
-﻿const mineflayer = require('mineflayer');
+const mineflayer = require('mineflayer');
 const Vec3 = require('vec3').Vec3;
 const { pathfinder, Movements, goals } = require('mineflayer-pathfinder');
 
@@ -130,24 +130,27 @@ class BotInstance {
 
         this.proxy = settings.proxy || null;
 
-        this.farm_range = settings.farm_range !== undefined ? settings.farm_range : 5.0;
+        // ⭐ ANTI-CHEAT SAFE REACH: Minecraft Survival chỉ cho phép tầm đánh tối đa 3.0 ô.
+        // Bất kỳ đòn đánh nào vượt quá 3.0 ô sẽ kích hoạt check Reach của GrimAC/Vulcan/Matrix
+        // dẫn đến việc bị kick văng về lobby. Tầm đánh an toàn chuẩn là 2.8 - 2.9 ô.
+        this.farm_range = Math.min(settings.farm_range !== undefined ? settings.farm_range : 2.9, 3.0);
         this.farm_radius = settings.farm_radius !== undefined ? settings.farm_radius : 20;
-        this.farm_min_delay = settings.farm_min_delay !== undefined ? settings.farm_min_delay : 0.08;
-        this.farm_max_delay = settings.farm_max_delay !== undefined ? settings.farm_max_delay : 0.15;
+        this.farm_min_delay = settings.farm_min_delay !== undefined ? settings.farm_min_delay : 0.5;
+        this.farm_max_delay = settings.farm_max_delay !== undefined ? settings.farm_max_delay : 0.8;
 
         this.last_attack_time = 0;
         this.next_attack_delay = this.farm_min_delay;
 
-        this.ATTACK_REACH = settings.attack_reach !== undefined ? settings.attack_reach : 5.0;
+        this.ATTACK_REACH = Math.min(settings.attack_reach !== undefined ? settings.attack_reach : 2.9, 3.0);
         this.farm_target_id = null;
 
         this._pendingAttacks = new Map(); // entityId -> { sentAt, expectConfirm }
         this._lastAttackSentAt = new Map(); // entityId -> timestamp lần đánh GẦN NHẤT (kể cả không confirm)
-        this._invulnWindowMs = 550;
+        this._invulnWindowMs = 500;
         this._adaptiveReachMargin = 0;
-        this._adaptiveMarginMax = 3.0;
-        this._adaptiveMarginStep = 0.25;
-        this._adaptiveMarginDecay = 0.03;
+        this._adaptiveMarginMax = 0.1; // Khống chế trần adaptive margin để tổng tầm đánh không bao giờ vượt quá 3.0m
+        this._adaptiveMarginStep = 0.05;
+        this._adaptiveMarginDecay = 0.02;
         this._missTimeoutMs = 450;
 
         // ⭐ FIX AUTO-RECOVERY: trước đây _adaptiveReachMargin chỉ TĂNG khi miss và chỉ
@@ -289,13 +292,12 @@ class BotInstance {
         this._last_dn_at = 0;
         this._spawn_at = 0;
 
-        // Chuẩn bị mở GUI compass: đợi 1 phút (giảm từ 2 phút) rồi mới gửi /dn + mở GUI +
-        // click Diamond Axe. Chưa vào được server thì cứ 1 phút retry 1 lần cho tới khi thành công.
-        this.COMPASS_OPEN_DELAY_MS = settings.compass_open_delay_ms !== undefined ? settings.compass_open_delay_ms : 60 * 1000;
-        this.AXE_RETRY_MS = settings.axe_retry_ms !== undefined ? settings.axe_retry_ms : 60 * 1000;
+        // Chuẩn bị mở GUI compass: đợi 2s (khi bị đưa về lobby/reconnect) để hotbar ổn định rồi mới mở GUI +
+        // click Diamond Axe. Chưa vào được server thì cứ 5s retry 1 lần cho tới khi thành công.
+        this.COMPASS_OPEN_DELAY_MS = settings.compass_open_delay_ms !== undefined ? settings.compass_open_delay_ms : 2000;
+        this.AXE_RETRY_MS = settings.axe_retry_ms !== undefined ? settings.axe_retry_ms : 5000;
         this._verify_token = 0;
-        // Lần bấm Start đầu tiên: vào liền (không đợi COMPASS_OPEN_DELAY_MS). Các lần sau
-        // (reconnect, bị đưa về lobby...) mới đợi (đã giảm còn 1 phút, xem COMPASS_OPEN_DELAY_MS).
+        // Lần bấm Start đầu tiên: vào liền (1s). Các lần sau (reconnect, bị đưa về lobby...) đợi 2s (COMPASS_OPEN_DELAY_MS).
         this._initial_join_pending = false;
 
         // ⭐ KILL-NẾU-KẸT: nếu session mất kết nối HOẶC quá 1 phút vẫn chưa vào được
@@ -1049,11 +1051,12 @@ class BotInstance {
         return nearest;
     }
 
-    // ⭐ FIX PROXY-MISS / RAYCAST: thực hiện 1 lần chém hoàn chỉnh cho 1 mục tiêu,
-    // bao gồm: kiểm tra tầm, quay mặt (lookAt), CHỜ cho gói tin xoay góc nhìn kịp
-    // tới server, rồi mới raycast lại để xác định entity THỰC SỰ nằm trên tia ngắm
-    // (đây chính là entity mà server sẽ dùng để xác thực đòn đánh) và tấn công đúng
-    // entity đó. Chạy async & có cờ _attack_in_progress để không chồng lệnh.
+    // ⭐ ANTI-CHEAT SAFE ATTACK: cơ chế chém chuẩn Vanilla Client để vượt qua GrimAC / Vulcan / Matrix:
+    // 1. Tầm đánh (Reach): Giới hạn cứng tối đa 2.95m (Survival chuẩn 3.0m). Tuyệt đối không chém xa quá 3.0m.
+    // 2. Góc nhìn (Angle/Raycast): Tính toán yaw/pitch chuẩn Notchian và gửi trực tiếp packet 'look'
+    //    lên server trước, chờ tối thiểu 60ms để server cập nhật hướng nhìn của người chơi.
+    // 3. Thứ tự packet (Attack Order / NoSwing): Client chuẩn luôn gửi 'arm_animation' (swing) TRƯỚC
+    //    khi gửi 'use_entity' (attack). Mineflayer mặc định ở 1.9+ gửi ngược lại nên bị AntiCheat kick.
     async _attemptAttack(candidateId) {
         if (this._attack_in_progress) return;
         if (!this.bot || !this.running) return;
@@ -1067,40 +1070,60 @@ class BotInstance {
             const predictedPos = target.velocity
                 ? target.position.plus(target.velocity.scaled(latency))
                 : target.position;
-            const margin = Math.min(latency * 4, 1.5) + this._adaptiveReachMargin;
+            const margin = Math.min(latency * 2, 0.1) + this._adaptiveReachMargin;
 
             const eyePos = this.bot.entity.position.offset(0, 1.62, 0);
-            const dist = eyePos.distanceTo(predictedPos.offset(0, 0.15, 0));
+            const targetLookHeight = (target.height && target.height > 0) ? target.height * 0.5 : 0.5;
+            const targetCenterPos = predictedPos.offset(0, targetLookHeight, 0);
+            const dist = eyePos.distanceTo(targetCenterPos);
 
-            if (dist > this.ATTACK_REACH + margin) {
+            // Giới hạn cứng tầm đánh survival để không bao giờ vi phạm Reach check của Anti-Cheat
+            const MAX_SURVIVAL_REACH = 2.95;
+            const maxAllowedReach = Math.min(this.ATTACK_REACH + margin, MAX_SURVIVAL_REACH);
+
+            if (dist > maxAllowedReach) {
                 if (this.farm_debug) {
-                    this.log(`🔍 [debug] Bỏ qua (ngoài tầm): ${target.name || '?'} dist=${dist.toFixed(2)} > reach=${(this.ATTACK_REACH + margin).toFixed(2)}`, '#8b949e');
+                    this.log(`🔍 [debug] Bỏ qua (ngoài tầm an toàn ${maxAllowedReach.toFixed(2)}m): ${target.name || '?'} dist=${dist.toFixed(2)}`, '#8b949e');
                 }
                 return;
             }
 
             if (this.farm_lookat || this.farm_smart_aim) {
                 try {
-                    const lookHeight = (target.height && target.height > 0) ? target.height * 0.5 : 0.5;
-                    this.bot.lookAt(predictedPos.offset(0, lookHeight, 0), true);
+                    // Tính yaw/pitch chuẩn Notchian
+                    const delta = targetCenterPos.minus(eyePos);
+                    const rawYaw = Math.atan2(-delta.x, -delta.z);
+                    const groundDist = Math.sqrt(delta.x * delta.x + delta.z * delta.z);
+                    const rawPitch = Math.atan2(delta.y, groundDist);
+
+                    this.bot.entity.yaw = rawYaw;
+                    this.bot.entity.pitch = rawPitch;
+
+                    const toDegrees = rad => rad * (180 / Math.PI);
+                    const notchYaw = Math.fround(toDegrees(Math.PI - rawYaw));
+                    let notchPitch = Math.fround(toDegrees(-rawPitch));
+                    notchPitch = Math.max(-90, Math.min(90, notchPitch));
+
+                    // Gửi trực tiếp packet look lên server ngay để server cập nhật góc nhìn
+                    if (this.bot._client) {
+                        this.bot._client.write('look', {
+                            yaw: notchYaw,
+                            pitch: notchPitch,
+                            onGround: Boolean(this.bot.entity.onGround)
+                        });
+                    }
                 } catch (e) {}
 
-                // ⭐ SETTLE THEO NGỮ CẢNH: nếu đây là lần đầu chém 1 mục tiêu MỚI (khác con
-                // vừa chém trước đó), góc quay thường lớn hơn nhiều so với việc giữ nguyên
-                // hướng đánh tiếp con cũ -> cần chờ lâu hơn để gói xoay góc nhìn kịp "chốt"
-                // ở server trước khi gửi attack. Đánh lại đúng con cũ thì giữ settle ngắn để
-                // không làm chậm tốc độ farm không cần thiết.
                 const isNewTarget = candidateId !== this._lastAttackTargetId;
                 const settleMs = isNewTarget
                     ? Math.max(this._lookSettleMs, this._lookSettleSwitchMs)
                     : this._lookSettleMs;
-                if (settleMs > 0) {
-                    await this.sleep(settleMs);
-                }
+                // Chờ tối thiểu 60ms để gói look kịp đồng bộ tới server trước đòn chém
+                await this.sleep(Math.max(60, settleMs));
             }
 
             if (!this.bot || !this.running) return;
-            // Re-check còn sống + còn trong tầm sau khi chờ (thế giới có thể đã đổi)
+            // Re-check còn sống + còn trong tầm sau khi chờ
             const stillTarget = this.bot.entities[candidateId];
             if (!stillTarget || (stillTarget.health !== undefined && stillTarget.health <= 0)) return;
 
@@ -1108,30 +1131,24 @@ class BotInstance {
             const finalPredictedPos = stillTarget.velocity
                 ? stillTarget.position.plus(stillTarget.velocity.scaled(finalLatency))
                 : stillTarget.position;
-            const finalMargin = Math.min(finalLatency * 4, 1.5) + this._adaptiveReachMargin;
+            const finalMargin = Math.min(finalLatency * 2, 0.1) + this._adaptiveReachMargin;
+            const finalCenterPos = finalPredictedPos.offset(0, targetLookHeight, 0);
             const finalDist = this.bot.entity.position
                 .offset(0, 1.62, 0)
-                .distanceTo(finalPredictedPos.offset(0, 0.15, 0));
+                .distanceTo(finalCenterPos);
 
-            if (finalDist > this.ATTACK_REACH + finalMargin) {
+            const finalAllowedReach = Math.min(this.ATTACK_REACH + finalMargin, MAX_SURVIVAL_REACH);
+            if (finalDist > finalAllowedReach) {
                 if (this.farm_debug) {
-                    this.log(`🔍 [debug] Bỏ qua lúc chém (ngoài tầm sau settle): ${stillTarget.name || '?'} dist=${finalDist.toFixed(2)} > reach=${(this.ATTACK_REACH + finalMargin).toFixed(2)}`, '#8b949e');
+                    this.log(`🔍 [debug] Bỏ qua lúc chém (ngoài tầm an toàn ${finalAllowedReach.toFixed(2)}m sau settle): ${stillTarget.name || '?'} dist=${finalDist.toFixed(2)}`, '#8b949e');
                 }
                 return;
             }
 
-            // ⭐ FIX RAYCAST-OFF-BY-DEFAULT: dữ liệu log thực tế cho thấy server KHÔNG tự
-            // raytrace lại để xác thực entity - client chọn entityId (qua crosshair) và
-            // gửi thẳng lên, server chỉ kiểm tra khoảng cách/tầm (đúng cơ chế vanilla).
-            // Khi nhiều mob đứng chồng hitbox (chuồng farm), hàm raycast tự chế của bot lại
-            // bị nhiễu và "đổi" sang con mob SÁT BÊN mục tiêu đã khoá -> gửi attack sai con,
-            // server không nhận ra entity đó nằm trong tầm nhìn hợp lệ như con đã khoá -> miss.
-            // Vì vậy MẶC ĐỊNH tắt raycast retargeting, đánh thẳng vào mục tiêu đã khoá/chọn.
-            // Bật lại bằng settings.farm_use_raycast (true) nếu gặp server có raytrace thật.
             let attackTarget = stillTarget;
             let retargeted = false;
             if (this.farm_use_raycast) {
-                const raycastPick = this._pickRaycastMobTarget(this.ATTACK_REACH + finalMargin);
+                const raycastPick = this._pickRaycastMobTarget(finalAllowedReach);
                 if (raycastPick && raycastPick.entity) {
                     attackTarget = raycastPick.entity;
                     retargeted = attackTarget.id !== stillTarget.id;
@@ -1144,7 +1161,26 @@ class BotInstance {
             const expectConfirm = (sentNow - prevSentAt) >= this._invulnWindowMs;
             this._lastAttackSentAt.set(attackTargetId, sentNow);
 
-            this.bot.attack(attackTarget);
+            // ⭐ FIX NOSWING / ATTACK ORDER:
+            // 1. Luôn vung tay trước (arm_animation)
+            try {
+                this.bot.swingArm('right');
+            } catch (e) {}
+
+            // 2. Gửi packet attack sau khi đã vung tay
+            try {
+                if (this.bot._client) {
+                    this.bot._client.write('use_entity', {
+                        target: attackTargetId,
+                        mouse: 1
+                    });
+                } else {
+                    this.bot.attack(attackTarget);
+                }
+            } catch (e) {
+                this.bot.attack(attackTarget);
+            }
+
             this._lastAttackTargetId = attackTargetId;
             this._pendingAttacks.set(attackTargetId, { sentAt: sentNow, expectConfirm });
             this.last_attack_time = Date.now() / 1000;
@@ -1882,7 +1918,8 @@ class BotInstance {
     }
 
     updateSettings(settings) {
-        if (settings.farm_range !== undefined) this.farm_range = settings.farm_range;
+        if (settings.farm_range !== undefined) this.farm_range = Math.min(settings.farm_range, 3.0);
+        if (settings.attack_reach !== undefined) this.ATTACK_REACH = Math.min(settings.attack_reach, 3.0);
         if (settings.farm_radius !== undefined) this.farm_radius = settings.farm_radius;
         if (settings.farm_min_delay !== undefined) this.farm_min_delay = settings.farm_min_delay;
         if (settings.farm_max_delay !== undefined) this.farm_max_delay = settings.farm_max_delay;

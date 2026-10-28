@@ -158,7 +158,7 @@ class BotInstanceLocal:
         self.current_ip = "Chưa kết nối"
         self.joined_server = False
 
-        self.farm_range = 4
+        self.farm_range = 2.9
         self.farm_radius = 20
         self.farm_min_delay = 0.5
         self.farm_max_delay = 0.8
@@ -2051,6 +2051,11 @@ class BotManager:
                 if new_range <= 0 or new_radius <= 0:
                     status_label.config(text="⚠️ Phạm vi/Bán kính phải > 0!", fg='#ef4444')
                     return
+                # Tầm đánh survival trong Minecraft tối đa là 3.0m. Vượt quá sẽ bị Anti-Cheat kick văng về lobby.
+                if new_range > 3.0:
+                    new_range = 2.9
+                    range_entry.delete(0, tk.END)
+                    range_entry.insert(0, "2.9")
                 if new_min <= 0 or new_max <= 0 or new_min > new_max:
                     status_label.config(text="⚠️ Delay không hợp lệ! (min ≤ max, đều > 0)", fg='#ef4444')
                     return

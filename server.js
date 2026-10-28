@@ -91,7 +91,7 @@ const DEFAULT_BOT_SETTINGS = {
     farm_max_delay: 0.8,
 
     farm_smart_aim: false,
-    farm_lookat: true,
+    farm_lookat: false,
     afk_persist: true,
     farm_persist: false,
 

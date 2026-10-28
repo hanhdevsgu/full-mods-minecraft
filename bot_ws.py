@@ -163,7 +163,7 @@ class BotInstanceLocal:
         self.farm_min_delay = 0.5
         self.farm_max_delay = 0.8
         self.farm_smart_aim = False
-        self.farm_lookat = True
+        self.farm_lookat = False
         # ⭐ FIX AFK-BẬT-NHẦM: mặc định phải là False giống farm_persist - chỉ chế độ
         # nào người dùng thực sự bật (bấm nút AFK / Farm) mới tự bật lại khi vào server,
         # tránh trường hợp chỉ tick Farm nhưng AFK vẫn tự bật theo vì mặc định cũ là True.

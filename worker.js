@@ -170,7 +170,7 @@ class BotInstance {
         this.farm_debug = settings.farm_debug !== undefined ? settings.farm_debug : true;
 
         this.farm_smart_aim = false;
-        this.farm_lookat = settings.farm_lookat !== undefined ? settings.farm_lookat : true;
+        this.farm_lookat = settings.farm_lookat !== undefined ? settings.farm_lookat : false;
 
         // ⭐ FIX TARGET-LOCK: giữ nguyên 1 mục tiêu trong 1 khoảng thời gian thay vì
         // chọn lại "gần nhất" mỗi tick. Khi nhiều mob đứng chen chúc (chuồng farm),
@@ -1008,6 +1008,31 @@ class BotInstance {
         if (!this.bot || !this.bot.entity) return null;
         const now = Date.now();
         const eyePos = this.bot.entity.position.offset(0, 1.62, 0);
+        const maxReach = Math.min(this.farm_range, 2.95);
+
+        // ⭐ CHẾ ĐỘ CANH GÓC SẴN (Tắt LookAt / Aim):
+        // Giữ nguyên 100% góc nhìn của người chơi, chỉ chém những con mob đang nằm trong tia ngắm (crosshair)
+        // hoặc ngay trước mặt (chute / ô hở), tuyệt đối không xoay đầu và không đánh quái phía sau.
+        if (!this.farm_lookat && !this.farm_smart_aim) {
+            const rayPick = this._pickRaycastMobTarget(maxReach);
+            if (rayPick) {
+                this._lockedTargetId = rayPick.id;
+                this._lockedTargetExpiresAt = now + this._lockDurationMs;
+                this._lastHadTargetAt = now;
+                return rayPick;
+            }
+
+            const forwardMob = this.scanForwardMob(maxReach);
+            if (forwardMob) {
+                this._lockedTargetId = forwardMob.id;
+                this._lockedTargetExpiresAt = now + this._lockDurationMs;
+                this._lastHadTargetAt = now;
+                return forwardMob;
+            }
+
+            this._lockedTargetId = null;
+            return null;
+        }
 
         if (this._lockedTargetId !== null) {
             const locked = this.bot.entities[this._lockedTargetId];
@@ -1349,15 +1374,54 @@ class BotInstance {
     }
 
     _getEntityHitbox(entity) {
-        const width = (entity.width !== undefined && entity.width > 0) ? entity.width : 0.9;
-        const height = (entity.height !== undefined && entity.height > 0) ? entity.height : 1.4;
+        const margin = 0.1;
+        const width = ((entity.width !== undefined && entity.width > 0) ? entity.width : 0.8) + margin * 2;
+        const height = ((entity.height !== undefined && entity.height > 0) ? entity.height : 1.8) + margin;
         const halfW = width / 2;
         const pos = entity.position;
         return {
             minX: pos.x - halfW, maxX: pos.x + halfW,
-            minY: pos.y, maxY: pos.y + height,
+            minY: pos.y - margin, maxY: pos.y + height,
             minZ: pos.z - halfW, maxZ: pos.z + halfW,
         };
+    }
+
+    scanForwardMob(maxReach) {
+        if (!this.bot || !this.bot.entity) return null;
+        try {
+            const eyePos = this.bot.entity.position.offset(0, 1.62, 0);
+            const yaw = this.bot.entity.yaw;
+            const pitch = this.bot.entity.pitch;
+            const dirX = -Math.sin(yaw) * Math.cos(pitch);
+            const dirY = -Math.sin(pitch);
+            const dirZ = -Math.cos(yaw) * Math.cos(pitch);
+
+            let best = null;
+            let bestScore = -1;
+
+            for (const [id, entity] of Object.entries(this.bot.entities)) {
+                if (!entity || entity.type !== 'mob') continue;
+                if (entity.health !== undefined && entity.health <= 0) continue;
+                if (!entity.position) continue;
+
+                const targetHeight = (entity.height && entity.height > 0) ? entity.height * 0.5 : 0.5;
+                const targetPos = entity.position.offset(0, targetHeight, 0);
+                const dx = targetPos.x - eyePos.x;
+                const dy = targetPos.y - eyePos.y;
+                const dz = targetPos.z - eyePos.z;
+                const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+                if (dist <= 0 || dist > maxReach) continue;
+
+                const dot = (dirX * dx + dirY * dy + dirZ * dz) / dist;
+                if (dot >= 0.65 && dot > bestScore) {
+                    bestScore = dot;
+                    best = { id, entity, dist };
+                }
+            }
+            return best;
+        } catch (e) {
+            return null;
+        }
     }
 
     _rayIntersectsAABB(origin, dir, box) {

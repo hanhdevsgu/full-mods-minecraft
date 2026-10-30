@@ -6,13 +6,15 @@ Mod hỗ trợ tự động bán vật phẩm (Sell Sign), tự động lấy đ
 
 ## 📥 TẢI VỀ 1-CLICK (DOWNLOAD 1 CLICK)
 
-Click ngay vào một trong các đường link bên dưới để tải trực tiếp file mod:
+Click ngay vào đường link bên dưới để tải trực tiếp file mod hoặc gói combo trọn bộ (chỉ 1 click là trình duyệt tự tải ngay):
 
 ### 🚀 [👉 BẤM VÀO ĐÂY ĐỂ TẢI MOD SELL PVP (sell-pvp.jar)](https://github.com/hanhdevsgu/full-mods-minecraft/releases/download/sell-pvp-latest/sell-pvp.jar)
-### 🚀 [👉 LINK DỰ PHÒNG 1-CLICK (sell.pvp.jar)](https://github.com/hanhdevsgu/full-mods-minecraft/releases/download/sell-pvp-latest/sell.pvp.jar)
+### 📦 [👉 BẤM VÀO ĐÂY ĐỂ TẢI COMBO TRỌN BỘ MOD + TOOL QUẢN LÝ (Sell-PVP-Forge-1.12.2.zip)](https://github.com/hanhdevsgu/full-mods-minecraft/releases/download/sell-pvp-latest/Sell-PVP-Forge-1.12.2.zip)
 
-> **Link tải trực tiếp từ mã nguồn nhánh sell-pvp (Direct Raw Download)**:  
-> 🔗 [👉 Tải file sell pvp.jar từ nhánh sell-pvp](https://github.com/hanhdevsgu/full-mods-minecraft/raw/sell-pvp/sell%20pvp.jar)
+> [!TIP]
+> **Link tải dự phòng trực tiếp (1-Click Direct Raw Download)**:  
+> 🔗 [👉 Tải file sell pvp.jar từ nhánh sell-pvp](https://github.com/hanhdevsgu/full-mods-minecraft/raw/sell-pvp/sell%20pvp.jar)  
+> 🔗 [👉 Tải file sell.pvp.jar từ Release](https://github.com/hanhdevsgu/full-mods-minecraft/releases/download/sell-pvp-latest/sell.pvp.jar)
 
 ---
 

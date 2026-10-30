@@ -1,0 +1,12 @@
+[
+  {
+    "key": "SELL-VIP-TEST-2026",
+    "client_name": "Khách Test",
+    "hwid": "",
+    "expires_at": "2099-12-31 23:59:59",
+    "status": "ACTIVE",
+    "features": "sell",
+    "created_at": "2026-10-30 22:00:00",
+    "last_active": ""
+  }
+]

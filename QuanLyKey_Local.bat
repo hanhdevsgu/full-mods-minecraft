@@ -17,3 +17,4 @@ echo  Dang khoi chay Server Local... (Nhan Ctrl + C de dung)
 echo.
 python admin_server.py
 pause
+

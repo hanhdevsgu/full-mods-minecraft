@@ -1,12 +1,46 @@
 [
   {
-    "key": "SELL-HJYB-YTYW-DYIB",
+    "key": "TEST-HWID-GUARD-9999",
+    "client_name": "Test Client",
+    "hwid": "HWID-AAAA-1111-2222-3333",
+    "username": "AnotherPlayer_B",
+    "expires_at": "2099-12-31 23:59:59",
+    "status": "ACTIVE",
+    "features": "sell",
+    "created_at": "2026-10-31 17:55:34",
+    "last_active": "2026-10-31 17:55:34"
+  },
+  {
+    "key": "SELL-YZUX-VEDW-AVW0",
     "client_name": "Khách VIP",
     "hwid": "HWID-41C8-7DC0-D792-2AD5",
+    "username": "Emu",
     "expires_at": "2099-12-31 23:59:59",
-    "status": "BLOCKED",
+    "status": "ACTIVE",
+    "features": "sell",
+    "created_at": "2026-10-31 17:44:53",
+    "last_active": "2026-10-31 17:56:52"
+  },
+  {
+    "key": "SELL-CX3S-P75F-JRT9",
+    "client_name": "Khách VIP",
+    "hwid": "HWID-CCB9-D59B-CDC8-7705",
+    "username": "",
+    "expires_at": "2099-12-31 23:59:59",
+    "status": "ACTIVE",
+    "features": "sell",
+    "created_at": "2026-10-31 17:03:04",
+    "last_active": ""
+  },
+  {
+    "key": "SELL-HJYB-YTYW-DYIB",
+    "client_name": "Khách VIP",
+    "hwid": "HWID-76C9-FAE7-51B7-3491",
+    "username": "",
+    "expires_at": "2099-12-31 23:59:59",
+    "status": "ACTIVE",
     "features": "sell",
     "created_at": "2026-10-30 22:21:52",
-    "last_active": "2026-10-30 22:23:17"
+    "last_active": "2026-10-31 16:58:00"
   }
 ]

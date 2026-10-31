@@ -1,10 +1,11 @@
 # -*- coding: utf-8 -*-
 """
 ====================================================================================================
-TRUNG TÂM QUẢN LÝ BẢN QUYỀN SELL PVP & MACRO RECORDER (LOCAL SERVER 127.0.0.1:5555)
+TRUNG TÂM QUẢN LÝ BẢN QUYỀN SELL PVP & SELL KHO (LOCAL SERVER 127.0.0.1:5555)
 ====================================================================================================
 - Quản lý tạo Key, khóa Key, mở khóa, chỉnh thời hạn (Vĩnh viễn hoặc ngày cụ thể).
-- 1 Key chỉ dùng cho 1 máy (HWID binding), hỗ trợ Reset HWID khi khách đổi máy.
+- 1 Key chỉ dùng cho 1 máy (HWID binding) & 1 tài khoản duy nhất (Username binding).
+- Hỗ trợ 1-click Reset HWID (khi khách đổi máy) và Reset Nick (khi khách đổi tài khoản).
 - Đồng bộ 2 chiều với Google Sheets Cloud Web App.
 - API Endpoint /api/verify phục vụ mod Minecraft Forge 1.12.2 trong game (phản hồi <5ms).
 ====================================================================================================
@@ -74,6 +75,7 @@ class Database:
                     "key": "SELL-VIP-TEST-2026",
                     "client_name": "Khach Hang VIP",
                     "hwid": "",
+                    "username": "",
                     "expires_at": "2099-12-31 23:59:59",
                     "status": "ACTIVE",
                     "features": "sell",
@@ -108,33 +110,60 @@ def sync_from_google_sheet():
     url = get_web_app_url()
     try:
         import urllib.request
-        req = urllib.request.Request(f"{url}?action=list", headers={"User-Agent": "SellPvpAdmin/1.0"})
+        req = urllib.request.Request(f"{url}?action=list", headers={"User-Agent": "SellAdmin/1.0"})
         with urllib.request.urlopen(req, timeout=8) as res:
             if res.status == 200:
                 data = json.loads(res.read().decode('utf-8'))
                 if data.get("success") and "keys" in data:
                     sheet_keys = data["keys"]
                     with db.lock:
-                        key_map = {k["key"].upper(): k for k in db.keys}
+                        existing_map = {k["key"].upper(): k for k in db.keys}
+                        new_keys = []
                         for sk in sheet_keys:
                             k_code = sk.get("key", "").strip().upper()
                             if not k_code:
                                 continue
-                            if k_code in key_map:
-                                key_map[k_code]["status"] = sk.get("status", key_map[k_code].get("status", "ACTIVE"))
-                                key_map[k_code]["expires_at"] = sk.get("expires_at", key_map[k_code].get("expires_at", ""))
-                                key_map[k_code]["hwid"] = sk.get("hwid", key_map[k_code].get("hwid", ""))
-                                key_map[k_code]["client_name"] = sk.get("client_name", key_map[k_code].get("client_name", ""))
+                            if k_code in existing_map:
+                                item = existing_map[k_code]
+                                item["status"] = sk.get("status", item.get("status", "ACTIVE"))
+                                item["expires_at"] = sk.get("expires_at", item.get("expires_at", "2099-12-31 23:59:59"))
+                                item["hwid"] = sk.get("hwid", item.get("hwid", ""))
+                                item["username"] = sk.get("username", item.get("username", ""))
+                                item["client_name"] = sk.get("client_name", item.get("client_name", "Khách VIP"))
+                                item["features"] = sk.get("features", item.get("features", "sell"))
+                                if "created_at" in sk and sk["created_at"]:
+                                    item["created_at"] = sk["created_at"]
+                                if "last_active" in sk and sk["last_active"]:
+                                    item["last_active"] = sk["last_active"]
+                                new_keys.append(item)
                             else:
-                                key_map[k_code] = sk
-                        db.keys = list(key_map.values())
+                                new_keys.append({
+                                    "key": k_code,
+                                    "client_name": sk.get("client_name", "Khách VIP"),
+                                    "hwid": sk.get("hwid", ""),
+                                    "username": sk.get("username", ""),
+                                    "expires_at": sk.get("expires_at", "2099-12-31 23:59:59"),
+                                    "status": sk.get("status", "ACTIVE"),
+                                    "features": sk.get("features", "sell"),
+                                    "created_at": sk.get("created_at", time.strftime("%Y-%m-%d %H:%M:%S")),
+                                    "last_active": sk.get("last_active", "")
+                                })
+                        db.keys = new_keys
                         db.save_unlocked()
-                    print(f"[CloudSync] Dong bo thanh cong {len(sheet_keys)} keys tu Google Sheet!")
-                    return True, f"Dong bo thanh cong {len(sheet_keys)} keys tu Google Sheet!"
+                    print(f"[CloudSync] Dong bo thanh cong {len(new_keys)} keys tu Google Sheet (Xoa cac key da bi go)!")
+                    return True, f"Dong bo thanh cong {len(new_keys)} keys tu Google Sheet!"
     except Exception as e:
         print(f"[CloudSync] Loi ket noi Google Sheet: {e}")
         return False, str(e)
     return False, "Khong the ket noi Google Sheet"
+
+def background_sync_worker():
+    while True:
+        try:
+            time.sleep(4)
+            sync_from_google_sheet()
+        except Exception:
+            pass
 
 def notify_cloud_async(action, payload):
     def worker():
@@ -145,7 +174,7 @@ def notify_cloud_async(action, payload):
             params.update(payload)
             query = urllib.parse.urlencode(params)
             full_url = f"{url}?{query}"
-            req = urllib.request.Request(full_url, headers={"User-Agent": "SellPvpAdmin/1.0"})
+            req = urllib.request.Request(full_url, headers={"User-Agent": "SellAdmin/1.0"})
             with urllib.request.urlopen(req, timeout=10) as res:
                 _ = res.read()
                 print(f"[CloudNotify] Action {action} synced to Google Sheet successfully.")
@@ -158,7 +187,7 @@ HTML_PAGE = """<!DOCTYPE html>
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Quản Lý Bản Quyền Sell PVP & Macro</title>
+  <title>Quản Lý Bản Quyền Sell PVP & Sell Kho</title>
   <style>
     :root {
       --bg: #090d16;
@@ -174,7 +203,7 @@ HTML_PAGE = """<!DOCTYPE html>
     }
     * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
     body { background-color: var(--bg); color: var(--text); padding: 24px; min-height: 100vh; }
-    .container { max-width: 1200px; margin: 0 auto; }
+    .container { max-width: 1250px; margin: 0 auto; }
     .header { display: flex; justify-content: space-between; align-items: center; padding-bottom: 20px; border-bottom: 1px solid var(--card-border); margin-bottom: 24px; }
     .brand { display: flex; align-items: center; gap: 12px; }
     .brand h1 { font-size: 22px; font-weight: 800; color: #fff; }
@@ -192,7 +221,7 @@ HTML_PAGE = """<!DOCTYPE html>
     .btn-warning:hover { background: var(--warning); color: #000; }
     .card { background: var(--card); border: 1px solid var(--card-border); border-radius: 12px; padding: 20px; margin-bottom: 24px; }
     .card-title { font-size: 16px; font-weight: 700; margin-bottom: 16px; display: flex; align-items: center; gap: 8px; color: #e2e8f0; }
-    .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; align-items: end; }
+    .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; align-items: end; }
     .form-group { display: flex; flex-direction: column; gap: 6px; }
     label { font-size: 12px; font-weight: 600; color: var(--text-muted); }
     input, select { background: #090d16; border: 1px solid #334155; color: #fff; padding: 10px 12px; border-radius: 8px; font-size: 14px; outline: none; }
@@ -208,6 +237,7 @@ HTML_PAGE = """<!DOCTYPE html>
     tr:hover { background: #162035; }
     .key-code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-weight: 700; color: #38bdf8; background: #0b1329; padding: 4px 8px; border-radius: 6px; border: 1px solid #1e3a8a; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
     .hwid-badge { font-family: ui-monospace, monospace; font-size: 11px; color: #cbd5e1; background: #1e293b; padding: 3px 6px; border-radius: 4px; }
+    .user-badge { font-family: ui-monospace, monospace; font-size: 12px; font-weight: 700; color: #fbbf24; background: #27210e; border: 1px solid #78350f; padding: 3px 8px; border-radius: 4px; }
     .status-active { background: #064e3b; color: #4ade80; padding: 4px 10px; border-radius: 999px; font-size: 11px; font-weight: 700; display: inline-block; }
     .status-locked { background: #7f1d1d; color: #f87171; padding: 4px 10px; border-radius: 999px; font-size: 11px; font-weight: 700; display: inline-block; }
     .actions { display: flex; gap: 6px; flex-wrap: wrap; }
@@ -221,7 +251,7 @@ HTML_PAGE = """<!DOCTYPE html>
     <div class="brand">
       <span style="font-size:26px;">⚔️</span>
       <div>
-        <h1>Quản Lý Bản Quyền Sell PVP</h1>
+        <h1>Quản Lý Bản Quyền Sell PVP & Sell Kho</h1>
         <div style="font-size:12px; color:var(--text-muted); margin-top:2px;">Local Admin Fast Sync Server (127.0.0.1:5555)</div>
       </div>
     </div>
@@ -259,7 +289,11 @@ HTML_PAGE = """<!DOCTYPE html>
       </div>
       <div class="form-group">
         <label>Mã Máy HWID (Tùy chọn):</label>
-        <input type="text" id="new_hwid" placeholder="Để trống = Tự bind máy đầu tiên">
+        <input type="text" id="new_hwid" placeholder="Trống = Tự bind máy đầu tiên">
+      </div>
+      <div class="form-group">
+        <label>Tài Khoản Nick (Tùy chọn):</label>
+        <input type="text" id="new_user" placeholder="Trống = Tự bind nick đầu tiên">
       </div>
       <div class="form-group">
         <button class="btn" onclick="createKey()" style="height:42px; justify-content:center;">🚀 Tạo & Kích Hoạt Key</button>
@@ -273,7 +307,7 @@ HTML_PAGE = """<!DOCTYPE html>
       <div style="display:flex; align-items:center; gap:8px;">
         <span>📋</span> Danh Sách License Keys (<span id="key_count">0</span>)
       </div>
-      <input type="text" id="search_box" onkeyup="renderTable()" placeholder="🔍 Tìm kiếm Key / Khách..." style="width:240px; padding:6px 10px; font-size:12px;">
+      <input type="text" id="search_box" onkeyup="renderTable()" placeholder="🔍 Tìm kiếm Key / Khách / Nick..." style="width:240px; padding:6px 10px; font-size:12px;">
     </div>
     <div style="overflow-x:auto;">
       <table>
@@ -282,13 +316,14 @@ HTML_PAGE = """<!DOCTYPE html>
             <th>MÃ KEY</th>
             <th>KHÁCH HÀNG</th>
             <th>MÁY (HWID)</th>
+            <th>TÀI KHOẢN (NICK)</th>
             <th>HẠN DÙNG</th>
             <th>TRẠNG THÁI</th>
             <th>THAO TÁC ADMIN</th>
           </tr>
         </thead>
         <tbody id="key_tbody">
-          <tr><td colspan="6" style="text-align:center; padding:30px; color:#64748b;">Đang tải dữ liệu...</td></tr>
+          <tr><td colspan="7" style="text-align:center; padding:30px; color:#64748b;">Đang tải dữ liệu...</td></tr>
         </tbody>
       </table>
     </div>
@@ -318,17 +353,17 @@ function genRandomKey() {
 function setExpDays(d) {
   const dt = new Date();
   dt.setDate(dt.getDate() + d);
-  const y = dt.getFullYear();
-  const m = String(dt.getMonth() + 1).padStart(2, '0');
-  const day = String(dt.getDate()).padStart(2, '0');
-  const h = String(dt.getHours()).padStart(2, '0');
-  const mi = String(dt.getMinutes()).padStart(2, '0');
-  const s = String(dt.getSeconds()).padStart(2, '0');
-  document.getElementById("new_exp").value = `${y}-${m}-${day} ${h}:${mi}:${s}`;
+  const pad = n => n.toString().padStart(2, '0');
+  const str = `${dt.getFullYear()}-${pad(dt.getMonth()+1)}-${pad(dt.getDate())} 23:59:59`;
+  document.getElementById("new_exp").value = str;
+  document.querySelectorAll('.tag-day').forEach(el => el.classList.remove('active'));
+  event.target.classList.add('active');
 }
 
 function setLife() {
   document.getElementById("new_exp").value = "2099-12-31 23:59:59";
+  document.querySelectorAll('.tag-day').forEach(el => el.classList.remove('active'));
+  event.target.classList.add('active');
 }
 
 function loadKeys() {
@@ -346,13 +381,14 @@ function renderTable() {
   const filtered = allKeys.filter(k => {
     return (k.key || "").toUpperCase().includes(q) ||
            (k.client_name || "").toUpperCase().includes(q) ||
+           (k.username || "").toUpperCase().includes(q) ||
            (k.hwid || "").toUpperCase().includes(q);
   });
   document.getElementById("key_count").innerText = filtered.length;
 
   const tbody = document.getElementById("key_tbody");
   if (filtered.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:30px; color:#64748b;">Chưa có Key nào phù hợp</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:30px; color:#64748b;">Chưa có Key nào phù hợp</td></tr>';
     return;
   }
 
@@ -365,7 +401,8 @@ function renderTable() {
     const isLife = (k.expires_at || "").includes("2099") || (k.key || "").includes("LIFE");
     const expDisplay = isLife ? '<span style="color:#f5d0fe; font-weight:700;">⭐ Vĩnh viễn</span>' : k.expires_at;
 
-    const hwidDisplay = k.hwid ? `<span class="hwid-badge">${k.hwid}</span>` : '<span style="color:#64748b; font-size:11px;">(Chưa gán máy - tự nhận khi nhập)</span>';
+    const hwidDisplay = k.hwid ? `<span class="hwid-badge">${k.hwid}</span>` : '<span style="color:#64748b; font-size:11px;">(Tự nhận khi nhập)</span>';
+    const userDisplay = k.username ? `<span class="user-badge">${k.username}</span>` : '<span style="color:#64748b; font-size:11px;">(Tự nhận khi đăng nhập)</span>';
 
     const toggleBtn = isLocked
       ? `<button class="btn btn-success btn-sm" onclick="toggleStatus('${k.key}', 'ACTIVE')">🔓 Mở Khóa</button>`
@@ -378,6 +415,7 @@ function renderTable() {
         </td>
         <td><strong>${k.client_name || 'Khách VIP'}</strong></td>
         <td>${hwidDisplay}</td>
+        <td>${userDisplay}</td>
         <td>${expDisplay}</td>
         <td>${statusHtml}</td>
         <td>
@@ -385,6 +423,7 @@ function renderTable() {
             ${toggleBtn}
             <button class="btn btn-warning btn-sm" onclick="editExpiry('${k.key}')">📅 Đổi Hạn</button>
             <button class="btn btn-sync btn-sm" onclick="resetHwid('${k.key}')" title="Reset HWID">🔄 Đổi Máy</button>
+            <button class="btn btn-sync btn-sm" onclick="resetUser('${k.key}')" title="Reset Nick" style="color:#fbbf24;">👤 Đổi Nick</button>
             <button class="btn btn-danger btn-sm" onclick="deleteKey('${k.key}')" title="Xóa">🗑️</button>
           </div>
         </td>
@@ -403,6 +442,7 @@ function createKey() {
   const client = document.getElementById("new_client").value.trim() || "Khách VIP";
   const exp = document.getElementById("new_exp").value.trim() || "2099-12-31 23:59:59";
   const hwid = document.getElementById("new_hwid").value.trim();
+  const username = document.getElementById("new_user").value.trim();
 
   if (!key) {
     showToast("Vui lòng nhập hoặc tạo mã Key!", false);
@@ -412,7 +452,7 @@ function createKey() {
   fetch('/api/keys/create', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({ key, client_name: client, expires_at: exp, hwid })
+    body: JSON.stringify({ key, client_name: client, expires_at: exp, hwid, username })
   })
   .then(r => r.json())
   .then(data => {
@@ -482,6 +522,25 @@ function resetHwid(key) {
   });
 }
 
+function resetUser(key) {
+  if (!confirm("Bạn có chắc muốn Reset Nick cho Key " + key + "?\\nSau khi reset, Key có thể bind lại với tài khoản Minecraft khác.")) return;
+
+  fetch('/api/keys/reset_user', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ key })
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.success) {
+      showToast("Đã Reset Nick thành công cho Key: " + key);
+      loadKeys();
+    } else {
+      showToast(data.msg || "Reset thất bại!", false);
+    }
+  });
+}
+
 function deleteKey(key) {
   if (!confirm("Bạn có chắc muốn XÓA vĩnh viễn Key " + key + "?")) return;
 
@@ -513,7 +572,7 @@ function syncSheet() {
 
 genRandomKey();
 loadKeys();
-setInterval(loadKeys, 3000); // Tự động cập nhật mỗi 3s
+setInterval(loadKeys, 3000);
 </script>
 </body>
 </html>
@@ -524,7 +583,6 @@ class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
 
 class AdminRequestHandler(BaseHTTPRequestHandler):
     def log_message(self, format, *args):
-        # Concise logging
         if "/api/verify" in self.path:
             sys.stdout.write(f"[GAME-MOD] {self.address_string()} - {format%args}\n")
         else:
@@ -575,6 +633,7 @@ class AdminRequestHandler(BaseHTTPRequestHandler):
             action = params.get("action", "verify")
             key_in = params.get("key", "").strip().upper()
             hwid_in = params.get("hwid", "").strip()
+            user_in = params.get("username", "").strip()
 
             if not key_in:
                 self.send_json_response({"success": False, "code": "MISSING_KEY", "msg": "Vui long nhap License Key!"})
@@ -600,9 +659,19 @@ class AdminRequestHandler(BaseHTTPRequestHandler):
                     db.save_unlocked()
                 notify_cloud_async("create", found)
                 print(f"[HWID-BIND] Key {key_in} da tu dong gan voi may {hwid_in}")
-            elif saved_hwid and hwid_in and not saved_hwid.equalsIgnoreCase(hwid_in) if hasattr(saved_hwid, 'equalsIgnoreCase') else (saved_hwid.upper() != hwid_in.upper()):
-                self.send_json_response({"success": False, "code": "HWID_MISMATCH", "msg": "Key da duoc su dung tren may khac (1 Key chi 1 may)!"})
+            elif saved_hwid and hwid_in and (saved_hwid.upper() != hwid_in.upper()):
+                self.send_json_response({"success": False, "code": "HWID_MISMATCH", "msg": "Key khong hop le hoac bi khoa!"})
                 return
+
+            # Cap nhat Nick Minecraft dang hoat dong tren may hop le (1 Key 1 May Duy Nhat)
+            saved_user = str(found.get("username", "")).strip()
+            if user_in and user_in.lower() != "player":
+                if saved_user.lower() != user_in.lower():
+                    with db.lock:
+                        found["username"] = user_in
+                        db.save_unlocked()
+                    notify_cloud_async("create", found)
+                    print(f"[USER-UPDATE] Key {key_in} tren may {saved_hwid or hwid_in} chuyen sang nick [{user_in}]")
 
             # Check Expiry
             exp_str = str(found.get("expires_at", "")).strip()
@@ -633,6 +702,7 @@ class AdminRequestHandler(BaseHTTPRequestHandler):
                 "success": True,
                 "key": key_in,
                 "client_name": found.get("client_name", "Khach VIP"),
+                "username": saved_user or user_in,
                 "expires_at": exp_str or "Vinh vien",
                 "hwid": saved_hwid or hwid_in,
                 "server_time": now_str,
@@ -649,20 +719,21 @@ class AdminRequestHandler(BaseHTTPRequestHandler):
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path
 
-        length = int(self.headers.get('Content-Length', 0))
+        content_length = int(self.headers.get('Content-Length', 0))
         post_data = {}
-        if length > 0:
+        if content_length > 0:
+            raw = self.rfile.read(content_length).decode('utf-8')
             try:
-                raw = self.rfile.read(length).decode('utf-8')
                 post_data = json.loads(raw)
             except Exception:
-                pass
+                post_data = dict(urllib.parse.parse_qsl(raw))
 
         if path == "/api/keys/create":
             key = str(post_data.get("key", "")).strip().upper()
             client = str(post_data.get("client_name", "Khach VIP")).strip()
             exp = str(post_data.get("expires_at", "2099-12-31 23:59:59")).strip()
             hwid = str(post_data.get("hwid", "")).strip()
+            username = str(post_data.get("username", "")).strip()
 
             if not key:
                 self.send_json_response({"success": False, "msg": "Vui long nhap ma Key!"})
@@ -676,6 +747,7 @@ class AdminRequestHandler(BaseHTTPRequestHandler):
                 "key": key,
                 "client_name": client,
                 "hwid": hwid,
+                "username": username,
                 "expires_at": exp,
                 "status": "ACTIVE",
                 "features": "sell",
@@ -741,6 +813,21 @@ class AdminRequestHandler(BaseHTTPRequestHandler):
             self.send_json_response({"success": True, "msg": f"Da Reset HWID cho Key {key}"})
             return
 
+        if path == "/api/keys/reset_user":
+            key = str(post_data.get("key", "")).strip().upper()
+            found = db.find_key(key)
+            if not found:
+                self.send_json_response({"success": False, "msg": "Khong tim thay Key!"})
+                return
+
+            with db.lock:
+                found["username"] = ""
+                db.save_unlocked()
+
+            notify_cloud_async("create", found)
+            self.send_json_response({"success": True, "msg": f"Da Reset Nick cho Key {key}"})
+            return
+
         if path == "/api/keys/delete":
             key = str(post_data.get("key", "")).strip().upper()
             found = db.find_key(key)
@@ -768,7 +855,7 @@ def run_server(port=5555):
     server_address = ('127.0.0.1', port)
     httpd = ThreadedHTTPServer(server_address, AdminRequestHandler)
     print("=" * 65)
-    print(f"  TRUNG TAM QUAN LY BAN QUYEN SELL PVP (PORT {port})")
+    print(f"  TRUNG TAM QUAN LY BAN QUYEN SELL PVP & SELL KHO (PORT {port})")
     print(f"  Trinh duyet: http://127.0.0.1:{port}")
     print(f"  API Verify:  http://127.0.0.1:{port}/api/verify")
     print(f"  Du lieu CSDL: {DB_FILE}")
@@ -776,8 +863,8 @@ def run_server(port=5555):
     print("  [SAN SANG] Cho mod Minecraft trong game ket noi...")
     print("=" * 65)
 
-    # Initial sync from Google Sheet in background
     threading.Thread(target=sync_from_google_sheet, daemon=True).start()
+    threading.Thread(target=background_sync_worker, daemon=True).start()
 
     try:
         httpd.serve_forever()
@@ -787,4 +874,3 @@ def run_server(port=5555):
 
 if __name__ == "__main__":
     run_server()
-

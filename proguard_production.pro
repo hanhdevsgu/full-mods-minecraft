@@ -1,5 +1,5 @@
--injars 'sell pvp_unobf.jar'
--outjars 'sell pvp.jar'
+-injars 'sell kho_unobf.jar'
+-outjars 'sell kho.jar'
 
 -libraryjars 'C:\Program Files\Java\jre-1.8\lib\rt.jar'
 -libraryjars 'C:\Program Files\Java\jre-1.8\lib\jce.jar'

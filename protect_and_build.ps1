@@ -12,12 +12,12 @@ if ($LASTEXITCODE -ne 0) {
 Write-Host "`n==========================================" -ForegroundColor Cyan
 Write-Host "[2/3] Assembling staging JAR..." -ForegroundColor Cyan
 Write-Host "==========================================" -ForegroundColor Cyan
-if (Test-Path "sell pvp_unobf.jar") {
-    Remove-Item -Force "sell pvp_unobf.jar"
+if (Test-Path "sell kho_unobf.jar") {
+    Remove-Item -Force "sell kho_unobf.jar"
 }
-Copy-Item -Path "sell pvp.jar.bak" -Destination "sell pvp_unobf.jar" -Force
+Copy-Item -Path "sellsat.jar.bak" -Destination "sell kho_unobf.jar" -Force
 
-$jarProc = Start-Process -FilePath "jar" -ArgumentList "-uf `"sell pvp_unobf.jar`" -C build\classes ." -NoNewWindow -Wait -PassThru
+$jarProc = Start-Process -FilePath "jar" -ArgumentList "-uf `"sell kho_unobf.jar`" -C build\classes ." -NoNewWindow -Wait -PassThru
 if ($jarProc.ExitCode -ne 0) {
     Write-Error "Failed to update staging jar!"
     exit 1
@@ -29,8 +29,8 @@ Write-Host "`n==========================================" -ForegroundColor Cyan
 Write-Host "[3/3] Running ProGuard 7.4.2 Obfuscation..." -ForegroundColor Cyan
 Write-Host "==========================================" -ForegroundColor Cyan
 
-if (Test-Path "sell pvp.jar") {
-    Remove-Item -Force "sell pvp.jar"
+if (Test-Path "sell kho.jar") {
+    Remove-Item -Force "sell kho.jar"
 }
 
 $pgArgs = @(
@@ -46,10 +46,10 @@ if ($pgProc.ExitCode -ne 0) {
 }
 
 Write-Host "`n==========================================" -ForegroundColor Green
-Write-Host "SUCCESS! sell pvp.jar has been compiled and obfuscated 100%!" -ForegroundColor Green
+Write-Host "SUCCESS! sell kho.jar has been compiled and obfuscated 100%!" -ForegroundColor Green
 Write-Host "==========================================" -ForegroundColor Green
 
-$fileInfo = Get-Item "sell pvp.jar"
+$fileInfo = Get-Item "sell kho.jar"
 Write-Host "Output File: $($fileInfo.FullName)"
 Write-Host "Size: $($fileInfo.Length) bytes"
 Write-Host "Modified: $($fileInfo.LastWriteTime)"

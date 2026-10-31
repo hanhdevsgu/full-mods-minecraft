@@ -1,0 +1,14 @@
+[
+  {
+    "modid": "macrorecorder",
+    "name": "Macro Recorder",
+    "description": "Mod tu dong shift-click va gui lenh chat theo chuoi.",
+    "version": "1.0",
+    "mcversion": "1.12.2",
+    "authorList": ["you"],
+    "credits": "",
+    "logoFile": "",
+    "screenshots": [],
+    "dependencies": []
+  }
+]

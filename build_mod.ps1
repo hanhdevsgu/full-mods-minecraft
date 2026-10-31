@@ -40,3 +40,4 @@ if ($proc.ExitCode -eq 0) {
     Write-Host "Compilation FAILED!"
     exit 1
 }
+

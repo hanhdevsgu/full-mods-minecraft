@@ -5,11 +5,15 @@ import java.io.File;
 import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.InputStreamReader;
+import java.io.RandomAccessFile;
 import java.lang.management.ManagementFactory;
 import java.net.HttpURLConnection;
+import java.net.InetAddress;
 import java.net.NetworkInterface;
+import java.net.ServerSocket;
 import java.net.URL;
 import java.net.URLEncoder;
+import java.nio.channels.FileLock;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.text.SimpleDateFormat;
@@ -47,20 +51,143 @@ public class LicenseGuard {
     public static volatile String clientName = "Khach hang";
     public static volatile String activeKey = "";
     public static volatile String hwid = "";
-    public static volatile String lastStatusMsg = "Chua kich hoat";
+    public static volatile String boundUsername = ""; // 1 Key 1 Nick duy nhat
+    public static volatile String lastStatusMsg = "Ch\u01b0a k\u00edch ho\u1ea1t";
     public static volatile boolean isChecking = false;
+
+    // KHOA TIEN TRINH: DUY NHAT 1 MINECRAFT RUNNING CUNG LUC
+    private static RandomAccessFile lockRaf = null;
+    private static FileLock singleInstanceLock = null;
+    private static ServerSocket localInstanceSocket = null;
+    public static volatile boolean isAnotherInstanceRunning = false;
 
     private static String cachedHwid = null;
     private static volatile Thread heartbeatThread = null;
     private static int heartbeatCounter = 0;
 
+    public static String getCurrentUsername() {
+        try {
+            Minecraft mc = Minecraft.func_71410_x();
+            if (mc != null && mc.func_110432_I() != null) {
+                String u = mc.func_110432_I().func_111285_a();
+                if (u != null && !u.trim().isEmpty()) {
+                    return u.trim();
+                }
+            }
+        } catch (Throwable ignored) {}
+        return "Player";
+    }
+
+    public static boolean checkSingleInstance() {
+        if (singleInstanceLock != null && singleInstanceLock.isValid()) {
+            return true;
+        }
+
+        try {
+            String tempDir = System.getProperty("java.io.tmpdir");
+            File lockFile = new File(tempDir, "sell_kho_single_instance.lock");
+            lockRaf = new RandomAccessFile(lockFile, "rw");
+            singleInstanceLock = lockRaf.getChannel().tryLock();
+            if (singleInstanceLock == null) {
+                isAnotherInstanceRunning = true;
+                return false;
+            }
+
+            try {
+                localInstanceSocket = new ServerSocket(5556, 1, InetAddress.getByName("127.0.0.1"));
+            } catch (Exception socketEx) {
+                isAnotherInstanceRunning = true;
+                try {
+                    singleInstanceLock.release();
+                    singleInstanceLock = null;
+                } catch (Exception ignored) {}
+                return false;
+            }
+
+            isAnotherInstanceRunning = false;
+            return true;
+        } catch (Throwable t) {
+            isAnotherInstanceRunning = true;
+            return false;
+        }
+    }
+
+    public static void releaseSingleInstanceLock() {
+        try {
+            if (singleInstanceLock != null) {
+                singleInstanceLock.release();
+                singleInstanceLock = null;
+            }
+        } catch (Exception ignored) {}
+        try {
+            if (lockRaf != null) {
+                lockRaf.close();
+                lockRaf = null;
+            }
+        } catch (Exception ignored) {}
+        try {
+            if (localInstanceSocket != null) {
+                localInstanceSocket.close();
+                localInstanceSocket = null;
+            }
+        } catch (Exception ignored) {}
+    }
+
     public static void init() {
         checkSecurityEnvironment();
         getHWID();
+
+        // 1. Kiem tra Dieu kien: CHI DUOC MO DUY NHAT 1 MINECRAFT
+        boolean singleOk = checkSingleInstance();
+        if (!singleOk) {
+            isLicensed = false;
+            lastStatusMsg = "Kh\u00f4ng th\u1ec3 m\u1edf th\u00eam c\u1eeda s\u1ed5 n\u1eefa!";
+            return;
+        }
+
+        // Tu dong giai phong lock khi game tat
+        try {
+            Runtime.getRuntime().addShutdownHook(new Thread(new Runnable() {
+                @Override
+                public void run() {
+                    releaseSingleInstanceLock();
+                }
+            }));
+        } catch (Throwable ignored) {}
+
         boolean cachedOk = validateCachedLicense();
         if (cachedOk) {
+            triggerImmediateOnlineValidation();
             startHeartbeat();
         }
+    }
+
+    public static void triggerImmediateOnlineValidation() {
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    String myHwid = getHWID();
+                    String user = getCurrentUsername();
+                    String key = activeKey;
+                    if (key == null || key.trim().isEmpty()) return;
+
+                    // 1. Kiem tra Local Admin Server (<5ms)
+                    String localRes = queryLocalServer(key, myHwid, user);
+                    if (localRes != null) {
+                        boolean ok = localRes.contains("\"success\":true") || localRes.contains("\"success\": true");
+                        if (!ok) {
+                            String msg = extractJsonField(localRes, "msg");
+                            triggerImmediateRevocation(msg.isEmpty() ? "Key kh\u00f4ng h\u1ee3p l\u1ec7 ho\u1eb7c \u0111\u00e3 b\u1ecb x\u00f3a!" : msg);
+                            return;
+                        }
+                    } else {
+                        // 2. Neu Local Server khong mo -> Kiem tra truc tiep Google Sheet Web App
+                        syncWithGoogleSheet(key, myHwid, user);
+                    }
+                } catch (Exception ignored) {}
+            }
+        }, "ImmediateOnlineValidation").start();
     }
 
     public static void startHeartbeat() {
@@ -71,14 +198,20 @@ public class LicenseGuard {
             @Override
             public void run() {
                 try {
-                    Thread.sleep(1200); // Wait 1.2s on startup
+                    Thread.sleep(800); // Cho 0.8s khi game khoi dong
                 } catch (InterruptedException ignored) {}
 
                 while (true) {
                     try {
-                        Thread.sleep(3500); // Check every 3.5 seconds
+                        Thread.sleep(3000); // Kiem tra moi 3 giay
                     } catch (InterruptedException e) {
                         break;
+                    }
+
+                    // Kiem tra Single Instance (Neu mo them Minecraft thu 2)
+                    if (!checkSingleInstance()) {
+                        triggerImmediateRevocation("Kh\u00f4ng th\u1ec3 m\u1edf th\u00eam c\u1eeda s\u1ed5 n\u1eefa!");
+                        continue;
                     }
 
                     if (!isLicensed || activeKey == null || activeKey.trim().isEmpty()) {
@@ -87,23 +220,31 @@ public class LicenseGuard {
 
                     checkSecurityEnvironment();
 
+                    String currentNick = getCurrentUsername();
+                    if (!currentNick.equalsIgnoreCase("Player") && !currentNick.equalsIgnoreCase(boundUsername)) {
+                        boundUsername = currentNick;
+                    }
+
                     String myHwid = getHWID();
 
-                    // 1. Check Local Admin Web Server first (Super fast <5ms response)
-                    String localRes = queryLocalServer(activeKey, myHwid);
+                    // 1. Kiem tra Local Admin Web Server (<5ms)
+                    String localRes = queryLocalServer(activeKey, myHwid, currentNick);
                     if (localRes != null) {
                         boolean localSuccess = localRes.contains("\"success\":true") || localRes.contains("\"success\": true");
                         if (!localSuccess) {
                             String msg = extractJsonField(localRes, "msg");
-                            triggerImmediateRevocation(msg.isEmpty() ? "Key da bi KHOA boi Admin (Local Server)!" : msg);
+                            triggerImmediateRevocation(msg.isEmpty() ? "Key kh\u00f4ng h\u1ee3p l\u1ec7 ho\u1eb7c \u0111\u00e3 b\u1ecb x\u00f3a!" : msg);
                             continue;
                         }
+                    } else {
+                        // Neu Local Server khong bat -> Kiem tra truc tiep voi Google Sheet moi 3 giay
+                        syncWithGoogleSheet(activeKey, myHwid, currentNick);
                     }
 
-                    // 2. Periodically check Google Apps Script Web App
+                    // 2. Neu co Local Server, cu moi 3 nhip (khoang 9-10s) kiem tra truc tiep voi Google Sheet Cloud
                     heartbeatCounter++;
-                    if (heartbeatCounter % 4 == 0) {
-                        syncWithGoogleSheet(activeKey, myHwid);
+                    if (localRes != null && heartbeatCounter % 3 == 0) {
+                        syncWithGoogleSheet(activeKey, myHwid, currentNick);
                     }
                 }
             }
@@ -112,10 +253,12 @@ public class LicenseGuard {
         heartbeatThread.start();
     }
 
-    public static String queryLocalServer(String key, String myHwid) {
+    public static String queryLocalServer(String key, String myHwid, String user) {
         try {
             URL url = new URL("http://127.0.0.1:5555/api/verify?action=verify&key="
-                    + URLEncoder.encode(key, "UTF-8") + "&hwid=" + URLEncoder.encode(myHwid, "UTF-8"));
+                    + URLEncoder.encode(key, "UTF-8")
+                    + "&hwid=" + URLEncoder.encode(myHwid, "UTF-8")
+                    + "&username=" + URLEncoder.encode(user, "UTF-8"));
             HttpURLConnection conn = (HttpURLConnection) url.openConnection();
             conn.setRequestMethod("GET");
             conn.setConnectTimeout(350);
@@ -132,7 +275,7 @@ public class LicenseGuard {
         return null;
     }
 
-    private static void syncWithGoogleSheet(String key, String myHwid) {
+    private static void syncWithGoogleSheet(String key, String myHwid, String user) {
         try {
             String baseUrl = getCustomConfig("web_app_url");
             if (baseUrl.isEmpty()) {
@@ -140,7 +283,8 @@ public class LicenseGuard {
             }
 
             String req = baseUrl + "?" + _D(_ACT, 0x4B) + URLEncoder.encode(key, "UTF-8")
-                    + _D(_HP, 0x2C) + URLEncoder.encode(myHwid, "UTF-8");
+                    + _D(_HP, 0x2C) + URLEncoder.encode(myHwid, "UTF-8")
+                    + "&username=" + URLEncoder.encode(user, "UTF-8");
 
             URL url = new URL(req);
             HttpURLConnection conn = (HttpURLConnection) url.openConnection();
@@ -169,7 +313,7 @@ public class LicenseGuard {
             boolean success = body.contains("\"success\":true") || body.contains("\"success\": true");
             if (!success) {
                 String msg = extractJsonField(body, "msg");
-                triggerImmediateRevocation(msg.isEmpty() ? "Key da bi KHOA boi Admin tren Google Sheet!" : msg);
+                triggerImmediateRevocation(msg.isEmpty() ? "Key da bi KHOA tren he thong!" : msg);
             }
         } catch (Exception ignored) {}
     }
@@ -188,6 +332,9 @@ public class LicenseGuard {
                         MacroRecorderMod.getInstance().stopMacro();
                     }
                     if (mc != null) {
+                        if (mc.field_71439_g != null) {
+                            try { mc.field_71439_g.func_71053_j(); } catch (Exception ignored) {}
+                        }
                         mc.func_147108_a(new MacroRecorderMod.GuiLicenseGate(null, reason));
                     }
                 } catch (Exception ignored) {}
@@ -303,6 +450,7 @@ public class LicenseGuard {
         if (appdata != null && !appdata.isEmpty()) {
             list.add(new File(appdata + File.separator + fldName + File.separator + licName));
             list.add(new File(appdata + File.separator + ".minecraft" + File.separator + licName));
+            list.add(new File(appdata + File.separator + ".minecraft" + File.separator + fldName + File.separator + licName));
         }
         try {
             if (Minecraft.func_71410_x() != null && Minecraft.func_71410_x().field_71412_D != null) {
@@ -359,7 +507,7 @@ public class LicenseGuard {
             }
             if (target == null) {
                 isLicensed = false;
-                lastStatusMsg = "Chua co file ban quyen";
+                lastStatusMsg = "Ch\u01b0a c\u00f3 file b\u1ea3n quy\u1ec1n";
                 return false;
             }
 
@@ -372,34 +520,39 @@ public class LicenseGuard {
             String content = json.toString();
             String key = extractJsonField(content, "key");
             String fileHwid = extractJsonField(content, "hwid");
+            String fileUser = extractJsonField(content, "username");
             String exp = extractJsonField(content, "expires_at");
             String client = extractJsonField(content, "client_name");
             String sig = extractJsonField(content, "sig");
 
             if (key.isEmpty() || fileHwid.isEmpty()) {
                 isLicensed = false;
-                lastStatusMsg = "Du lieu ban quyen loi";
+                lastStatusMsg = "D\u1eef li\u1ec7u b\u1ea3n quy\u1ec1n l\u1ed7i";
                 return false;
             }
 
             String myHwid = getHWID();
             if (!fileHwid.equalsIgnoreCase(myHwid)) {
                 isLicensed = false;
-                lastStatusMsg = "HWID khong khop voi may (1 Key chi dung cho 1 may)!";
+                lastStatusMsg = "Key kh\u00f4ng h\u1ee3p l\u1ec7 ho\u1eb7c \u0111\u00e3 b\u1ecb kh\u00f3a!";
                 return false;
             }
 
             String customSalt = getCustomConfig("secret_salt");
-            String sig1 = computeHmacSha256("CACHE|" + key + "|" + fileHwid + "|" + exp + "|" + client, _D(_S1, 0x3F));
-            String sig2 = computeHmacSha256("CACHE|" + key + "|" + fileHwid + "|" + exp + "|" + client, _D(_S2, 0x3F));
-            String sigCustom = customSalt.isEmpty() ? "" : computeHmacSha256("CACHE|" + key + "|" + fileHwid + "|" + exp + "|" + client, customSalt);
+            String sig1 = computeHmacSha256("CACHE|" + key + "|" + fileHwid + "|" + fileUser + "|" + exp + "|" + client, _D(_S1, 0x3F));
+            String sig2 = computeHmacSha256("CACHE|" + key + "|" + fileHwid + "|" + fileUser + "|" + exp + "|" + client, _D(_S2, 0x3F));
+            String sigCustom = customSalt.isEmpty() ? "" : computeHmacSha256("CACHE|" + key + "|" + fileHwid + "|" + fileUser + "|" + exp + "|" + client, customSalt);
+
+            String oldSig1 = computeHmacSha256("CACHE|" + key + "|" + fileHwid + "|" + exp + "|" + client, _D(_S1, 0x3F));
+            String oldSig2 = computeHmacSha256("CACHE|" + key + "|" + fileHwid + "|" + exp + "|" + client, _D(_S2, 0x3F));
 
             boolean sigOk = sig.isEmpty() || sig.equalsIgnoreCase(sig1) || sig.equalsIgnoreCase(sig2)
+                    || sig.equalsIgnoreCase(oldSig1) || sig.equalsIgnoreCase(oldSig2)
                     || (!sigCustom.isEmpty() && sig.equalsIgnoreCase(sigCustom));
 
             if (!sigOk) {
                 isLicensed = false;
-                lastStatusMsg = "File license bi can thiep!";
+                lastStatusMsg = "File license b\u1ecb can thi\u1ec7p!";
                 return false;
             }
 
@@ -412,21 +565,30 @@ public class LicenseGuard {
                     }
                     if (expDate != null && new Date().after(expDate)) {
                         isLicensed = false;
-                        lastStatusMsg = "Key da het han (" + exp + ")!";
+                        lastStatusMsg = "Key \u0111\u00e3 h\u1ebft h\u1ea1n (" + exp + ")!";
                         return false;
                     }
                 } catch (Exception ignored) {}
             }
 
+            String currentNick = getCurrentUsername();
+            if (!currentNick.equalsIgnoreCase("Player") && !currentNick.equalsIgnoreCase(fileUser)) {
+                // Tắt TLauncher đổi acc khác trên cùng máy -> tự động cập nhật nick mới vào cache
+                boundUsername = currentNick;
+                saveLicense(key, fileHwid, currentNick, client, exp);
+            } else {
+                boundUsername = fileUser.isEmpty() ? currentNick : fileUser;
+            }
+
             isLicensed = true;
             activeKey = key;
-            licenseExpiry = exp.isEmpty() ? "Vinh vien" : exp;
-            clientName = client.isEmpty() ? "Khach hang" : client;
-            lastStatusMsg = "Da kich hoat (Cache hop le)";
+            licenseExpiry = exp.isEmpty() ? "V\u0129nh vi\u1ec5n" : exp;
+            clientName = client.isEmpty() ? "Kh\u00e1ch h\u00e0ng" : client;
+            lastStatusMsg = "\u0110\u00e3 k\u00edch ho\u1ea1t (H\u1ee3p l\u1ec7)";
             return true;
         } catch (Exception e) {
             isLicensed = false;
-            lastStatusMsg = "Loi doc cache: " + e.getMessage();
+            lastStatusMsg = "L\u1ed7i \u0111\u1ecdc cache: " + e.getMessage();
             return false;
         }
     }
@@ -438,42 +600,54 @@ public class LicenseGuard {
             @Override
             public void run() {
                 try {
+                    // Check Single Instance truoc tien
+                    if (!checkSingleInstance()) {
+                        isLicensed = false;
+                        lastStatusMsg = "Kh\u00f4ng th\u1ec3 m\u1edf th\u00eam c\u1eeda s\u1ed5 n\u1eefa!";
+                        isChecking = false;
+                        runCallback(callback);
+                        return;
+                    }
+
                     String cleanKey = inputKey.trim().toUpperCase();
                     if (cleanKey.isEmpty()) {
                         isLicensed = false;
-                        lastStatusMsg = "Vui long nhap ma Key!";
+                        lastStatusMsg = "Vui l\u00f2ng nh\u1eadp m\u00e3 Key!";
                         isChecking = false;
                         runCallback(callback);
                         return;
                     }
 
                     String myHwid = getHWID();
+                    String currentNick = getCurrentUsername();
 
-                    // Step 1: Try Local Admin Web Server (<5ms)
-                    String localRes = queryLocalServer(cleanKey, myHwid);
+                    // Step 1: Kiem tra Local Admin Server (<5ms)
+                    String localRes = queryLocalServer(cleanKey, myHwid, currentNick);
                     if (localRes != null) {
                         boolean localSuccess = localRes.contains("\"success\":true") || localRes.contains("\"success\": true");
                         if (localSuccess) {
                             String sKey = extractJsonField(localRes, "key");
                             String sExp = extractJsonField(localRes, "expires_at");
                             String sClient = extractJsonField(localRes, "client_name");
+                            String sUser = extractJsonField(localRes, "username");
 
                             isLicensed = true;
                             activeKey = sKey.isEmpty() ? cleanKey : sKey;
-                            clientName = sClient.isEmpty() ? "Khach hang" : sClient;
-                            licenseExpiry = sExp.isEmpty() ? "Vinh vien" : sExp;
-                            lastStatusMsg = "Kich hoat thanh cong (Local Admin Server)!";
-                            saveLicense(activeKey, myHwid, clientName, licenseExpiry);
+                            boundUsername = sUser.isEmpty() ? currentNick : sUser;
+                            clientName = sClient.isEmpty() ? "Kh\u00e1ch h\u00e0ng" : sClient;
+                            licenseExpiry = sExp.isEmpty() ? "V\u0129nh vi\u1ec5n" : sExp;
+                            lastStatusMsg = "K\u00cdCH HO\u1ea0T TH\u00c0NH C\u00d4NG!";
+                            saveLicense(activeKey, myHwid, boundUsername, clientName, licenseExpiry);
                             startHeartbeat();
                             isChecking = false;
                             runCallback(callback);
                             return;
                         } else {
                             String code = extractJsonField(localRes, "code");
-                            if ("KEY_LOCKED".equalsIgnoreCase(code) || "HWID_MISMATCH".equalsIgnoreCase(code) || "KEY_EXPIRED".equalsIgnoreCase(code)) {
-                                String msg = extractJsonField(localRes, "msg");
+                            if ("KEY_LOCKED".equalsIgnoreCase(code) || "HWID_MISMATCH".equalsIgnoreCase(code)
+                                    || "USERNAME_MISMATCH".equalsIgnoreCase(code) || "KEY_EXPIRED".equalsIgnoreCase(code)) {
                                 isLicensed = false;
-                                lastStatusMsg = msg.isEmpty() ? "Key bi khoa hoac khong hop le!" : msg;
+                                lastStatusMsg = "Key kh\u00f4ng h\u1ee3p l\u1ec7 ho\u1eb7c \u0111\u00e3 b\u1ecb kh\u00f3a!";
                                 revokeLicense();
                                 isChecking = false;
                                 runCallback(callback);
@@ -482,14 +656,15 @@ public class LicenseGuard {
                         }
                     }
 
-                    // Step 2: Google Apps Script Web App
+                    // Step 2: Kiem tra Google Apps Script Web App
                     String baseUrl = getCustomConfig("web_app_url");
                     if (baseUrl.isEmpty()) {
                         baseUrl = _D(_U, 0x5A);
                     }
 
                     String requestUrl = baseUrl + "?" + _D(_ACT, 0x4B) + URLEncoder.encode(cleanKey, "UTF-8")
-                            + _D(_HP, 0x2C) + URLEncoder.encode(myHwid, "UTF-8");
+                            + _D(_HP, 0x2C) + URLEncoder.encode(myHwid, "UTF-8")
+                            + "&username=" + URLEncoder.encode(currentNick, "UTF-8");
 
                     URL url = new URL(requestUrl);
                     HttpURLConnection conn = (HttpURLConnection) url.openConnection();
@@ -519,6 +694,7 @@ public class LicenseGuard {
                     String msg = extractJsonField(body, "msg");
                     String sKey = extractJsonField(body, "key");
                     String sHwid = extractJsonField(body, "hwid");
+                    String sUser = extractJsonField(body, "username");
                     String sExp = extractJsonField(body, "expires_at");
                     String sClient = extractJsonField(body, "client_name");
                     String sServerTime = extractJsonField(body, "server_time");
@@ -526,7 +702,7 @@ public class LicenseGuard {
 
                     if (!success) {
                         isLicensed = false;
-                        lastStatusMsg = msg.isEmpty() ? "Key khong hop le hoac bi khoa!" : msg;
+                        lastStatusMsg = msg.isEmpty() ? "Key kh\u00f4ng h\u1ee3p l\u1ec7 ho\u1eb7c \u0111\u00e3 b\u1ecb kh\u00f3a!" : msg;
                         revokeLicense();
                         isChecking = false;
                         runCallback(callback);
@@ -545,7 +721,7 @@ public class LicenseGuard {
 
                     if (!sigMatches) {
                         isLicensed = false;
-                        lastStatusMsg = "Chu ky bao mat khong hop le (gia mao)!";
+                        lastStatusMsg = "Ch\u1eef k\u00fd b\u1ea3o m\u1eadt kh\u00f4ng h\u1ee3p l\u1ec7!";
                         isChecking = false;
                         runCallback(callback);
                         return;
@@ -553,15 +729,16 @@ public class LicenseGuard {
 
                     isLicensed = true;
                     activeKey = sKey.isEmpty() ? cleanKey : sKey;
-                    clientName = sClient.isEmpty() ? "Khach hang" : sClient;
-                    licenseExpiry = sExp.isEmpty() ? "Vinh vien" : sExp;
-                    lastStatusMsg = "Kich hoat thanh cong (" + clientName + ")!";
+                    boundUsername = sUser.isEmpty() ? currentNick : sUser;
+                    clientName = sClient.isEmpty() ? "Kh\u00e1ch h\u00e0ng" : sClient;
+                    licenseExpiry = sExp.isEmpty() ? "V\u0129nh vi\u1ec5n" : sExp;
+                    lastStatusMsg = "K\u00cdCH HO\u1ea0T TH\u00c0NH C\u00d4NG!";
 
-                    saveLicense(activeKey, myHwid, clientName, licenseExpiry);
+                    saveLicense(activeKey, myHwid, boundUsername, clientName, licenseExpiry);
                     startHeartbeat();
 
                 } catch (Exception e) {
-                    lastStatusMsg = "Loi ket noi: " + e.getMessage();
+                    lastStatusMsg = "L\u1ed7i k\u1ebft n\u1ed1i m\u00e1y ch\u1ee7!";
                 } finally {
                     isChecking = false;
                     runCallback(callback);
@@ -570,9 +747,9 @@ public class LicenseGuard {
         }, "LicenseVerify").start();
     }
 
-    private static void saveLicense(String key, String hwid, String client, String exp) {
+    private static void saveLicense(String key, String hwid, String username, String client, String exp) {
         try {
-            String cacheSig = computeHmacSha256("CACHE|" + key + "|" + hwid + "|" + exp + "|" + client, _D(_S1, 0x3F));
+            String cacheSig = computeHmacSha256("CACHE|" + key + "|" + hwid + "|" + username + "|" + exp + "|" + client, _D(_S1, 0x3F));
             long savedAt = System.currentTimeMillis() / 1000L;
             String licName = _D(_LF, 0x33);
             String fldName = _D(_FLD, 0x64);
@@ -580,6 +757,7 @@ public class LicenseGuard {
             String json = "{\n"
                     + "  \"key\": \"" + key + "\",\n"
                     + "  \"hwid\": \"" + hwid + "\",\n"
+                    + "  \"username\": \"" + username + "\",\n"
                     + "  \"client_name\": \"" + client + "\",\n"
                     + "  \"expires_at\": \"" + exp + "\",\n"
                     + "  \"features\": [\"sell\"],\n"
@@ -594,6 +772,12 @@ public class LicenseGuard {
                 FileWriter fw = new FileWriter(new File(dir, licName));
                 fw.write(json);
                 fw.close();
+
+                File dirMc = new File(appdata + File.separator + ".minecraft");
+                dirMc.mkdirs();
+                FileWriter fwMc = new FileWriter(new File(dirMc, licName));
+                fwMc.write(json);
+                fwMc.close();
             }
 
             try {
@@ -617,6 +801,7 @@ public class LicenseGuard {
         try {
             isLicensed = false;
             activeKey = "";
+            boundUsername = "";
             File[] files = getCandidateLicenseFiles();
             for (File f : files) {
                 if (f.exists()) f.delete();

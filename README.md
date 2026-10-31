@@ -1,78 +1,71 @@
-# ⚔️ Mod Sell PVP & Auto Logistics (Macro Recorder) - Minecraft Forge 1.12.2
+# 📦 MOD SELL KHO & HỆ THỐNG BẢN QUYỀN VIP (MINECRAFT 1.12.2 FORGE)
 
-Mod hỗ trợ tự động bán vật phẩm (Sell Sign), tự động lấy đồ từ kho `/pv`, tự động về `/home` bù đồ, tích hợp **Bảo vệ PVP chống ban 3 ngày** và **Hệ thống Bản Quyền Hard-Gate khóa máy 1-Key-1-Machine** dành riêng cho Minecraft Forge 1.12.2.
-
----
-
-## 📥 TẢI VỀ 1-CLICK (DOWNLOAD 1 CLICK)
-
-Click ngay vào đường link bên dưới để tải trực tiếp file mod hoặc gói combo trọn bộ (chỉ 1 click là trình duyệt tự tải ngay):
-
-### 🚀 [👉 BẤM VÀO ĐÂY ĐỂ TẢI MOD SELL PVP (sell-pvp.jar)](https://github.com/hanhdevsgu/full-mods-minecraft/releases/download/sell-pvp-latest/sell-pvp.jar)
-### 📦 [👉 BẤM VÀO ĐÂY ĐỂ TẢI COMBO TRỌN BỘ MOD + TOOL QUẢN LÝ (Sell-PVP-Forge-1.12.2.zip)](https://github.com/hanhdevsgu/full-mods-minecraft/releases/download/sell-pvp-latest/Sell-PVP-Forge-1.12.2.zip)
-
-> [!TIP]
-> **Link tải dự phòng trực tiếp (1-Click Direct Raw Download)**:  
-> 🔗 [👉 Tải file sell pvp.jar từ nhánh sell-pvp](https://github.com/hanhdevsgu/full-mods-minecraft/raw/sell-pvp/sell%20pvp.jar)  
-> 🔗 [👉 Tải file sell.pvp.jar từ Release](https://github.com/hanhdevsgu/full-mods-minecraft/releases/download/sell-pvp-latest/sell.pvp.jar)
+> **Nhánh:** `sell-kho` | **Repository:** `hanhdevsgu/full-mods-minecraft`  
+> **Tải 1-Click (File .jar sẵn sàng chơi):** [Tải sell kho.jar trực tiếp](https://github.com/hanhdevsgu/full-mods-minecraft/raw/sell-kho/sell%20kho.jar)
 
 ---
 
-## 🛡️ Hệ Thống Bảo Mật & Kích Hoạt Bản Quyền (License System)
+## 🌟 1. Giới Thiệu Tính Năng Mod Sell Kho
+Mod tự động rút item đã cài đặt (ví dụ: Blaze Rod ID 369) từ các kho `/pv 1` đến `/pv N` xuống túi đồ và tự động chuột phải bán sạch sẽ vào bảng Sell Sign.
 
-1. **Khóa Cổng Ngay Khi Mở Game (Hard-Gate Startup)**:
-   * Vừa mở TLauncher / Minecraft Forge lên, mod sẽ lập tức hiển thị màn hình khóa bản quyền `KÍCH HOẠT BẢN QUYỀN SELL PVP`.
-   * **Bắt buộc nhập Key**: Người chơi không thể bấm `ESC` hay bỏ qua. Phải kích hoạt Key hợp lệ thì mới được vào Menu chính và vào game sử dụng.
-   * Có sẵn nút **[📋 Sao chép HWID]** để người chơi gửi mã máy cho Admin cấp Key chỉ với 1 click.
-
-2. **1 Key Chỉ Dùng Cho 1 Máy (HWID Binding)**:
-   * Tự động lấy vân tay phần cứng vật lý duy nhất: Serial Bo mạch chủ (Mainboard) + UUID máy trạm (`HWID-XXXX-XXXX-XXXX-XXXX`).
-   * Mỗi Key kích hoạt trên Google Sheet hoặc Local Server sẽ khóa cứng với HWID máy đó. Máy khác dùng chung Key sẽ bị chặn ngay lập tức (`HWID_MISMATCH`).
-   * Cache bản quyền được mã hóa chữ ký toán học HMAC-SHA256 lưu tại `%APPDATA%\MacroRecorder\license.dat` và `.minecraft/macrorecorder/license.dat`, chống sửa file offline.
-
-3. **Khóa Key Lập Tức (Real-Time Revocation & Heartbeat)**:
-   * Luồng Heartbeat chạy ngầm mỗi **3.5 giây** liên tục kiểm tra trạng thái Key với Server.
-   * **Khi Admin khóa hoặc xóa Key trên hệ thống**:
-     * Mod lập tức **ngắt Macro F4 ngay tức khắc**.
-     * Xóa sạch file cache `license.dat`.
-     * Tự động kéo người chơi về màn hình khóa với cảnh báo: `⚠️ Key đã bị KHÓA bởi Admin!`. Người chơi không thể tiếp tục dùng mod.
-
-4. **Hỗ Trợ Local Server Siêu Tốc (Fast Sync <5ms)**:
-   * Hỗ trợ đồng bộ trực tiếp với Local Admin Server (`http://127.0.0.1:5555/api/verify`). Nếu server local đang chạy, mod xác thực cực nhanh trong vòng 0.005 giây.
-   * Nếu không có server local, mod tự động chuyển sang xác thực bảo mật với Google Apps Script Web App.
-
-5. **Chống Dịch Ngược 100% (ProGuard 7.4.2 & String Encryption)**:
-   * Mã hóa mảng số nguyên XOR toàn bộ URL, salt bí mật, tham số API và lệnh hệ thống. Không có bất kỳ chuỗi plaintext nào trong Constant Pool bytecode.
-   * Toàn bộ class, method, biến nội bộ được xáo trộn thành `a`, `b`, `c` với cơ chế overloading tối đa.
-   * Tự động phát hiện công cụ dịch ngược, JVM agent debugger (`-agentlib:jdwp`, `-Xdebug`, Recaf...).
-
----
-
-## ⚔️ Tính Năng Chống Ban PVP (Chống Ban 3 Ngày)
-
-* **Nguyên nhân**: Nhiều server PvP có cơ chế chống bot khi giao tranh. Nếu tài khoản đang sell mà bị người khác đánh gây sát thương mà vẫn tiếp tục mở rương / click sell thì sẽ bị server coi là auto không tự nhiên và ban 3 ngày.
-* **Giải pháp triệt để của Mod**:
-  * Tự động bắt sự kiện dính sát thương (mất máu, bị đánh) và tin nhắn thông báo vào chiến đấu từ server.
-  * **Lập tức dừng sell và đóng rương ngay** (`closeScreen()`), nhả khóa góc nhìn camera.
-  * Tự động chờ đến khi hết trạng thái chiến đấu (an toàn) mới tiếp tục quy trình sell, hoặc có thể chọn chế độ **Dừng hẳn F4** trong cài đặt F8.
+### ✨ Các Tính Năng Đã Sửa Triệt Để & Hoàn Thiện:
+1. **Khóa 1 KEY 1 MÁY DUY NHẤT (HWID Lock):**
+   - Key bản quyền gắn chặt theo mã phần cứng phần cứng máy tính (HWID).
+   - Máy khác không thể dùng chung Key dưới bất kỳ hình thức nào.
+2. **Đổi Nick TLauncher Tự Do Trên Cùng 1 Máy:**
+   - Khi tắt Minecraft đổi tài khoản khác trong TLauncher trên máy đã kích hoạt, mod **tự động nhận diện phần cứng hợp lệ và cập nhật nick mới vào cache mà không bắt nhập lại Key**.
+3. **Chặn Mở Cửa Sổ Thứ 2 (Single-Instance Mutex):**
+   - Chỉ cho phép đúng 1 cửa sổ Minecraft chạy mod tại một thời điểm (bảo vệ bằng OS Mutex Socket 5556 + FileLock).
+   - Mở thêm cửa sổ thứ 2 sẽ hiện popup cảnh báo tiếng Việt có dấu:
+     * **THÔNG BÁO**
+     * *Không thể mở thêm cửa sổ nữa! Vui lòng tắt bớt cửa sổ Minecraft đang chạy.*
+4. **Quy Trình Rút & Bán Thông Minh (Không Yêu Cầu Đầy Balo Mới Bán):**
+   - **Dọn sạch balo trước:** Khi bật F4, nếu trong người đang có sẵn item cài đặt thì bán sạch về 0 trước khi mở `/pv 1`.
+   - **Rút 2 đợt cho kho 54 ô:**
+     - *Đợt 1:* Rút đầy balo (~35 ô) $\rightarrow$ đóng kho $\rightarrow$ bán sạch 35 ô về 0.
+     - *Đợt 2:* Mở lại kho rút nốt 19 ô còn lại $\rightarrow$ kho sạch đồ $\rightarrow$ đóng kho $\rightarrow$ bán sạch 19 ô về 0.
+     - Ngay khi kho cũ hết đồ và balo sạch, mod chuyển thẳng sang `/pv` tiếp theo, không bao giờ mở lại kho đã trống.
+5. **Dừng Hoàn Toàn Khi Hết Kho Đã Cài Đặt (Ví dụ: Kho 20):**
+   - Khi chạy đến kho cuối cùng `/pv N` (ví dụ: `/pv 20`), bán sạch kho và balo về 0 item, mod gửi thông báo:
+     `[F4] ĐÃ BÁN HẾT /pv 1 -> 20 -> HOÀN TẤT & DỪNG MACRO!`
+     và **tắt F4, dừng hoàn toàn, không lặp lại vòng lặp**.
+6. **Đồng Bộ 2 Chiều Thời Gian Thực (Google Sheet $\leftrightarrow$ Web Dashboard $\leftrightarrow$ Game .jar):**
+   - Xóa hoặc chỉnh sửa key trực tiếp trên Google Sheet $\rightarrow$ Server Local tự động cập nhật sau 4s.
+   - Thao tác xóa key trên Web Dashboard $\rightarrow$ Lập tức xóa trên Google Sheet.
+   - Khi key bị xóa trên Sheet hoặc Web $\rightarrow$ Game đang chạy lập tức bị thu hồi bản quyền sau tối đa 3 giây, tự động tắt macro và hiện màn hình khóa.
+7. **Bảo Mật 100% ProGuard 7.4.2:**
+   - 100% classes, methods, fields bị đổi tên thành `a, b, c...`
+   - Chuỗi nhạy cảm được mã hóa XOR động 2 lớp chống Decompile/Grep.
 
 ---
 
-## 🎮 Phím Tắt & Lệnh Điều Khiển
-
-| Phím / Lệnh | Chức năng |
-| :--- | :--- |
-| **F4** | Bật / Tắt Macro tự động bán và bù đồ. |
-| **F8** | Mở Menu Cài Đặt (ID vật phẩm, lệnh `/sethome`, `/home`, `/back`, delay, cấu hình PVP...). |
-| `/key <mã-key>` | Kích hoạt Key trực tiếp trong khung chat (Lệnh tự ẩn, không bị gửi lên server). |
-| `/hwid` | Xem và tự động copy mã HWID máy vào clipboard. |
+## 🎮 2. Hướng Dẫn Sử Dụng Trong Game
+| Phím Tắt | Chức Năng |
+| :---: | :--- |
+| **F8** | Mở Menu Cài Đặt: Nhập **ID Item** (xem qua F3+H) và **Số kho /pv** cần bán (1 -> 9999). Bấm **Enter** hoặc click **Lưu** để lưu cấu hình. |
+| **F4** | Bật / Tắt Macro Sell Kho (`[F4] ON` / `[F4] OFF`). |
 
 ---
 
-## 📖 Hướng Dẫn Cài Đặt
+## 💻 3. Quản Lý Bản Quyền Bằng Web Dashboard Local
+1. Chạy file `QuanLyKey_Local.bat` trong thư mục mod.
+2. Trình duyệt tự động mở tại: `http://127.0.0.1:5555`.
+3. Bạn có thể:
+   - **Tạo Key mới:** Hạn dùng 1 ngày, 7 ngày, 30 ngày, 90 ngày hoặc Vĩnh viễn.
+   - **Khóa Key / Mở Khóa:** Khóa key ngay lập tức trong thời gian thực.
+   - **Đổi Hạn:** Gia hạn ngày sử dụng.
+   - **Đổi Máy (Reset HWID):** Reset HWID khi khách hàng đổi sang máy tính mới.
+   - **Xóa Key:** Xóa vĩnh viễn key khỏi Local Server và Google Sheet.
+   - **Đồng bộ Google Sheet:** Bấm nút `🔄 Đồng bộ Google Sheet` để đồng bộ thủ công bất cứ lúc nào.
 
-1. Tải file [sell pvp.jar](https://github.com/hanhdevsgu/full-mods-minecraft/releases/download/sell-pvp-latest/sell.pvp.jar).
-2. Nhấn tổ hợp phím `Windows + R`, gõ `%appdata%\.minecraft\mods` và nhấn **Enter**.
-3. Copy file `sell pvp.jar` vào thư mục `mods`.
-4. Mở TLauncher / Minecraft với phiên bản **Forge 1.12.2**.
-5. Màn hình kích hoạt sẽ xuất hiện -> Bấm `[Sao chép HWID]` gửi cho Admin để lấy Key -> Dán Key vào và bấm `[KÍCH HOẠT VÀ VÀO GAME]`.
+---
+
+## 🛠️ 4. Hướng Dẫn Biên Dịch & Đóng Gói (Dành Cho Developer)
+Yêu cầu môi trường: **Java 8 (JDK 1.8)** và **PowerShell**.
+
+1. **Biên dịch bytecode Java 8 & Obfuscate 100% ProGuard:**
+   ```powershell
+   .\protect_and_build.ps1
+   ```
+2. File output sẵn sàng sử dụng:
+   - `sell kho.jar` (Đã được ProGuard 7.4.2 mã hóa bảo vệ toàn diện).

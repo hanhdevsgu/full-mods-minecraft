@@ -2001,9 +2001,9 @@ class BotInstance {
         let consecutiveTimeouts = 0;
         // QUICK-MOVE vẫn rất nhanh, nhưng không bắn 36/54 click cùng một tick.
         // 9 slot / nhịp + gap nhỏ giúp server nhận liên tục và giảm burst packet.
-        const CHUNK_SIZE = 9;
-        const CLICK_GAP_MS = 50 + Math.floor(Math.random() * 20); // 50-70ms (an toàn tuyệt đối chống FastInventory/Nuker anti-cheat)
-        const CHUNK_GAP_MS = 130 + Math.floor(Math.random() * 40); // 130-170ms giữa các hàng 9 ô
+        const CHUNK_SIZE = 5;
+        const CLICK_GAP_MS = 125 + Math.floor(Math.random() * 35); // 125-160ms (nhịp click tự nhiên của người chơi, 100% bypass FastInventory / ChestStealer)
+        const CHUNK_GAP_MS = 220 + Math.floor(Math.random() * 60); // 220-280ms giữa các nhịp 5 ô (ngắt nhịp buffer anti-cheat)
         const failed = [];
         for (let start = 0; start < slotList.length; start += CHUNK_SIZE) {
             if (!this.running || !this.bot || !this.bot.currentWindow) break;
@@ -2033,6 +2033,9 @@ class BotInstance {
     }
 
     async _depositIntoOpenWindow(chestWindow, TAG, filterFn = null) {
+        // ⭐ CHỐNG KICK HACK CHESTSTEALER: Chờ 250-320ms sau khi mở rương trước khi cất đồ
+        await this.sleep(250 + Math.floor(Math.random() * 70));
+        if (!this.running || !this.bot || this.bot.currentWindow !== chestWindow) return { pushed: 0, stuck: 0, full: false };
         const invStart = this._getChestInventoryStart(chestWindow);
 
         const getPlayerItemsInWindow = () => {
@@ -2105,6 +2108,8 @@ class BotInstance {
 
     applyChestPitchYaw() {
         if (!this.bot || !this.bot.entity) return false;
+        // ⭐ CHỐNG KICK HACK: Tuyệt đối không gửi packet xoay đầu khi đang mở GUI / Rương!
+        if (this.bot.currentWindow) return true;
         try {
             const pitch = this._safeStoragePitch(this.lock_pitch);
             const yaw = this._safeStorageYaw(this.lock_yaw);
@@ -2189,6 +2194,10 @@ class BotInstance {
             return { taken: 0, slots: 0 };
         }
 
+        // ⭐ CHỐNG KICK HACK CHESTSTEALER: Chờ 250-320ms sau khi mở rương trước khi bắt đầu click
+        await this.sleep(250 + Math.floor(Math.random() * 70));
+        if (!this.running || !this.bot || this.bot.currentWindow !== chestWindow) return { taken: 0, slots: 0 };
+
         let taken = 0;
         let slotsTaken = 0;
         let passes = 0;
@@ -2214,7 +2223,7 @@ class BotInstance {
 
             if (targetSlots.length === 0) break;
 
-            this.log(`⚡ ${TAG} PASS ${passes}: ${targetSlots.length} stack → QUICK-MOVE an toàn chống anti-cheat, nhịp=9, click-gap=50-70ms, chunk-gap=130-170ms.`, '#4a9eff');
+            this.log(`⚡ ${TAG} PASS ${passes}: ${targetSlots.length} stack → QUICK-MOVE an toàn chống anti-cheat, nhịp=5, click-gap=125-160ms, chunk-gap=220-280ms.`, '#4a9eff');
             let movedThisPass = 0;
             let pendingSlots = targetSlots.slice();
 
@@ -2297,9 +2306,9 @@ class BotInstance {
             // như flow đẩy item mặc định. windowOpen bình thường về trong
             // vài trăm ms nếu activateBlock ăn; 1200ms là đủ dư mà vẫn
             // nhanh hơn hẳn 8000ms cũ. RETRY_DELAY = 0 -> vừa fail là thử lại ngay.
-            windowOpenTimeoutMs: 1000,
-            retryDelayMs: 0,
-            noAimRetryDelayMs: 0,
+            windowOpenTimeoutMs: 1500,
+            retryDelayMs: 200,
+            noAimRetryDelayMs: 200,
             maxAttempts: 60,
             refreshLockBeforeOpen: true,
             strictCursor: options.strictCursor === true,
@@ -3411,7 +3420,7 @@ class BotInstance {
         const aborted = () => !this.running || !this.bot || this._conn_epoch !== myEpoch || this._storage_cancel_token !== myToken || !this.auto_storage_running || this.findCompassSlot() !== -1 || !this.joined_server;
         const oldLock = this.lock_pitch_yaw;
         const oldPitch = this.lock_pitch, oldYaw = this.lock_yaw;
-        const FAST_OPEN_OPTS = { windowOpenTimeoutMs: 1500, retryDelayMs: 150, noAimRetryDelayMs: 150, maxAttempts: 24, refreshLockBeforeOpen: true };
+        const FAST_OPEN_OPTS = { windowOpenTimeoutMs: 1800, retryDelayMs: 220, noAimRetryDelayMs: 200, maxAttempts: 24, refreshLockBeforeOpen: true };
         const MAX_GOTOS = 3;
         const configs = this._getStorageClearConfigs();
         const clear2Enabled = this.storage_clear2_enabled === true ||
@@ -4432,7 +4441,7 @@ class BotInstance {
         const aborted = () => !this.running || !this.bot || this._conn_epoch !== myEpoch || this._storage_cancel_token !== myToken;
 
         const MAX_CHEST_HOPS = 2000;
-        const GUI_SETTLE_MS = 150;
+        const GUI_SETTLE_MS = 250;
         // Retry nhanh y như flow LẤY ITEM: không chờ 8s/lần mới thử lại.
         const FAST_OPEN_OPTS = { windowOpenTimeoutMs: 1500, retryDelayMs: 150, noAimRetryDelayMs: 150, maxAttempts: 24, refreshLockBeforeOpen: true };
 

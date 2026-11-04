@@ -2108,7 +2108,7 @@ class BotInstance {
         return { pushed, stuck, full: this._isContainerWindowFull(chestWindow, invStart) };
     }
 
-    applyChestPitchYaw() {
+    applyChestPitchYaw(force = false) {
         if (!this.bot || !this.bot.entity) return false;
         // ⭐ CHỐNG KICK HACK: Tuyệt đối không gửi packet xoay đầu khi đang mở GUI / Rương!
         if (this.bot.currentWindow) return true;
@@ -2118,12 +2118,16 @@ class BotInstance {
             const targetKey = `${pitch.toFixed(3)}|${yaw.toFixed(3)}`;
             const now = Date.now();
 
-            // Không spam bot.look(). Chỉ gửi LOOK khi đổi góc hoặc lần gửi trước
-            // đã đủ lâu. Đặc biệt không gửi LOOK liên tục trong lúc QUICK-MOVE.
-            if (this._chest_look_target === targetKey && this._chest_look_last_at && (now - this._chest_look_last_at) < 900) {
+            const livePitch = this.bot.entity.pitch * 180 / Math.PI;
+            const liveYaw = this.bot.entity.yaw * 180 / Math.PI;
+            let yawDiff = Math.abs(((liveYaw - yaw + 540) % 360) - 180);
+            if (yawDiff > 180) yawDiff = 360 - yawDiff;
+            const pitchDiff = Math.abs(livePitch - pitch);
+
+            // Nếu góc hiện tại đã khớp chuẩn (< 0.8°) và không force, và đã gửi trong 900ms -> bỏ qua
+            if (!force && yawDiff < 0.8 && pitchDiff < 0.8 && this._chest_look_target === targetKey && this._chest_look_last_at && (now - this._chest_look_last_at) < 900) {
                 return true;
             }
-            const targetChanged = this._chest_look_target !== targetKey;
             this._chest_look_target = targetKey;
             this._chest_look_last_at = now;
 
@@ -2134,8 +2138,6 @@ class BotInstance {
                 .then(() => bot.look(yawRad, pitchRad, true))
                 .catch(() => false);
 
-            // Không spam log mỗi vòng lock: log chat/debug quá dày làm GUI lag.
-            // Việc chờ góc ổn định vẫn giữ nguyên ở _awaitChestLookSync().
             return true;
         } catch (e) {
             this.log(`❌ [CHEST] Lỗi set pitch/yaw: ${e && e.message ? e.message : e}`, '#ff4d6d');
@@ -3267,18 +3269,11 @@ class BotInstance {
             const lockYNum = hasLockY ? Number(lockY) : NaN;
             const yDiff = hasLockY ? Math.abs(rawY - lockYNum) : NaN;
 
-            // Rương 1 & Rương 2: Luôn áp dụng và khóa Pitch/Yaw của rương đang thực hiện.
-            // Nếu Y cấu hình lệch so với Y thực tế của dãy rương, tự động cập nhật Y để đồng bộ viewlock.
-            if (hasLockY && yDiff > 0.15 && Math.floor(rawY) !== Math.floor(lockYNum)) {
-                this.log(`🔄 ${TAG} Tự động đồng bộ Y khóa góc (${lockYNum} ➔ ${rawY.toFixed(3)}) để khớp tầng Y hiện tại.`, '#2ecc71');
-                this.storage_clear_lock_y = Math.round(rawY * 100) / 100;
-                if (this._storage_active_clear_config) this._storage_active_clear_config.lockY = this.storage_clear_lock_y;
-                this.sendStatus();
-            }
+            // Rương 1, Rương 2 & Nhà Rương: Luôn áp dụng và khóa đúng Pitch/Yaw đã setup.
             this.lock_pitch = this._safeStoragePitch(pitch);
             this.lock_yaw = this._safeStorageYaw(yaw);
             this.lock_pitch_yaw = true;
-            this.applyChestPitchYaw();
+            this.applyChestPitchYaw(true);
             this.startPitchYawLockLoop();
             if (hasLockY) {
                 this.log(`🔒 ${TAG} Y hiện tại=${rawY.toFixed(3)} → Pitch=${this.lock_pitch}, Yaw=${this.lock_yaw}`, '#4a9eff');
@@ -3706,18 +3701,15 @@ class BotInstance {
             if (!this.bot || !this.bot.entity) return;
             const rawY = Number(this.bot.entity.position.y);
             const lockY = Number(this.storage_deposit_lock_y);
-            const yDiff = Math.abs(rawY - lockY);
-            if (Number.isFinite(lockY) && (Math.floor(rawY) === Math.floor(lockY) || yDiff <= 0.15)) {
+            if (this.isNearDepositY(1.5)) {
                 this.lock_pitch = this._safeStoragePitch(this.storage_deposit_pitch);
                 this.lock_yaw = this._safeStorageYaw(this.storage_deposit_yaw);
                 this.lock_pitch_yaw = true;
-                this.applyChestPitchYaw();
+                this.applyChestPitchYaw(true);
                 this.startPitchYawLockLoop();
-                this.log(`🔒 ${TAG} Y hiện tại=${rawY.toFixed(3)} ≈ Y khóa góc=${lockY} → Pitch=${this.lock_pitch}, Yaw=${this.lock_yaw}`, '#4a9eff');
+                this.log(`🔒 ${TAG} Y hiện tại=${rawY.toFixed(3)} ≈ Y Nhà Rương=${lockY} → Khóa chuẩn Pitch=${this.lock_pitch}, Yaw=${this.lock_yaw}`, '#4a9eff');
             } else {
-                this.lock_pitch_yaw = false;
-                this.stopPitchYawLockLoop();
-                this.log(`ℹ️ ${TAG} Y hiện tại=${rawY.toFixed(3)} != Y khóa góc=${lockY} → chưa khóa Pitch/Yaw.`, '#9b59b6');
+                this.log(`⚠️ ${TAG} Y hiện tại=${rawY.toFixed(3)} chưa khớp Y Nhà Rương=${lockY}.`, '#f5c842');
             }
         };
 
@@ -3777,12 +3769,12 @@ class BotInstance {
         } finally {
             try { if (this.bot && this.bot.currentWindow) this.bot.closeWindow(this.bot.currentWindow); } catch (e) {}
             this.move_delta_x = oldDx; this.move_delta_y = oldDy; this.move_delta_z = oldDz;
-            this.lock_pitch = oldPitch; this.lock_yaw = oldYaw;
-            this.lock_pitch_yaw = oldLock;
-            this._active_storage_chest_config = null;
-            this._storage_active_deposit_stage = 0;
-            if (oldLock && this.running && this.joined_server) this.startPitchYawLockLoop();
-            else this.stopPitchYawLockLoop();
+            if (!this.isNearDepositY(1.5)) {
+                this.lock_pitch = oldPitch; this.lock_yaw = oldYaw;
+                this.lock_pitch_yaw = oldLock;
+                if (oldLock && this.running && this.joined_server) this.startPitchYawLockLoop();
+                else this.stopPitchYawLockLoop();
+            }
             this._chest_busy = false;
         }
     }
@@ -4977,11 +4969,10 @@ class BotInstance {
         this.log(`🔒 Đã khoá góc nhìn: Pitch=${this.lock_pitch}, Yaw=${this.lock_yaw}`, '#4a9eff');
         this.applyLockedLook();
         this._pitch_yaw_lock_timer = setInterval(() => {
-            // Không gửi LOOK đồng thời với activateBlock/QUICK-MOVE.
-            // Khi đang thao tác rương, giữ góc hiện tại; sau khi GUI xong loop sẽ tiếp tục.
-            if (this._chest_busy) return;
+            // Không gửi LOOK đồng thời với activateBlock/QUICK-MOVE hay khi đang mở rương
+            if (this._chest_busy || (this.bot && this.bot.currentWindow)) return;
             this.applyLockedLook();
-        }, 1000);
+        }, 500);
     }
 
     _safeStoragePitch(value) {
@@ -5011,77 +5002,73 @@ class BotInstance {
             this.stopPitchYawLockLoop();
             return false;
         }
+
         const clearY = Number(this.storage_clear_lock_y);
         const depositY = Number(this.storage_deposit_lock_y);
         const clearPitch = this._safeStoragePitch(this.storage_clear_pitch);
         const clearYaw = this._safeStorageYaw(this.storage_clear_yaw);
         const depositPitch = this._safeStoragePitch(this.storage_deposit_pitch);
         const depositYaw = this._safeStorageYaw(this.storage_deposit_yaw);
-        const tol = 0.15;
 
-        const clearMatch = Number.isFinite(clearY) && Math.abs(y - clearY) <= tol;
-        const depositMatch = Number.isFinite(depositY) && Math.abs(y - depositY) <= tol;
+        // Hỗ trợ đứng trên rương, phễu, thảm, nửa block bằng isNearDepositY và isNearClearY
+        const clearMatch = this.isNearClearY(1.5);
+        const depositMatch = this.isNearDepositY(1.5);
 
         let selected = null;
         const phase = String(flowHint || this._storage_chain_phase || '').toLowerCase();
 
-        // Khi CHUỖI RƯƠNG đang dọn, ưu tiên đúng chest config hiện tại.
-        // Đặc biệt RƯƠNG 2 không có Y khóa riêng, nên phải giữ Pitch/Yaw 2 và
-        // tuyệt đối không để VIEWLOCK AUTO quay lại bộ Pitch/Yaw của RƯƠNG 1.
-        // Trong chuỗi dọn rương, config đang active là nguồn sự thật duy nhất.
-        // Tuyệt đối không fallback theo Y chung vì Rương 1 và Rương 2 có thể đứng
-        // cùng một Y nhưng dùng Pitch/Yaw khác nhau.
-        const activeClear = this._storage_active_clear_config && this._storage_active_clear_config.enabled
-            ? this._storage_active_clear_config
-            : ((phase === 'clear' || phase.includes('dọn') || phase.includes('clear'))
+        // ⭐ NGUYÊN TẮC BẤT DI BẤT DỊCH:
+        // 1. Khi bot ĐANG Ở Y NHÀ RƯƠNG (depositMatch):
+        //    BẮT BUỘC 100% LUÔN LUÔN khóa đúng Pitch/Yaw đã setup cho NHÀ RƯƠNG!
+        //    Tuyệt đối không để Dọn Rương hay Dọn Rương 2 chen vào!
+        if (depositMatch && (!clearMatch || phase === 'deposit' || phase.includes('nhà') || phase.includes('deposit'))) {
+            this._storage_active_clear_config = null;
+            selected = { name: 'NHÀ RƯƠNG', y: depositY, pitch: depositPitch, yaw: depositYaw };
+        }
+        // 2. Khi bot ĐANG Ở Y DỌN RƯƠNG (clearMatch):
+        //    Khóa góc riêng theo đúng cấu hình Dọn Rương:
+        //    - Rương 2: dùng Pitch/Yaw của Rương 2
+        //    - Rương 1: dùng Pitch/Yaw của Rương 1
+        else if (clearMatch) {
+            const activeClear = this._storage_active_clear_config && this._storage_active_clear_config.enabled
                 ? this._storage_active_clear_config
-                : null);
-        if (activeClear && activeClear.enabled && activeClear.name === 'DỌN RƯƠNG 2') {
-            // RƯƠNG 2 phải cùng tầng Y với DỌN RƯƠNG 1 (clearY)! Tuyệt đối không áp dụng nếu đang ở tầng Y khác (như lobby Y=28, 14 hay nhà rương)
-            if (Number.isFinite(clearY) && Math.abs(y - clearY) > 2.5) {
-                return false;
-            }
-            selected = { name: 'DỌN RƯƠNG 2', y: null, pitch: this._safeStoragePitch(activeClear.pitch), yaw: this._safeStorageYaw(activeClear.yaw) };
-        } else if (activeClear && activeClear.enabled && activeClear.name === 'DỌN RƯƠNG 1' && Number.isFinite(Number(activeClear.lockY))) {
-            const activeClearY = Number(activeClear.lockY);
-            if (Math.abs(y - activeClearY) <= tol) {
-                selected = { name: 'DỌN RƯƠNG 1', y: activeClearY, pitch: this._safeStoragePitch(activeClear.pitch), yaw: this._safeStorageYaw(activeClear.yaw) };
+                : null;
+            if (activeClear && activeClear.name === 'DỌN RƯƠNG 2') {
+                selected = {
+                    name: 'DỌN RƯƠNG 2',
+                    y: clearY,
+                    pitch: this._safeStoragePitch(this.storage_clear2_pitch),
+                    yaw: this._safeStorageYaw(this.storage_clear2_yaw)
+                };
             } else {
-                // Đang ở flow Rương 1 nhưng Y chưa tới: không được tự rơi xuống
-                // bộ DỌN RƯƠNG chung/NHÀ RƯƠNG rồi làm mất lock của Rương 1.
-                return !!this.lock_pitch_yaw;
+                selected = {
+                    name: 'DỌN RƯƠNG',
+                    y: clearY,
+                    pitch: clearPitch,
+                    yaw: clearYaw
+                };
             }
-        } else if (activeClear && activeClear.enabled) {
-            // Active chest có cấu hình nhưng không khớp nhánh fallback: giữ lock hiện tại.
-            return !!this.lock_pitch_yaw;
-        } else if ((phase === 'deposit' || phase.includes('nhà') || phase.includes('deposit')) && depositMatch) {
+        }
+        // 3. Fallback nếu chỉ khớp depositMatch
+        else if (depositMatch) {
+            this._storage_active_clear_config = null;
             selected = { name: 'NHÀ RƯƠNG', y: depositY, pitch: depositPitch, yaw: depositYaw };
-        } else if ((phase === 'clear' || phase.includes('dọn') || phase.includes('clear')) && clearMatch) {
-            selected = { name: 'DỌN RƯƠNG', y: clearY, pitch: clearPitch, yaw: clearYaw };
-        } else if (depositMatch && !clearMatch) {
-            selected = { name: 'NHÀ RƯƠNG', y: depositY, pitch: depositPitch, yaw: depositYaw };
-        } else if (clearMatch && !depositMatch) {
-            selected = { name: 'DỌN RƯƠNG', y: clearY, pitch: clearPitch, yaw: clearYaw };
-        } else if (depositMatch && clearMatch) {
-            // Hai Y trùng nhau: flow hiện tại quyết định bộ nào được dùng.
-            if (phase === 'deposit' || phase.includes('nhà') || phase.includes('deposit')) {
-                selected = { name: 'NHÀ RƯƠNG', y: depositY, pitch: depositPitch, yaw: depositYaw };
-            } else {
-                selected = { name: 'DỌN RƯƠNG', y: clearY, pitch: clearPitch, yaw: clearYaw };
-            }
         }
 
         if (!selected) {
+            // Nếu đang trong lúc GOTO di chuyển thì giữ nguyên lock hiện tại, không tắt đột ngột
+            if (this._goto_in_progress) return !!this.lock_pitch_yaw;
+
             this.lock_pitch_yaw = false;
             this.stopPitchYawLockLoop();
-            this.log(`🔎 [VIEWLOCK AUTO] Y hiện tại=${y.toFixed(3)} không khớp Y khóa DỌN=${Number.isFinite(clearY) ? clearY.toFixed(3) : 'NaN'} hoặc NHÀ=${Number.isFinite(depositY) ? depositY.toFixed(3) : 'NaN'} → không khóa.`, '#f5c842');
+            this.log(`🔎 [VIEWLOCK AUTO] Y hiện tại=${y.toFixed(3)} không khớp Y khóa DỌN=${Number.isFinite(clearY) && clearY > 0 ? clearY.toFixed(3) : 'NaN'} hoặc NHÀ=${Number.isFinite(depositY) && depositY > 0 ? depositY.toFixed(3) : 'NaN'} → không khóa.`, '#f5c842');
             return false;
         }
 
         this.lock_pitch = selected.pitch;
         this.lock_yaw = selected.yaw;
         this.lock_pitch_yaw = true;
-        this.applyChestPitchYaw();
+        this.applyChestPitchYaw(true);
         this.startPitchYawLockLoop();
         const selectedYText = Number.isFinite(Number(selected.y)) ? Number(selected.y).toFixed(3) : 'KHÔNG DÙNG Y';
         this.log(`🎯 [VIEWLOCK AUTO] Y hiện tại=${y.toFixed(3)} KHỚP ${selected.name}${selectedYText === 'KHÔNG DÙNG Y' ? '' : ` Y=${selectedYText}`} → KHÓA Pitch=${selected.pitch}, Yaw=${selected.yaw}`, '#2ecc71');
@@ -6393,11 +6380,9 @@ class BotInstance {
                         }
                     }
                     if (this._goto_in_progress) return;
-                    const clearY = Number(this.storage_clear_lock_y);
-                    const depY = Number(this.storage_deposit_lock_y);
-                    const clearHit = Number.isFinite(clearY) && Math.abs(y - clearY) <= 0.15;
-                    const depHit = Number.isFinite(depY) && Math.abs(y - depY) <= 0.15;
-                    const key = `${Math.round(y*20)/20}|${clearHit?'C':''}${depHit?'D':''}|${this._storage_chain_phase||''}|${this._storage_box_index}|${this._storage_active_clear_config ? this._storage_active_clear_config.name : ''}`;
+                    const clearHit = this.isNearClearY(1.5);
+                    const depHit = this.isNearDepositY(1.5);
+                    const key = `${Math.round(y*2)/2}|${clearHit?'C':''}${depHit?'D':''}|${this._storage_chain_phase||''}|${this._storage_box_index}|${this._storage_active_clear_config ? this._storage_active_clear_config.name : ''}`;
                     if (key !== this._storage_viewlock_last_key) {
                         this._storage_viewlock_last_key = key;
                         this.applyStorageViewLockByY(this._storage_chain_phase || '');

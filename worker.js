@@ -5939,27 +5939,27 @@ class BotInstance {
         if (!this.bot || !this.bot.inventory) return false;
         if (!this.bot.entity || !this.bot.entity.position) return false;
 
-        // 1. Đang ở toạ độ spawn lobby -> chắc chắn ở lobby!
-        if (this.isAtSpawn()) {
-            return false;
-        }
-
-        // 2. Nếu có compass trong hotbar hoặc túi đồ -> chắc chắn vẫn ở lobby
+        // 1. Nếu thực sự có compass trong hotbar hoặc túi đồ -> chắc chắn ở lobby
         if (this.findCompassSlot() !== -1) return false;
 
-        // 3. Nếu GUI chọn server đang mở -> chắc chắn vẫn ở lobby
+        // 2. Nếu GUI chọn server đang mở -> chắc chắn ở lobby
         if (this.bot.currentWindow && this._isServerSelectWindow(this.bot.currentWindow)) {
             return false;
         }
 
-        // 4. Nếu đã click rìu và GUI đã đóng, không có compass -> ĐÃ VÀO SERVER!
+        // 3. Hotbar không có compass và có item game (kiếm, rìu, gunpowder...) -> 100% ĐÃ VÀO SERVER!
+        if (this.hasGameItemInHotbar() && !this.bot.currentWindow) {
+            return true;
+        }
+
+        // 4. Nếu đã click rìu và GUI đã đóng, không có compass -> 100% ĐÃ VÀO SERVER!
         if (this.clicked_axe && !this.bot.currentWindow) {
             return true;
         }
 
-        // 5. Nếu hotbar có item game (rìu kim cương, kiếm, đồ...) và không có compass -> ĐÃ VÀO SERVER!
-        if (this.hasGameItemInHotbar() && !this.bot.currentWindow) {
-            return true;
+        // 5. Nếu chưa có item game và chưa click rìu, mà toạ độ Y ở sảnh lobby -> ở lobby
+        if (this.isAtSpawn()) {
+            return false;
         }
 
         return !!(this.joined_server || this.clicked_axe);
@@ -6012,9 +6012,17 @@ class BotInstance {
             const clearY = Number(this.storage_clear_lock_y);
             const depY = Number(this.storage_deposit_lock_y);
 
-            // Tuyệt đối không chạy Chuỗi Rương / /home khi bot chưa vào server chơi thật sự
+            // ⭐ TỰ ĐỘNG XÁC NHẬN VÀO SERVER:
+            // Hotbar không còn la bàn (compass) và có item game (hoặc đã click rìu) -> 100% ĐÃ VÀO SERVER!
+            if (this.findCompassSlot() === -1 && (this.hasGameItemInHotbar() || this.clicked_axe)) {
+                this.joined_server = true;
+                this.clicked_axe = true;
+                this._in_lobby_state = false;
+            }
+
+            // Chỉ huỷ nếu THỰC SỰ đang ở lobby (thấy compass trong hotbar hoặc GUI chọn server đang mở)
             if (this.findCompassSlot() !== -1 || (this.bot.currentWindow && this._isServerSelectWindow(this.bot.currentWindow)) || !this.joined_server) {
-                this.log(`⚠️ [KIỂM TRA VỊ TRÍ] (${reason}): Bot chưa vào server chơi (đang ở lobby/chưa click rìu), bỏ qua kiểm tra vị trí.`, '#f5c842');
+                this.log(`⚠️ [KIỂM TRA VỊ TRÍ] (${reason}): Bot chưa vào server chơi (đang ở lobby/có compass/đang mở GUI), bỏ qua kiểm tra vị trí.`, '#f5c842');
                 return;
             }
 

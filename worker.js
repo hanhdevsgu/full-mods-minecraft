@@ -639,8 +639,14 @@ class BotInstance {
         if (this.findCompassSlot() !== -1) return true;
         if (this.bot && this.bot.currentWindow && this._isServerSelectWindow(this.bot.currentWindow)) return true;
 
-        // 2. Kiểm tra toạ độ Y của sảnh (28.063 hoặc 14.000) NGAY LẬP TỨC:
-        // Khi bị anti-cheat đá về lobby, toạ độ Y sẽ lập tức rơi vào sảnh
+        // 2. Nếu đã vào server hoặc đã click axe -> Chắc chắn KHÔNG PHẢI ở lobby
+        if (this.joined_server || this.clicked_axe) return false;
+
+        // 3. Nếu hotbar có item game thực sự (như kiếm, rìu, gunpowder...) -> Đang ở trong server game
+        if (this.hasGameItemInHotbar && this.hasGameItemInHotbar()) return false;
+
+        // 4. Chỉ khi chưa vào server VÀ không có item game trong hotbar:
+        // nếu toạ độ Y rơi vào sảnh lobby (28.063 hoặc 14.000) -> mới tính là ở sảnh lobby
         if (this.bot && this.bot.entity && this.bot.entity.position) {
             const y = Number(this.bot.entity.position.y);
             if (Number.isFinite(y)) {
@@ -650,23 +656,14 @@ class BotInstance {
             }
         }
 
-        // 3. Nếu đã vào server hoặc đã click axe -> Không phải ở lobby
-        if (this.joined_server || this.clicked_axe) return false;
-
-        // 4. Nếu hotbar có item game (như kiếm, rìu, đồ đạc...) -> Đang ở trong server
-        if (this.bot && this.bot.inventory) {
-            const hotbarSlots = this.bot.inventory.slots.slice(36, 45);
-            const hasGameItem = hotbarSlots.some(s => s && s.name && !s.name.includes('compass'));
-            if (hasGameItem) return false;
-        }
-
         return false;
     }
 
     hasGameItemInHotbar() {
         if (!this.bot || !this.bot.inventory) return false;
+        const lobbyItemNames = ['compass', 'book', 'written_book', 'emerald', 'nether_star', 'clock'];
         const hotbarSlots = this.bot.inventory.slots.slice(36, 45);
-        return hotbarSlots.some(s => s && s.name && !s.name.includes('compass'));
+        return hotbarSlots.some(s => s && s.name && !lobbyItemNames.includes(s.name.toLowerCase()));
     }
 
     sendDn(reason = '', minGapMs = 2000, force = false) {
@@ -6005,8 +6002,8 @@ class BotInstance {
             const clearY = Number(this.storage_clear_lock_y);
             const depY = Number(this.storage_deposit_lock_y);
 
-            // Tuyệt đối không chạy Chuỗi Rương / /home khi bot chưa vào server chơi thật sự hoặc đang ở spawn lobby
-            if (this.findCompassSlot() !== -1 || (this.bot.currentWindow && this._isServerSelectWindow(this.bot.currentWindow)) || this.isAtSpawn() || !this.clicked_axe || !this.joined_server) {
+            // Tuyệt đối không chạy Chuỗi Rương / /home khi bot chưa vào server chơi thật sự
+            if (this.findCompassSlot() !== -1 || (this.bot.currentWindow && this._isServerSelectWindow(this.bot.currentWindow)) || !this.joined_server) {
                 this.log(`⚠️ [KIỂM TRA VỊ TRÍ] (${reason}): Bot chưa vào server chơi (đang ở lobby/chưa click rìu), bỏ qua kiểm tra vị trí.`, '#f5c842');
                 return;
             }
@@ -6098,6 +6095,7 @@ class BotInstance {
     markJoinedServer() {
         if (this.joined_server) return;
         this.joined_server = true;
+        this.clicked_axe = true;
         this._in_lobby_state = false;
         this._stopDnLoop();
         this._stableConnAt = Date.now();

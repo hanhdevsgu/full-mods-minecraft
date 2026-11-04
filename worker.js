@@ -1697,7 +1697,7 @@ class BotInstance {
         }
     }
 
-    async startAutoStorage() {
+    async startAutoStorage(isResume = false) {
         if (this.auto_storage_running || !this.running) return;
 
         if (this.findCompassSlot() !== -1 || (this.bot && this.bot.currentWindow && this._isServerSelectWindow(this.bot.currentWindow))) {
@@ -1706,38 +1706,33 @@ class BotInstance {
             return;
         }
 
-        // TỰ ĐỘNG CHECK Y HIỆN TẠI: nếu đang ở Y dọn rương thì chạy logic home về nhà trước!
-        if (this.isNearClearY(1.5) && !this.isNearDepositY(1.5)) {
-            this.log(`🏠 [CHUỖI RƯƠNG] Bấm bật macro nhưng Y hiện tại đang ở DỌN RƯƠNG → Tự động chạy lệnh về Nhà Rương trước khi dọn...`, '#4a9eff');
-            await this.ensureAtDepositHouse('bấm chuỗi rương tại Y dọn');
-        }
-
-        // ⭐ NẾU ĐÃ CÓ _goto_anchor HOẶC VỪA GOTO TỚI WAYPOINT RƯƠNG TRƯỚC KHI DISS:
-        // Giữ nguyên vị trí và hops của rương vừa tới để tiếp tục cất đồ!
-        const hasActiveResumeAnchor = !!this._goto_anchor;
-        const currentResumeHops = this._saved_resume_hops || 0;
-
-        if (!hasActiveResumeAnchor) {
-            const wp = this._loadDepositWaypoint();
-            if (wp && Number.isFinite(wp.hops) && wp.hops > 0) {
-                this._saved_resume_hops = wp.hops;
-                this._goto_anchor = { x: Math.floor(wp.x), y: Math.floor(wp.y), z: Math.floor(wp.z) };
-                this.log(`📍 [CHUỖI RƯƠNG] Khôi phục vị trí rương từ file waypoint (anchor: ${this._goto_anchor.x}, ${this._goto_anchor.y}, ${this._goto_anchor.z} | hops #${wp.hops + 1})`, '#2ecc71');
-            } else {
-                if (this.isNearDepositY(1.5) && this.bot && this.bot.entity) {
-                    if (!wp) {
-                        const p = this.bot.entity.position;
-                        this._saveDepositWaypoint(p.x, p.y, p.z, 0);
-                        this.log(`💾 [CHUỖI RƯƠNG] Bắt đầu mới tại Nhà Rương → Lưu waypoint vị trí ban đầu (${p.x.toFixed(2)}, ${p.y.toFixed(2)}, ${p.z.toFixed(2)})`, '#2ecc71');
-                    }
-                }
-                this._goto_anchor = null;
-                this._saved_resume_hops = 0;
-            }
+        // ⭐ QUY TẮC WAYPOINT:
+        // 1. Khi ấn Bật Chuỗi Rương (mới): clear MỌI waypoint cũ. Bắt đầu lưu từ waypoint dãy đang bỏ tại Nhà Rương.
+        // 2. Khi diss ra vào lại server (isResume === true): KHÔNG clear, khôi phục waypoint rương gần nhất đã lưu để GOTO tới tiếp tục.
+        if (!isResume) {
+            this._clearDepositWaypoint('bắt đầu chuỗi rương mới');
+            this._goto_anchor = null;
+            this._saved_resume_hops = 0;
             this._storage_recover_pending = null;
             this._goto_fail_streak = 0;
+            this.log(`🗑️ [CHUỖI RƯƠNG] Đã clear toàn bộ waypoint cũ, bắt đầu chu trình mới từ rương đầu tiên.`, '#4a9eff');
         } else {
-            this.log(`📍 [CHUỖI RƯƠNG] Tiếp tục cất đồ từ rương đã lưu (anchor: ${this._goto_anchor.x}, ${this._goto_anchor.y}, ${this._goto_anchor.z} | hops #${currentResumeHops + 1})`, '#2ecc71');
+            const hasActiveResumeAnchor = !!this._goto_anchor;
+            const currentResumeHops = this._saved_resume_hops || 0;
+
+            if (!hasActiveResumeAnchor) {
+                const wp = this._loadDepositWaypoint();
+                if (wp && Number.isFinite(wp.hops) && wp.hops > 0) {
+                    this._saved_resume_hops = wp.hops;
+                    this._goto_anchor = { x: Math.floor(wp.x), y: Math.floor(wp.y), z: Math.floor(wp.z) };
+                    this.log(`📍 [CHUỖI RƯƠNG RESUME] Khôi phục vị trí rương từ file waypoint (anchor: ${this._goto_anchor.x}, ${this._goto_anchor.y}, ${this._goto_anchor.z} | hops #${wp.hops + 1})`, '#2ecc71');
+                } else {
+                    this._goto_anchor = null;
+                    this._saved_resume_hops = 0;
+                }
+            } else {
+                this.log(`📍 [CHUỖI RƯƠNG RESUME] Tiếp tục cất đồ từ rương đã lưu (anchor: ${this._goto_anchor.x}, ${this._goto_anchor.y}, ${this._goto_anchor.z} | hops #${currentResumeHops + 1})`, '#2ecc71');
+            }
         }
 
         // MỖI LẦN BẬT LẠI = reset clear stage (Dọn rương 1 / 2) về đầu
@@ -1750,8 +1745,6 @@ class BotInstance {
         this._storage_gui_index = 0;
         this._restoreGui1Config();
 
-        // Nếu phiên cũ vẫn đang ở giữa một await sau khi vừa TẮT, không chạy
-        // song song 2 chuỗi. Chờ phiên cũ thoát hẳn rồi mới khởi động phiên mới.
         this.auto_storage_running = true;
         this.storage_persist = true;
         this.log(`📦 CHUỖI RƯƠNG: BẬT LẠI → RESET VỀ HỘP 1 / GOTO 1`, '#2ecc71');
@@ -3800,44 +3793,61 @@ class BotInstance {
                 }
 
                 if (!startupChecked) {
-                    if (this.isNearClearY(1.5) && !this.isNearDepositY(1.5)) {
-                        this.log(`🏠 [CHUỖI RƯƠNG] Đầu chu kỳ: Y đang ở DỌN RƯƠNG → Chạy lệnh về Nhà Rương trước...`, '#4a9eff');
-                        await this.ensureAtDepositHouse('đầu chu kỳ');
-                        if (!this.auto_storage_running || this._storage_cancel_token !== myToken || !this.running) break;
-                    }
-
                     const currentY = Number(this.bot.entity?.position?.y);
-                    const depositY = Number(this.storage_deposit_lock_y);
-                    const atDepositY = Number.isFinite(currentY) && Number.isFinite(depositY) &&
-                        (Math.abs(currentY - depositY) <= 0.15 || Math.floor(currentY) === Math.floor(depositY));
-                    const inventoryFull = this.isPlayerInventoryFull36();
+                    const isAtClear = this.isNearClearY(1.5);
+                    const isAtDeposit = this.isNearDepositY(1.5);
                     const targetCount = this.countTargetItems();
 
-                    if (atDepositY && (inventoryFull || targetCount > 0)) {
+                    // ⭐ LOGIC CHUẨN 1: Nếu bot ĐANG Ở Y DỌN PHỄU / Y DỌN RƯƠNG:
+                    // Mở rương và bắt đầu dọn ngay lập tức, KHÔNG /home đi đâu cả!
+                    if (isAtClear && !isAtDeposit) {
+                        this.log(`🧹 [CHUỖI RƯƠNG] Bot đang ở đúng Y DỌN PHỄU (${currentY.toFixed(2)}) → Mở rương dọn ngay, KHÔNG /home.`, '#2ecc71');
+                        homeSent = true;
+                        startupChecked = true;
+                    }
+                    // ⭐ LOGIC CHUẨN 2: Nếu bot đang ở Y Nhà Rương và balô còn item:
+                    // Cất hết đồ vào rương Nhà Rương trước khi /home sang Y Dọn Phễu.
+                    else if (isAtDeposit && targetCount > 0) {
                         this._storage_chain_phase = 'startup_deposit';
-                        this.log(`🎒 [CHUỖI RƯƠNG] BẬT MACRO: đang ở Y Nhà Rương (${currentY.toFixed(3)}) và còn ${targetCount} item → CẤT HẾT TRƯỚC, CHƯA GỬI /home.`, '#f5c842');
+                        this.log(`🎒 [CHUỖI RƯƠNG] Đang ở Y Nhà Rương (${currentY.toFixed(2)}) và còn ${targetCount} item → CẤT HẾT TRƯỚC khi sang Dọn Phễu.`, '#f5c842');
                         const depositOk = await this.runChestDepositFlow();
                         if (!this.auto_storage_running || this._storage_cancel_token !== myToken || !this.running) return;
                         const remainAfterDeposit = this.countTargetItems();
                         if (!depositOk || remainAfterDeposit > 0) {
-                            this.log(`⚠️ [CHUỖI RƯƠNG] Balo vẫn còn ${remainAfterDeposit} item sau bước cất đầu macro → CHƯA /home, sẽ thử cất lại sau 3s.`, '#f5c842');
-                            await this.sleep(3000);
+                            this.log(`⚠️ [CHUỖI RƯƠNG] Balo vẫn còn ${remainAfterDeposit} item → cất lại sau 2s...`, '#f5c842');
+                            await this.sleep(2000);
                             continue;
                         }
-                        this.log('✅ [CHUỖI RƯƠNG] Đã cất sạch balo đầu macro → bây giờ mới chạy /home.', '#2ecc71');
-                    } else if (atDepositY && inventoryFull) {
-                        this.log(`ℹ️ [CHUỖI RƯƠNG] Bật macro tại Y Nhà Rương nhưng balo FULL 36/36 không có target-item → bỏ qua bước cất, chạy /home.`, '#9b59b6');
+                        this.log(`✅ [CHUỖI RƯƠNG] Đã cất sạch balo → Chuẩn bị /home sang Y Dọn Phễu.`, '#2ecc71');
+                        startupChecked = true;
                     }
-                    startupChecked = true;
+                    // ⭐ LOGIC CHUẨN 3: Bất kỳ trường hợp nào khác (ở Nhà Rương nhưng balô trống, hoặc ở Spawn / nơi khác):
+                    // Sẽ gửi lệnh về Y Dọn Phễu ở bước ngay bên dưới.
+                    else {
+                        startupChecked = true;
+                    }
                 }
 
-                // /home chỉ gửi đúng 1 lần sau bước kiểm tra/cất ban đầu.
+                // Nếu chưa gửi /home về Y Dọn Phễu (không phải đang đứng sẵn ở Y Dọn Phễu):
+                // Gửi lệnh storage_clear_command (Lệnh về Dọn Rương setup trong GUI, ví dụ /home)
                 if (!homeSent) {
                     this._storage_chain_phase = 'clear';
                     const home = this.parseStorageCommands(this.storage_clear_command);
                     if (home.length) {
-                        this.log(`🏠 [CHUỖI RƯƠNG] HOME: gửi 1 lần rồi lấy item`, '#4a9eff');
+                        this.log(`🏠 [CHUỖI RƯƠNG] Bắt đầu dọn: Gửi lệnh về Y Dọn Phễu "${this.storage_clear_command}"...`, '#4a9eff');
                         await this.runCommandSequence(home);
+
+                        // Đợi bot teleport tới Y Dọn Phễu (tối đa 15s)
+                        const waitClearStart = Date.now();
+                        const clearY = Number(this.storage_clear_lock_y);
+                        while (this.auto_storage_running && this.running && this.bot && Date.now() - waitClearStart < 15000) {
+                            await this.sleep(300);
+                            const nowY = this.bot.entity ? Number(this.bot.entity.position.y) : NaN;
+                            if (Number.isFinite(nowY) && Number.isFinite(clearY) && clearY > 0 && Math.abs(nowY - clearY) <= 1.5) {
+                                this.log(`✅ [CHUỖI RƯƠNG] Đã tới Y Dọn Phễu an toàn (Y=${nowY.toFixed(2)}).`, '#2ecc71');
+                                break;
+                            }
+                        }
                     }
                     homeSent = true;
                 }
@@ -6065,7 +6075,7 @@ class BotInstance {
                 this._resume_storage_after_rejoin = false;
                 this.storage_persist = true;
                 this.log(`▶️ [CHUỖI RƯƠNG] Tự động BẬT và bắt đầu chạy Chuỗi Rương...`, '#2ecc71');
-                this.startAutoStorage();
+                this.startAutoStorage(true);
             }
         } catch (e) {
             this.log(`⚠️ [KIỂM TRA VỊ TRÍ] Lỗi: ${e && e.message ? e.message : e}`, '#f5c842');
@@ -6136,7 +6146,7 @@ class BotInstance {
                         // Vào lại sau khi bị guard kill: chỉ chạy lại chuỗi khi EXPECT = 0.
                         this._expectGuardJoinCheck().catch((e) => this.log(`⚠️ [EXPECT GUARD] Lỗi check khi vào lại: ${e && e.message ? e.message : e}`, '#f5c842'));
                     } else {
-                        this.startAutoStorage();
+                        this.startAutoStorage(true);
                     }
                 }
             }, 5000);

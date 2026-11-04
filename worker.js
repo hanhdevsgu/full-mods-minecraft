@@ -1715,7 +1715,9 @@ class BotInstance {
             this._saved_resume_hops = 0;
             this._storage_recover_pending = null;
             this._goto_fail_streak = 0;
-            this.log(`🗑️ [CHUỖI RƯƠNG] Đã clear toàn bộ waypoint cũ, bắt đầu chu trình mới từ rương đầu tiên.`, '#4a9eff');
+            this._firstDepositNeedsHomeCmd = false;
+            this._lastDepositUsedHome = false;
+            this.log(`🗑️ [CHUỖI RƯƠNG] Đã clear sạch sẽ toàn bộ waypoint cũ, bắt đầu chu trình mới từ rương đầu tiên.`, '#4a9eff');
         } else {
             const hasActiveResumeAnchor = !!this._goto_anchor;
             const currentResumeHops = this._saved_resume_hops || 0;
@@ -3807,32 +3809,40 @@ class BotInstance {
                     const isAtDeposit = this.isNearDepositY(1.5);
                     const targetCount = this.countTargetItems();
 
-                    // ⭐ LOGIC CHUẨN 1: Nếu bot ĐANG Ở Y DỌN PHỄU / Y DỌN RƯƠNG:
-                    // Mở rương và bắt đầu dọn ngay lập tức, KHÔNG /home đi đâu cả!
+                    // ⭐ LOGIC 1: Đang ở sẵn chỗ DỌN PHỄU / DỌN RƯƠNG:
+                    // Mở rương dọn ngay lập tức (không gửi /home dọn).
+                    // Đánh dấu lần cất đầu tiên sẽ dùng /home diss (sethome Nhà Rương) vì chưa có /back về Nhà.
                     if (isAtClear && !isAtDeposit) {
-                        this.log(`🧹 [CHUỖI RƯƠNG] Bot đang ở đúng Y DỌN PHỄU (${currentY.toFixed(2)}) → Mở rương dọn ngay, KHÔNG /home.`, '#2ecc71');
+                        this.log(`🧹 [CHUỖI RƯƠNG] Bot đang ở sẵn chỗ DỌN PHỄU (${currentY.toFixed(2)}) → Mở rương dọn ngay. Lần cất đầu sẽ dùng /home diss về Nhà Rương.`, '#2ecc71');
+                        this._firstDepositNeedsHomeCmd = true;
                         homeSent = true;
                         startupChecked = true;
                     }
-                    // ⭐ LOGIC CHUẨN 2: Nếu bot đang ở Y Nhà Rương và balô còn item:
-                    // Cất hết đồ vào rương Nhà Rương trước khi /home sang Y Dọn Phễu.
-                    else if (isAtDeposit && targetCount > 0) {
-                        this._storage_chain_phase = 'startup_deposit';
-                        this.log(`🎒 [CHUỖI RƯƠNG] Đang ở Y Nhà Rương (${currentY.toFixed(2)}) và còn ${targetCount} item → CẤT HẾT TRƯỚC khi sang Dọn Phễu.`, '#f5c842');
-                        const depositOk = await this.runChestDepositFlow();
-                        if (!this.auto_storage_running || this._storage_cancel_token !== myToken || !this.running) return;
-                        const remainAfterDeposit = this.countTargetItems();
-                        if (!depositOk || remainAfterDeposit > 0) {
-                            this.log(`⚠️ [CHUỖI RƯƠNG] Balo vẫn còn ${remainAfterDeposit} item → cất lại sau 2s...`, '#f5c842');
-                            await this.sleep(2000);
-                            continue;
+                    // ⭐ LOGIC 2: Đang ở đúng Y Nhà Rương:
+                    // Luôn gửi lệnh /home dọn phễu đầu tiên để sang Dọn Phễu (nhờ vậy /back sẽ trỏ chuẩn về Nhà Rương).
+                    else if (isAtDeposit) {
+                        this._firstDepositNeedsHomeCmd = false;
+                        if (targetCount > 0) {
+                            this._storage_chain_phase = 'startup_deposit';
+                            this.log(`🎒 [CHUỖI RƯƠNG] Đang ở Y Nhà Rương (${currentY.toFixed(2)}) còn ${targetCount} item → CẤT TRƯỚC rồi mới /home sang Dọn Phễu.`, '#f5c842');
+                            const depositOk = await this.runChestDepositFlow();
+                            if (!this.auto_storage_running || this._storage_cancel_token !== myToken || !this.running) return;
+                            const remainAfterDeposit = this.countTargetItems();
+                            if (!depositOk || remainAfterDeposit > 0) {
+                                this.log(`⚠️ [CHUỖI RƯƠNG] Balo vẫn còn ${remainAfterDeposit} item → cất lại sau 2s...`, '#f5c842');
+                                await this.sleep(2000);
+                                continue;
+                            }
+                            this.log(`✅ [CHUỖI RƯƠNG] Đã cất sạch balo → Bắt đầu chạy /home đầu tiên sang Dọn Phễu.`, '#2ecc71');
+                        } else {
+                            this.log(`🏠 [CHUỖI RƯƠNG] Đang ở Y Nhà Rương (${currentY.toFixed(2)}) → Bắt đầu chạy /home đầu tiên sang Dọn Phễu để tạo /back chuẩn.`, '#2ecc71');
                         }
-                        this.log(`✅ [CHUỖI RƯƠNG] Đã cất sạch balo → Chuẩn bị /home sang Y Dọn Phễu.`, '#2ecc71');
                         startupChecked = true;
                     }
-                    // ⭐ LOGIC CHUẨN 3: Bất kỳ trường hợp nào khác (ở Nhà Rương nhưng balô trống, hoặc ở Spawn / nơi khác):
-                    // Sẽ gửi lệnh về Y Dọn Phễu ở bước ngay bên dưới.
+                    // ⭐ LOGIC 3: Ở Spawn hoặc vị trí khác:
+                    // Chạy /home đầu tiên sang Dọn Phễu.
                     else {
+                        this._firstDepositNeedsHomeCmd = false;
                         startupChecked = true;
                     }
                 }
@@ -3977,11 +3987,23 @@ class BotInstance {
                     break;
                 }
 
-                // Trường hợp bình thường: balo FULL / bị chặn / Hộp cuối → /back sang NHÀ RƯƠNG.
+                // Trường hợp bình thường: balo FULL / bị chặn / Hộp cuối → về NHÀ RƯƠNG để cất.
                 this._storage_chain_phase = 'deposit';
-                const backToDeposit = this.parseStorageCommands(this.storage_deposit_command);
+                let depositCmdToRun = this.storage_deposit_command;
+                if (this._firstDepositNeedsHomeCmd) {
+                    this._firstDepositNeedsHomeCmd = false;
+                    this._lastDepositUsedHome = true;
+                    let homeReconnect = String(this.storage_reconnect_home_command || '').trim();
+                    if (!homeReconnect || homeReconnect === '/home 1 delay 8000' || homeReconnect === '/home 1') {
+                        homeReconnect = '/home 2 delay 8000';
+                    }
+                    depositCmdToRun = homeReconnect;
+                    this.log(`🏠 [CHUỖI RƯƠNG] Lần đầu từ chỗ Dọn Phễu về Nhà: Chạy "${depositCmdToRun}" (sethome Nhà Rương)...`, '#4a9eff');
+                } else {
+                    this.log(`🔙 [CHUỖI RƯƠNG] ${this.storage_deposit_command} → NHÀ RƯƠNG`, '#4a9eff');
+                }
+                const backToDeposit = this.parseStorageCommands(depositCmdToRun);
                 if (backToDeposit.length) {
-                    this.log(`🔙 [CHUỖI RƯƠNG] /back → NHÀ RƯƠNG`, '#4a9eff');
                     await this.runCommandSequence(backToDeposit);
                 }
                 if (!this.auto_storage_running || this._storage_cancel_token !== myToken || !this.running) break;
@@ -4040,11 +4062,18 @@ class BotInstance {
                     break;
                 }
 
-                // Chu kỳ bình thường (chưa đủ 4 GOTO): cất xong → /back quay lại DỌN RƯƠNG.
+                // Chu kỳ bình thường (chưa đủ 4 GOTO): cất xong → quay lại DỌN RƯƠNG để lấy tiếp.
                 this._storage_chain_phase = 'clear';
-                const backToClear = this.parseStorageCommands(this.storage_deposit_command);
-                if (backToClear.length) {
+                let returnToClearCmd = this.storage_deposit_command;
+                if (this._lastDepositUsedHome) {
+                    this._lastDepositUsedHome = false;
+                    returnToClearCmd = this.storage_clear_command;
+                    this.log(`🏠 [CHUỖI RƯƠNG] Đã cất xong (lần đầu dùng home diss) → Gửi "${this.storage_clear_command}" quay lại DỌN RƯƠNG...`, '#4a9eff');
+                } else {
                     this.log(`🔙 [CHUỖI RƯƠNG] ${this.storage_deposit_command} → quay lại DỌN RƯƠNG để lấy tiếp`, '#4a9eff');
+                }
+                const backToClear = this.parseStorageCommands(returnToClearCmd);
+                if (backToClear.length) {
                     await this.runCommandSequence(backToClear);
                 }
                 if (!this.auto_storage_running || this._storage_cancel_token !== myToken || !this.running) break;

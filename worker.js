@@ -4855,7 +4855,13 @@ class BotInstance {
         if (settings.storage_clear_delta_z !== undefined) this.storage_clear_delta_z = settings.storage_clear_delta_z;
         if (settings.storage_clear_pitch !== undefined) this.storage_clear_pitch = this._safeStoragePitch(settings.storage_clear_pitch);
         if (settings.storage_clear_yaw !== undefined) this.storage_clear_yaw = this._safeStorageYaw(settings.storage_clear_yaw);
-        if (settings.storage_clear_lock_y !== undefined) this.storage_clear_lock_y = settings.storage_clear_lock_y;
+        if (settings.storage_clear_lock_y !== undefined) {
+            const oldVal = this.storage_clear_lock_y;
+            this.storage_clear_lock_y = Number(settings.storage_clear_lock_y) || 0;
+            if (oldVal !== this.storage_clear_lock_y) {
+                this.log(`⚙️ [CẤU HÌNH] Y Khóa Dọn đã cập nhật: ${oldVal} ➔ ${this.storage_clear_lock_y}`, '#2ecc71');
+            }
+        }
         if (settings.storage_clear2_enabled !== undefined) {
             const v = settings.storage_clear2_enabled;
             this.storage_clear2_enabled = v === true || v === 1 || String(v).toLowerCase() === 'true' || String(v) === '1';
@@ -4872,7 +4878,11 @@ class BotInstance {
         if (settings.storage_deposit_pitch !== undefined) this.storage_deposit_pitch = this._safeStoragePitch(settings.storage_deposit_pitch);
         if (settings.storage_deposit_yaw !== undefined) this.storage_deposit_yaw = this._safeStorageYaw(settings.storage_deposit_yaw);
         if (settings.storage_deposit_lock_y !== undefined) {
-            this.storage_deposit_lock_y = settings.storage_deposit_lock_y;
+            const oldVal = this.storage_deposit_lock_y;
+            this.storage_deposit_lock_y = Number(settings.storage_deposit_lock_y) || 0;
+            if (oldVal !== this.storage_deposit_lock_y) {
+                this.log(`⚙️ [CẤU HÌNH] Y Khóa Nhà đã cập nhật: ${oldVal} ➔ ${this.storage_deposit_lock_y}`, '#2ecc71');
+            }
             if (this.bot && this.bot.entity && this.joined_server && this.isNearDepositY(1.5)) {
                 const p = this.bot.entity.position;
                 const wp = this._loadDepositWaypoint();

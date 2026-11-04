@@ -3257,6 +3257,7 @@ class BotManager:
             bot.storage_clear2_enabled, bot.storage_clear2_pitch, bot.storage_clear2_yaw = bool(clear2_enabled_var.get()), c2p, c2y
             if self.connected:
                 self.send_command('update_settings', username=bot.username, **payload)
+            self.save_accounts()
 
         for _entry in (pitch_entry, yaw_entry, clear_lock_y_entry, clear2_pitch_entry, clear2_yaw_entry, dep_pitch_entry, dep_yaw_entry, dep_lock_y_entry):
             _entry.bind('<KeyRelease>', _live_storage_look)

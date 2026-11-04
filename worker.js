@@ -83,44 +83,6 @@ async function resolveMinecraftAddress(rawHost, rawPort) {
     };
 }
 
-const TO_RAD = Math.PI / 180;
-const TO_DEG = 180 / Math.PI;
-
-/**
- * Chuyển đổi Minecraft Notchian Yaw (độ F3: 0=South, 90=West, 180/-180=North, -90/270=East)
- * sang Mineflayer Internal Yaw (radians).
- */
-function fromNotchianYaw(yawDeg) {
-    let rad = Math.PI - (Number(yawDeg || 0) * TO_RAD);
-    rad = ((rad % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
-    return rad;
-}
-
-/**
- * Chuyển đổi Minecraft Notchian Pitch (độ F3: 0=ngang, +90=nhìn xuống, -90=nhìn lên)
- * sang Mineflayer Internal Pitch (radians).
- */
-function fromNotchianPitch(pitchDeg) {
-    const p = Math.max(-90, Math.min(90, Number(pitchDeg || 0)));
-    return -p * TO_RAD;
-}
-
-/**
- * Chuyển đổi Mineflayer Internal Yaw (radians) sang Minecraft Notchian Yaw (độ F3: -180..180).
- */
-function toNotchianYaw(yawRad) {
-    let deg = (Math.PI - Number(yawRad || 0)) * TO_DEG;
-    deg = ((deg % 360) + 540) % 360 - 180;
-    return deg;
-}
-
-/**
- * Chuyển đổi Mineflayer Internal Pitch (radians) sang Minecraft Notchian Pitch (độ F3: -90..90).
- */
-function toNotchianPitch(pitchRad) {
-    return -Number(pitchRad || 0) * TO_DEG;
-}
-
 
 
 let botInstance = null;
@@ -676,31 +638,31 @@ class BotInstance {
     }
 
     isAtSpawn() {
-        // 1. Chỉ ở lobby nếu thực sự có compass hoặc đang mở GUI chọn server
+        // 1. Nếu thực sự có compass hoặc đang mở GUI chọn server -> 100% ở lobby
         if (this.findCompassSlot() !== -1) return true;
         if (this.bot && this.bot.currentWindow && this._isServerSelectWindow(this.bot.currentWindow)) return true;
 
-        // 2. Nếu không có compass: nếu đã vào server hoặc đã click axe -> Tuyệt đối không phải ở lobby!
+        // 2. Kiểm tra toạ độ Y của sảnh (28.063 hoặc 14.000) NGAY LẬP TỨC:
+        // Khi bị anti-cheat đá về lobby, toạ độ Y sẽ lập tức rơi vào sảnh
+        if (this.bot && this.bot.entity && this.bot.entity.position) {
+            const y = Number(this.bot.entity.position.y);
+            if (Number.isFinite(y)) {
+                if (Math.abs(y - 28.06) <= 3.0 || Math.abs(y - 14.0) <= 3.0) {
+                    return true;
+                }
+            }
+        }
+
+        // 3. Nếu đã vào server hoặc đã click axe -> Không phải ở lobby
         if (this.joined_server || this.clicked_axe) return false;
 
-        // 3. Nếu hotbar có item game (như kiếm, rìu, đồ đạc...) -> Chắc chắn đang ở trong game server!
+        // 4. Nếu hotbar có item game (như kiếm, rìu, đồ đạc...) -> Đang ở trong server
         if (this.bot && this.bot.inventory) {
             const hotbarSlots = this.bot.inventory.slots.slice(36, 45);
             const hasGameItem = hotbarSlots.some(s => s && s.name && !s.name.includes('compass'));
             if (hasGameItem) return false;
         }
 
-        // Chỉ khi CHƯA vào server (đang trong quy trình kết nối/đăng nhập ban đầu):
-        if (!this.bot || !this.bot.entity || !this.bot.entity.position) return false;
-        const p = this.bot.entity.position;
-        const y = Number(p.y);
-        if (!Number.isFinite(y)) return false;
-        if (this.isNearClearY(2.0) || this.isNearDepositY(2.0)) return false;
-
-        // Khi CHƯA click axe: kiểm tra toạ độ Y của sảnh (28.06 hoặc 14)
-        if (!this.clicked_axe) {
-            return (Math.abs(y - 28.06) <= 3.0) || (Math.abs(y - 14.0) <= 3.0);
-        }
         return false;
     }
 
@@ -882,8 +844,13 @@ class BotInstance {
             this.auto_storage_running = false;
         }
         this._storage_cancel_token++;
-        this._hardResetPathfinder();
+        this._storage_active_clear_config = null;
+        this.joined_server = false;
+        this.clicked_axe = false;
+        this._in_lobby_state = true;
+        this.lock_pitch_yaw = false;
         this.stopPitchYawLockLoop();
+        this._hardResetPathfinder();
         if (this.anti_afk_running) this.stopAntiAfk();
         if (this.auto_farm_running) this.stopAutoFarm();
 
@@ -2048,8 +2015,8 @@ class BotInstance {
         // QUICK-MOVE vẫn rất nhanh, nhưng không bắn 36/54 click cùng một tick.
         // 9 slot / nhịp + gap nhỏ giúp server nhận liên tục và giảm burst packet.
         const CHUNK_SIZE = 9;
-        const CLICK_GAP_MS = 10;
-        const CHUNK_GAP_MS = 55;
+        const CLICK_GAP_MS = 50 + Math.floor(Math.random() * 20); // 50-70ms (an toàn tuyệt đối chống FastInventory/Nuker anti-cheat)
+        const CHUNK_GAP_MS = 130 + Math.floor(Math.random() * 40); // 130-170ms giữa các hàng 9 ô
         const failed = [];
         for (let start = 0; start < slotList.length; start += CHUNK_SIZE) {
             if (!this.running || !this.bot || !this.bot.currentWindow) break;
@@ -2166,8 +2133,8 @@ class BotInstance {
             this._chest_look_target = targetKey;
             this._chest_look_last_at = now;
 
-            const yawRad = fromNotchianYaw(yaw);
-            const pitchRad = fromNotchianPitch(pitch);
+            const yawRad = (Number(yaw) || 0) * Math.PI / 180;
+            const pitchRad = (Number(pitch) || 0) * Math.PI / 180;
             const bot = this.bot;
             this._chest_look_ready = Promise.resolve()
                 .then(() => bot.look(yawRad, pitchRad, true))
@@ -2193,8 +2160,8 @@ class BotInstance {
 
             const pitch = this._safeStoragePitch(this.lock_pitch);
             const yaw = this._safeStorageYaw(this.lock_yaw);
-            const livePitch = toNotchianPitch(this.bot.entity.pitch);
-            const liveYaw = toNotchianYaw(this.bot.entity.yaw);
+            const livePitch = this.bot.entity.pitch * 180 / Math.PI;
+            const liveYaw = this.bot.entity.yaw * 180 / Math.PI;
             let yawDiff = Math.abs(((liveYaw - yaw + 540) % 360) - 180);
             if (yawDiff > 180) yawDiff = 360 - yawDiff;
             const pitchDiff = Math.abs(livePitch - pitch);
@@ -2208,8 +2175,8 @@ class BotInstance {
                 await this.sleep(STABILIZE_MS);
             }
 
-            const afterPitch = toNotchianPitch(this.bot.entity.pitch);
-            const afterYaw = toNotchianYaw(this.bot.entity.yaw);
+            const afterPitch = this.bot.entity.pitch * 180 / Math.PI;
+            const afterYaw = this.bot.entity.yaw * 180 / Math.PI;
             let afterYawDiff = Math.abs(((afterYaw - yaw + 540) % 360) - 180);
             if (afterYawDiff > 180) afterYawDiff = 360 - afterYawDiff;
             const afterPitchDiff = Math.abs(afterPitch - pitch);
@@ -2260,7 +2227,7 @@ class BotInstance {
 
             if (targetSlots.length === 0) break;
 
-            this.log(`⚡ ${TAG} PASS ${passes}: ${targetSlots.length} stack → QUICK-MOVE tốc độ ánh sáng, nhịp=9, click-gap=10ms, chunk-gap=55ms.`, '#4a9eff');
+            this.log(`⚡ ${TAG} PASS ${passes}: ${targetSlots.length} stack → QUICK-MOVE an toàn chống anti-cheat, nhịp=9, click-gap=50-70ms, chunk-gap=130-170ms.`, '#4a9eff');
             let movedThisPass = 0;
             let pendingSlots = targetSlots.slice();
 
@@ -2840,13 +2807,23 @@ class BotInstance {
 
             const abortedFn = () => !this.running || !this.bot || this.findCompassSlot() !== -1;
             // Thử đi bằng Baritone Traverse trước (rất mượt cho hành lang rương thẳng hàng)
-            let reached = await this._baritoneGotoBlock(targetBlockX, targetBlockY, targetBlockZ, abortedFn, 20000);
-            if (!reached && !abortedFn()) {
-                reached = await this._pathfinderGotoExactXYZ(
-                    targetBlockX, targetBlockY, targetBlockZ,
-                    '📍 [VỀ RƯƠNG VỪA ĐỨNG]',
-                    abortedFn
-                );
+            let reached = false;
+            try {
+                reached = await this._baritoneGotoBlock(targetBlockX, targetBlockY, targetBlockZ, abortedFn, 20000);
+                if (!reached && !abortedFn()) {
+                    reached = await this._pathfinderGotoExactXYZ(
+                        targetBlockX, targetBlockY, targetBlockZ,
+                        '📍 [VỀ RƯƠNG VỪA ĐỨNG]',
+                        abortedFn
+                    );
+                }
+            } finally {
+                // Khôi phục và khóa chắc chắn góc nhìn Nhà Rương sau khi di chuyển
+                this.lock_pitch = this._safeStoragePitch(this.storage_deposit_pitch);
+                this.lock_yaw = this._safeStorageYaw(this.storage_deposit_yaw);
+                this.lock_pitch_yaw = true;
+                this.applyChestPitchYaw();
+                this.startPitchYawLockLoop();
             }
 
             const pNow = this.bot && this.bot.entity ? this.bot.entity.position : null;
@@ -2855,11 +2832,6 @@ class BotInstance {
                 this.log(`✅ [WAYPOINT RESUME] Đã tới đúng vị trí rương vừa đứng (${wp.x}, ${wp.z})! Khóa góc nhìn và tiếp tục cất đồ.`, '#2ecc71');
                 this._goto_anchor = { x: targetBlockX, y: targetBlockY, z: targetBlockZ };
                 this._saved_resume_hops = wp.hops || 0;
-                this.lock_pitch = this._safeStoragePitch(this.storage_deposit_pitch);
-                this.lock_yaw = this._safeStorageYaw(this.storage_deposit_yaw);
-                this.lock_pitch_yaw = true;
-                this.applyChestPitchYaw();
-                this.startPitchYawLockLoop();
                 return true;
             } else {
                 this.log(`⚠️ [WAYPOINT RESUME] Không thể tới rương (${wp.x}, ${wp.z}), khoảng cách=${distNow.toFixed(2)} → neo waypoint và tiếp tục.`, '#f5c842');
@@ -3086,8 +3058,8 @@ class BotInstance {
             }
         };
         if (this.lock_pitch_yaw) {
-            const lockYawRad = fromNotchianYaw(Number(this.lock_yaw) || 0);
-            const lockPitchRad = fromNotchianPitch(Number(this.lock_pitch) || 0);
+            const lockYawRad = (Number(this.lock_yaw) || 0) * Math.PI / 180;
+            const lockPitchRad = (Number(this.lock_pitch) || 0) * Math.PI / 180;
             try { await this.bot.look(lockYawRad, lockPitchRad, true); } catch (e) {}
         }
         let ok = false;
@@ -3102,36 +3074,34 @@ class BotInstance {
                 // 🧭 BARITONE FREELOOK:
                 // Nếu đang khóa Pitch/Yaw: mặt luôn cố định hướng đó, KHÔNG xoay mặt bot!
                 // Tính toán hướng bước chân (forward/back/strafe) tương đối theo góc nhìn bị khóa.
-                let mcYawDeg = toNotchianYaw(this.bot.entity.yaw);
+                let curYaw = this.bot.entity.yaw;
                 if (this.lock_pitch_yaw) {
-                    mcYawDeg = Number(this.lock_yaw) || 0;
-                    const lockYawRad = fromNotchianYaw(mcYawDeg);
-                    const lockPitchRad = fromNotchianPitch(Number(this.lock_pitch) || 0);
+                    const lockYawRad = (Number(this.lock_yaw) || 0) * Math.PI / 180;
+                    const lockPitchRad = (Number(this.lock_pitch) || 0) * Math.PI / 180;
+                    curYaw = lockYawRad;
                     if (Math.abs(this.bot.entity.yaw - lockYawRad) > 0.05 || Math.abs(this.bot.entity.pitch - lockPitchRad) > 0.05) {
                         try { await this.bot.look(lockYawRad, lockPitchRad, true); } catch (e) {}
                     }
                 } else {
-                    const moveYawRad = Math.atan2(-((bx + 0.5) - p.x), -((bz + 0.5) - p.z));
-                    if (Math.abs(this.bot.entity.yaw - moveYawRad) > 0.08) {
-                        try { await this.bot.look(moveYawRad, this.bot.entity.pitch, true); } catch (e) {}
+                    const moveYaw = Math.atan2(-((bx + 0.5) - p.x), -((bz + 0.5) - p.z));
+                    if (Math.abs(curYaw - moveYaw) > 0.08) {
+                        try { await this.bot.look(moveYaw, this.bot.entity.pitch, true); } catch (e) {}
                     }
-                    mcYawDeg = toNotchianYaw(moveYawRad);
+                    curYaw = moveYaw;
                 }
 
                 const dx = (bx + 0.5) - p.x;
                 const dz = (bz + 0.5) - p.z;
-                const mcYawRad = mcYawDeg * Math.PI / 180;
-                // Vector chuẩn Minecraft Notchian (forward: W/S, strafe: D/A):
-                const forward = -dx * Math.sin(mcYawRad) + dz * Math.cos(mcYawRad);
-                const strafe  = -dx * Math.cos(mcYawRad) - dz * Math.sin(mcYawRad);
+                const forward = -dx * Math.sin(curYaw) - dz * Math.cos(curYaw);
+                const strafe  = -dx * Math.cos(curYaw) + dz * Math.sin(curYaw);
                 const thr = 0.08;
 
                 this.bot.setControlState('sneak', false);   // Baritone: SNEAK = false
                 this.bot.setControlState('sprint', false);  // allowSprint tắt
                 this.bot.setControlState('forward', forward > thr);
                 this.bot.setControlState('back', forward < -thr);
-                this.bot.setControlState('right', strafe > thr);
-                this.bot.setControlState('left', strafe < -thr);
+                this.bot.setControlState('left', strafe > thr);
+                this.bot.setControlState('right', strafe < -thr);
                 this.bot.setControlState('jump', feet.y < by);  // sai Y thấp hơn đích → nhảy
                 await ticks(1);
             }
@@ -4316,15 +4286,15 @@ class BotInstance {
             const p = this.bot && this.bot.entity ? this.bot.entity.position : null;
             const targetYawDeg = (this.lock_pitch_yaw && Number.isFinite(this.lock_yaw))
                 ? Number(this.lock_yaw)
-                : (this.bot && this.bot.entity && Number.isFinite(this.bot.entity.yaw) ? toNotchianYaw(this.bot.entity.yaw) : 0);
+                : (this.bot && this.bot.entity && Number.isFinite(this.bot.entity.yaw) ? (this.bot.entity.yaw * 180 / Math.PI) : 0);
             const targetYawRad = targetYawDeg * Math.PI / 180;
 
             const isChestInFront = (b) => {
                 if (!b || !p) return false;
                 const dx = (b.position.x + 0.5) - p.x;
                 const dz = (b.position.z + 0.5) - p.z;
-                // Trong Minecraft Notchian: forward = -dx * sin(yaw) + dz * cos(yaw)
-                const forward = -dx * Math.sin(targetYawRad) + dz * Math.cos(targetYawRad);
+                // Trong Minecraft Mineflayer: forward = -dx * sin(yaw) - dz * cos(yaw)
+                const forward = -dx * Math.sin(targetYawRad) - dz * Math.cos(targetYawRad);
                 // BẮT BUỘC rương phải nằm ở nửa không gian phía TRƯỚC mặt bot (forward > 0.05).
                 // Loại bỏ 100% các rương nằm ngang hoặc sau lưng bot ("sau đít").
                 return forward > 0.05;
@@ -4970,13 +4940,15 @@ class BotInstance {
     applyStorageViewLockByY(flowHint = '') {
         if (!this.bot || !this.bot.entity) return false;
 
-        if (this.isAtSpawn()) {
+        const y = Number(this.bot.entity.position.y);
+
+        // ⛔ BẢO VỆ TUYỆT ĐỐI CHỐNG KHÓA GÓC Ở LOBBY:
+        // Nếu ở spawn, hoặc toạ độ Y ở lobby (28 hoặc 14), hoặc chưa vào server -> MỞ KHÓA NGAY
+        if (this.isAtSpawn() || Math.abs(y - 28.06) <= 3.0 || Math.abs(y - 14.0) <= 3.0 || !this.joined_server) {
             this.lock_pitch_yaw = false;
             this.stopPitchYawLockLoop();
             return false;
         }
-
-        const y = Number(this.bot.entity.position.y);
         const clearY = Number(this.storage_clear_lock_y);
         const depositY = Number(this.storage_deposit_lock_y);
         const clearPitch = this._safeStoragePitch(this.storage_clear_pitch);
@@ -5003,6 +4975,10 @@ class BotInstance {
                 ? this._storage_active_clear_config
                 : null);
         if (activeClear && activeClear.enabled && activeClear.name === 'DỌN RƯƠNG 2') {
+            // RƯƠNG 2 phải cùng tầng Y với DỌN RƯƠNG 1 (clearY)! Tuyệt đối không áp dụng nếu đang ở tầng Y khác (như lobby Y=28, 14 hay nhà rương)
+            if (Number.isFinite(clearY) && Math.abs(y - clearY) > 2.5) {
+                return false;
+            }
             selected = { name: 'DỌN RƯƠNG 2', y: null, pitch: this._safeStoragePitch(activeClear.pitch), yaw: this._safeStorageYaw(activeClear.yaw) };
         } else if (activeClear && activeClear.enabled && activeClear.name === 'DỌN RƯƠNG 1' && Number.isFinite(Number(activeClear.lockY))) {
             const activeClearY = Number(activeClear.lockY);
@@ -5196,8 +5172,8 @@ class BotInstance {
         const pos = this.bot.entity ? this.bot.entity.position : null;
 
         if (this.bot.entity) {
-            const liveYawDeg = toNotchianYaw(this.bot.entity.yaw);
-            const livePitchDeg = toNotchianPitch(this.bot.entity.pitch);
+            const liveYawDeg = (this.bot.entity.yaw * 180 / Math.PI);
+            const livePitchDeg = (this.bot.entity.pitch * 180 / Math.PI);
             const lockTag2 = this.lock_pitch_yaw
                 ? `đã CẤU HÌNH khoá pitch=${this.lock_pitch}, yaw=${this.lock_yaw}`
                 : 'chưa bật Lock Pitch/Yaw';
@@ -5370,8 +5346,8 @@ class BotInstance {
             const neededYawDeg = (Math.atan2(-dx, -dz) * 180 / Math.PI);
             const neededPitchDeg = (Math.atan2(dy, distXZ) * 180 / Math.PI);
 
-            const liveYawDeg = toNotchianYaw(this.bot.entity.yaw);
-            const livePitchDeg = toNotchianPitch(this.bot.entity.pitch);
+            const liveYawDeg = (this.bot.entity.yaw * 180 / Math.PI);
+            const livePitchDeg = (this.bot.entity.pitch * 180 / Math.PI);
 
             let yawDiff = neededYawDeg - liveYawDeg;
             while (yawDiff > 180) yawDiff -= 360;
@@ -5432,26 +5408,24 @@ class BotInstance {
                     continue;
                 }
 
-                let mcYawDeg = toNotchianYaw(this.bot.entity.yaw);
+                let yaw = this.bot.entity.yaw;
                 if (this.lock_pitch_yaw) {
-                    mcYawDeg = Number(this.lock_yaw) || 0;
-                    const lockYawRad = fromNotchianYaw(mcYawDeg);
-                    const lockPitchRad = fromNotchianPitch(Number(this.lock_pitch) || 0);
+                    const lockYawRad = (Number(this.lock_yaw) || 0) * Math.PI / 180;
+                    const lockPitchRad = (Number(this.lock_pitch) || 0) * Math.PI / 180;
+                    yaw = lockYawRad;
                     if (Math.abs(this.bot.entity.yaw - lockYawRad) > 0.05 || Math.abs(this.bot.entity.pitch - lockPitchRad) > 0.05) {
                         try { this.bot.look(lockYawRad, lockPitchRad, true); } catch (e) {}
                     }
                 }
-                const mcYawRad = mcYawDeg * Math.PI / 180;
-                // Vector chuẩn Minecraft Notchian (forward: W/S, strafe: D/A):
-                const forward = -dx * Math.sin(mcYawRad) + dz * Math.cos(mcYawRad);
-                const strafe  = -dx * Math.cos(mcYawRad) - dz * Math.sin(mcYawRad);
+                const forward = -dx * Math.sin(yaw) - dz * Math.cos(yaw);
+                const strafe  = -dx * Math.cos(yaw) + dz * Math.sin(yaw);
                 const thr = TOL * 0.7;
 
                 this.bot.setControlState('sprint', false);
                 this.bot.setControlState('forward', forward > thr);
                 this.bot.setControlState('back', forward < -thr);
-                this.bot.setControlState('right', strafe > thr);
-                this.bot.setControlState('left', strafe < -thr);
+                this.bot.setControlState('left', strafe > thr);
+                this.bot.setControlState('right', strafe < -thr);
                 // Luôn đúng 1 nhịp mỗi lần bấm rồi đo lại, để không trượt quá tâm khi không có sneak.
                 await ticks(1);
                 releaseMove();
@@ -6254,6 +6228,11 @@ class BotInstance {
                 this._chest_busy = false;
                 this.lock_pitch_yaw = false;
                 this.stopPitchYawLockLoop();
+                this.joined_server = false;
+                this.clicked_axe = false;
+                this._in_lobby_state = true;
+                this._storage_active_clear_config = null;
+                this._storage_cancel_token++;
 
                 try {
                     if (this.bot.currentWindow) {

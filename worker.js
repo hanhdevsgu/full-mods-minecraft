@@ -1833,20 +1833,34 @@ class BotInstance {
 
     // Tạo lại Movements + xoá goal + nhả hết phím → pathfinder về trạng thái sạch (hết "cộng dồn").
     _makeMovements() {
-        const movements = new Movements(this.bot);
-        movements.canDig = false;
-        movements.allow1by1towers = false;
-        movements.allowParkour = false;
-        movements.allowSprinting = false;
-        movements.allowFreeMotion = false;
-        if (this.bot && this.bot.registry && this.bot.registry.blocksByName) {
-            const bNames = ['chest', 'trapped_chest', 'hopper', 'ender_chest'];
-            for (const name of bNames) {
-                const b = this.bot.registry.blocksByName[name];
-                if (b && b.id) movements.blocksCantOpen.add(b.id);
+        try {
+            const movements = new Movements(this.bot);
+            movements.canDig = false;
+            movements.allow1by1towers = false;
+            movements.allowParkour = false;
+            movements.allowSprinting = false;
+            movements.allowFreeMotion = false;
+            if (this.bot && this.bot.registry && this.bot.registry.blocksByName) {
+                const bNames = ['chest', 'trapped_chest', 'hopper', 'ender_chest'];
+                for (const name of bNames) {
+                    const b = this.bot.registry.blocksByName[name];
+                    if (b && b.id) {
+                        if (movements.blocksCantBreak && typeof movements.blocksCantBreak.add === 'function') {
+                            movements.blocksCantBreak.add(b.id);
+                        }
+                        if (movements.blocksToAvoid && typeof movements.blocksToAvoid.add === 'function') {
+                            movements.blocksToAvoid.add(b.id);
+                        }
+                        if (movements.interactableBlocks && typeof movements.interactableBlocks.delete === 'function') {
+                            movements.interactableBlocks.delete(b.id);
+                        }
+                    }
+                }
             }
+            return movements;
+        } catch (e) {
+            return new Movements(this.bot);
         }
-        return movements;
     }
 
     _hardResetPathfinder() {
@@ -4160,6 +4174,14 @@ class BotInstance {
             }
         } catch (e) {
             this.log(`❌ [CHUỖI RƯƠNG] Lỗi: ${e && e.message ? e.message : e}`, '#ff4d6d');
+            if (this.auto_storage_running && this.running) {
+                this.log(`🔄 [CHUỖI RƯƠNG] Tự động thử lại chu kỳ sau 3s...`, '#f5c842');
+                setTimeout(() => {
+                    if (this.auto_storage_running && this.running && !this._storage_cycle_in_progress) {
+                        this._storageLoop();
+                    }
+                }, 3000);
+            }
         } finally {
             this._storage_cycle_in_progress = false;
         }

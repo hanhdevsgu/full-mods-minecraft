@@ -238,6 +238,7 @@ class BotInstance {
         this._expect_n_at = 0;
         this._expect_guard_timer = null;
         this._expect_guard_busy = false;
+        this._cycle_completed = false;
 
         this.storage_clear_command = settings.storage_clear_command !== undefined ? settings.storage_clear_command : '/home 1 delay 8000';
         this.storage_deposit_command = settings.storage_deposit_command !== undefined ? settings.storage_deposit_command : '/back 1 delay 8000';
@@ -1784,6 +1785,7 @@ class BotInstance {
             this.log(`📦 [CHUỖI RƯƠNG RESUME] Khôi phục tiếp tục tiến trình sau khi vào lại server...`, '#2ecc71');
         }
 
+        this._cycle_completed = false;
         this.auto_storage_running = true;
         this.storage_persist = true;
         this._saveStorageActiveState(true);
@@ -1852,6 +1854,7 @@ class BotInstance {
     stopAutoStorage(isExplicitUserStop = true) {
         // TẮT = huỷ ngay phiên hiện tại. Không disconnect bot và không đụng
         // AFK/Farm/Proxy/ViewLock. Lần BẬT tiếp theo sẽ tạo phiên mới từ đầu.
+        this._cycle_completed = false;
         this.auto_storage_running = false;
         if (isExplicitUserStop) {
             this.storage_persist = false;
@@ -4302,12 +4305,45 @@ class BotInstance {
             this.log(`📦 [GUI CHUỖI] Đã chuyển sang ${nextGui.name} → bắt đầu Hộp 1 / GOTO 1.`, '#2ecc71');
             return 'next';
         }
-        this._resetStorageGotoRuntime(`FINAL Hộp ${boxNumber} → dừng macro`);
-        this._restoreGui1Config(); // restart_h/m/s báo về server luôn là của GUI 1
+        // ⭐ BẢO ĐẢM BẮT BUỘC ĐỨNG Ở Y NHÀ RƯƠNG TRƯỚC KHI KẾT THÚC MACRO
+        if (this.bot && this.bot.entity) {
+            const curY = Number(this.bot.entity.position.y);
+            if (!this.isNearDepositY(1.5)) {
+                let depCmd = this.storage_deposit_command;
+                this.log(`🏠 [FINAL A-Z] Bot đang ở Y=${curY.toFixed(2)} (chưa phải Y Nhà Rương) → Gửi "${depCmd}" về Nhà Rương...`, '#4a9eff');
+                const cmds = this.parseStorageCommands(depCmd);
+                if (cmds.length) await this.runCommandSequence(cmds);
+                const waitStart = Date.now();
+                while (this.running && this.bot && Date.now() - waitStart < 10000) {
+                    await this.sleep(250);
+                    if (this.isNearDepositY(1.5)) break;
+                }
+            }
+            if (this.isNearDepositY(1.5)) {
+                this.lock_pitch = this._safeStoragePitch(this.storage_deposit_pitch);
+                this.lock_yaw = this._safeStorageYaw(this.storage_deposit_yaw);
+                this.lock_pitch_yaw = true;
+                this.applyChestPitchYaw(true);
+                this.startPitchYawLockLoop();
+            }
+        }
+
+        this._cycle_completed = true;
+        this.storage_persist = false;
+        this._resume_storage_after_rejoin = false;
+        this._saveStorageActiveState(false);
+        this._clearDepositWaypoint('hoàn tất chu kỳ full A-Z');
         this.auto_storage_running = false;
+        this._storage_cycle_in_progress = false;
         this._stopExpectGuardMonitor();
         this._storage_in_box2 = false;
+        this._resetStorageGotoRuntime(`FINAL Hộp ${boxNumber} → hoàn tất A-Z`);
+        this._restoreGui1Config(); // restart_h/m/s báo về server luôn là của GUI 1
         this.sendStatus();
+
+        const finalY = this.bot && this.bot.entity ? Number(this.bot.entity.position.y).toFixed(2) : '?';
+        this.log(`🏁 [HOÀN TẤT A-Z] Đã dọn xong và cất sạch item! Bot đứng yên tại Y Nhà Rương (${finalY}), đợi 10s rồi kill session. Tuyệt đối KHÔNG về Y Dọn Rương.`, '#2ecc71');
+
         try {
             process.stdout.write(JSON.stringify({
                 type: 'storage_cycle_complete',
@@ -6093,7 +6129,7 @@ class BotInstance {
     }
 
     async checkLocationAndAutoStartStorage(reason = 'vào server') {
-        if (!this.running || !this.bot) return;
+        if (!this.running || !this.bot || this._cycle_completed) return;
         if (this._location_check_in_progress) return;
         this._location_check_in_progress = true;
 
@@ -6538,7 +6574,7 @@ class BotInstance {
                             this._storage_viewlock_last_key = key;
                             this.applyStorageViewLockByY(phase);
                         }
-                        if ((this.storage_persist || this._resume_storage_after_rejoin || this._isStorageActivePersisted()) && !this.auto_storage_running && !this._location_check_in_progress) {
+                        if (!this._cycle_completed && (this.storage_persist || this._resume_storage_after_rejoin || this._isStorageActivePersisted()) && !this.auto_storage_running && !this._location_check_in_progress) {
                             if (this.isNearClearY(1.5) || this.isNearDepositY(1.5)) {
                                 this.checkLocationAndAutoStartStorage('di chuyển đến tầng Y chơi');
                             }

@@ -6103,9 +6103,9 @@ class BotInstance {
             const isAtClear = this.isNearClearY(1.5);
 
             // ⭐ CASE 1: ĐANG Ở ĐÚNG Y NHÀ RƯƠNG (Y ≈ 254)
-            // Yêu cầu: "Chuỗi rương ở đây là chạy lệnh đầu chu kỳ command /home, sau đó dọn..."
+            // Yêu cầu: "Y nhà rương thì giữ nguyên ... rồi lúc đó lại tiếp tục vòng lặp kích hoạt chuỗi rương"
             if (isAtDep) {
-                this.log(`🏠 [VÀO SERVER] Bot đang ở đúng Y Nhà Rương (Y=${curY.toFixed(2)}) → LẬP TỨC bật Chuỗi Rương (chạy lệnh đầu chu kỳ "${this.storage_clear_command}" sang Dọn Phễu rồi dọn)...`, '#2ecc71');
+                this.log(`🏠 [VÀO SERVER] Y hiện tại = Y Nhà Rương (${curY.toFixed(2)}) → Giữ nguyên, kích hoạt vòng lặp Chuỗi Rương (chạy lệnh đầu chu kỳ "${this.storage_clear_command}" sang Dọn Phễu rồi dọn)...`, '#2ecc71');
                 this._resume_storage_after_rejoin = false;
                 this.storage_persist = true;
                 this._clearDepositWaypoint('bật chuỗi dọn lại từ đầu ở Nhà Rương');
@@ -6113,18 +6113,14 @@ class BotInstance {
                 return;
             }
 
-            // ⭐ CASE 2: KHÔNG PHẢI Ở Y NHÀ RƯƠNG (ví dụ ở Faction spawn hoặc Y dọn phễu khi bị diss)
-            // Yêu cầu: home về nhà rương rồi goto waypoint tới chỗ rương vừa diss gần nhất
+            // ⭐ CASE 2: Y HIỆN TẠI KHÁC Y NHÀ RƯƠNG (Y hiện tại = Y Dọn Rương hoặc spawn)
+            // Yêu cầu: "Y dọn rương thì chạy cái command home khi vào server lại dưới cái comand home chu kỳ sau đó ngay lập tức goto tới waypoint rồi lúc đó lại tiếp tục vòng lặp kích hoạt chuỗi rương"
             let homeCmd = String(this.storage_reconnect_home_command || '').trim();
-            if (!homeCmd || homeCmd === '/home 1 delay 8000' || homeCmd === '/home 1') {
-                if (this.storage_deposit_command && String(this.storage_deposit_command).startsWith('/home')) {
-                    homeCmd = String(this.storage_deposit_command).trim();
-                } else {
-                    homeCmd = '/home 2 delay 8000';
-                }
+            if (!homeCmd) {
+                homeCmd = '/home 2 delay 8000';
             }
 
-            this.log(`🏠 [VÀO SERVER] Y hiện tại=${curY.toFixed(2)} KHÔNG PHẢI Y Nhà Rương (${depY.toFixed(2)}) → Chạy "${homeCmd}" để về Nhà Rương...`, '#4a9eff');
+            this.log(`🏠 [VÀO SERVER] Y hiện tại=${curY.toFixed(2)} (Y Dọn Rương) KHÁC Y Nhà Rương (${depY.toFixed(2)}) → Chạy lệnh home khi vào server lại "${homeCmd}" để về Nhà Rương...`, '#4a9eff');
             const cmds = this.parseStorageCommands(homeCmd);
             if (cmds.length) {
                 await this.runCommandSequence(cmds);
@@ -6140,7 +6136,7 @@ class BotInstance {
                 }
             }
 
-            // Sau khi về tới Nhà Rương:
+            // KHI ĐÃ VỀ TỚI NHÀ RƯƠNG: NGAY LẬP TỨC GOTO TỚI WAYPOINT
             if (this.isNearDepositY(1.5)) {
                 // Khóa góc nhìn Nhà Rương
                 this.lock_pitch = this._safeStoragePitch(this.storage_deposit_pitch);
@@ -6149,19 +6145,19 @@ class BotInstance {
                 this.applyChestPitchYaw(true);
                 this.startPitchYawLockLoop();
 
-                // Khôi phục rương cất dở gần nhất từ waypoint
+                // Ngay lập tức GOTO tới waypoint rương vừa lưu lúc chuẩn bị mở rương ở Nhà Rương
                 const wp = this._loadDepositWaypoint();
                 if (wp && Number.isFinite(wp.hops) && wp.hops > 0) {
-                    this.log(`📍 [WAYPOINT RESUME] Đang ở Nhà Rương, GOTO tới rương cất dở gần nhất: (${wp.x}, ${wp.y}, ${wp.z}) (rương #${wp.hops + 1})...`, '#2ecc71');
+                    this.log(`📍 [WAYPOINT RESUME] Đã về Nhà Rương → Ngay lập tức GOTO tới waypoint rương vừa lưu: (${wp.x}, ${wp.y}, ${wp.z}) (rương #${wp.hops + 1})...`, '#2ecc71');
                     await this._gotoSavedWaypointAfterHome('sau khi về Nhà Rương');
                 } else {
-                    this.log(`ℹ️ [WAYPOINT RESUME] Chưa có rương cất dở trước đó, sẵn sàng cất từ rương đầu.`, '#4a9eff');
+                    this.log(`ℹ️ [WAYPOINT RESUME] Chưa có waypoint rương cất dở trước đó, sẵn sàng cất từ rương đầu.`, '#4a9eff');
                 }
 
-                // Tiếp tục Chuỗi Rương (giữ waypoint để resume)
+                // Tiếp tục vòng lặp kích hoạt Chuỗi Rương
                 this._resume_storage_after_rejoin = false;
                 this.storage_persist = true;
-                this.log(`▶️ [CHUỖI RƯƠNG] Khôi phục tiếp tục Chuỗi Rương...`, '#2ecc71');
+                this.log(`▶️ [CHUỖI RƯƠNG] Tiếp tục vòng lặp kích hoạt Chuỗi Rương...`, '#2ecc71');
                 this.startAutoStorage(true);
             } else {
                 this.log(`⚠️ [VÀO SERVER] Bot chưa về tới Y Nhà Rương sau khi chạy "${homeCmd}" (Y hiện tại=${this.bot && this.bot.entity ? this.bot.entity.position.y.toFixed(2) : '?'})`, '#f5c842');

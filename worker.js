@@ -2023,46 +2023,27 @@ class BotInstance {
         const stopWhenInvFull = !!(opts && opts.stopWhenInvFull);
         const fullWin = opts && opts.window ? opts.window : null;
         let consecutiveTimeouts = 0;
-        // QUICK-MOVE mô phỏng người thật 100% chống anti-cheat (FastInventory / ChestStealer):
-        // Nhịp 4 stack, click-gap 200-260ms có jitter tự nhiên, chunk-gap 340-420ms.
-        const CHUNK_SIZE = 4;
         const failed = [];
-        for (let start = 0; start < slotList.length; start += CHUNK_SIZE) {
-            if (!this.running || !this.bot || !this.bot.currentWindow) break;
-            const chunk = slotList.slice(start, start + CHUNK_SIZE);
-            for (let i = 0; i < chunk.length; i++) {
-                // Lấy item ra: balo đầy thì dừng click ngay, không click tiếp vào balo hết chỗ.
-                if (stopWhenInvFull && (this.isPlayerInventoryFull36() || this._chestPlayerSectionFull(fullWin))) return failed;
-                if (!this.running || !this.bot || !this.bot.currentWindow) return failed;
-                const slot = chunk[i];
-                try {
-                    await this._clickWithTimeout(slot, 0, mode, 1200);
-                    consecutiveTimeouts = 0;
-                } catch (e) {
-                    failed.push(slot);
-                    if (e && e.message === 'click timeout') consecutiveTimeouts++;
-                    // Server không xác nhận click liên tục (balo hết chỗ/không nhận) → bỏ cả batch, đóng GUI.
-                    if (stopWhenInvFull && consecutiveTimeouts >= 3) {
-                        failed.stalled = true;
-                        return failed;
-                    }
+        for (let i = 0; i < slotList.length; i++) {
+            if (stopWhenInvFull && (this.isPlayerInventoryFull36() || this._chestPlayerSectionFull(fullWin))) return failed;
+            if (!this.running || !this.bot || !this.bot.currentWindow) return failed;
+            const slot = slotList[i];
+            try {
+                await this._clickWithTimeout(slot, 0, mode, 500);
+                consecutiveTimeouts = 0;
+            } catch (e) {
+                failed.push(slot);
+                if (e && e.message === 'click timeout') consecutiveTimeouts++;
+                if (stopWhenInvFull && consecutiveTimeouts >= 2) {
+                    failed.stalled = true;
+                    return failed;
                 }
-                if (i < chunk.length - 1) {
-                    const clickJitter = Math.floor(Math.random() * 61) - 30;
-                    await this.sleep(Math.max(180, 230 + clickJitter));
-                }
-            }
-            if (start + CHUNK_SIZE < slotList.length) {
-                const chunkJitter = Math.floor(Math.random() * 81) - 40;
-                await this.sleep(Math.max(300, 380 + chunkJitter));
             }
         }
         return failed;
     }
 
     async _depositIntoOpenWindow(chestWindow, TAG, filterFn = null) {
-        // ⭐ CHỐNG KICK HACK CHESTSTEALER: Chờ 250-320ms sau khi mở rương trước khi cất đồ
-        await this.sleep(250 + Math.floor(Math.random() * 70));
         if (!this.running || !this.bot || this.bot.currentWindow !== chestWindow) return { pushed: 0, stuck: 0, full: false };
         const invStart = this._getChestInventoryStart(chestWindow);
 
@@ -2127,7 +2108,7 @@ class BotInstance {
         while (pending.length && this.bot.currentWindow === chestWindow) {
             if (this._isContainerWindowFull(chestWindow, invStart)) break;
             pending = await clickBatch(pending);
-            if (pending.length) await this.sleep(100);
+            if (pending.length) await this.sleep(20);
         }
 
         const stuck = getPlayerItemsInWindow().length;
@@ -2174,7 +2155,7 @@ class BotInstance {
     async _awaitChestLookSync(TAG = '', options = {}) {
         if (!this.bot || !this.bot.entity || !this.lock_pitch_yaw) return false;
         const silent = options && options.silent === true;
-        const STABILIZE_MS = 450;
+        const STABILIZE_MS = 30;
         try {
             // Chờ chính lệnh bot.look() hoàn tất rồi mới cho phép raycast/open chest.
             if (this._chest_look_ready) await this._chest_look_ready;
@@ -2224,17 +2205,12 @@ class BotInstance {
             return { taken: 0, slots: 0 };
         }
 
-        // ⭐ CHỐNG KICK HACK CHESTSTEALER: Chờ 320-380ms sau khi mở rương trước khi bắt đầu click
-        await this.sleep(320 + Math.floor(Math.random() * 60));
-        if (!this.running || !this.bot || this.bot.currentWindow !== chestWindow) return { taken: 0, slots: 0 };
-
         let taken = 0;
         let slotsTaken = 0;
         let passes = 0;
-        const MAX_PASSES = 8;
+        const MAX_PASSES = 6;
 
-        // Không delay giữa các QUICK-MOVE. Mỗi pass quét lại toàn bộ chest để
-        // xử lý luôn các stack còn sót sau khi server cập nhật window.
+        // Quét lấy sạch item mục tiêu bằng quick-move liên tục với delay 0
         while (this.running && this.bot.currentWindow === chestWindow && passes < MAX_PASSES) {
             if (this.isPlayerInventoryFull36() || this._chestPlayerSectionFull(chestWindow)) {
                 this.log(`🎒 ${TAG} Inventory đã đủ 36/36 ô — dừng lấy item.`, '#f5c842');
@@ -2253,18 +2229,15 @@ class BotInstance {
 
             if (targetSlots.length === 0) break;
 
-            this.log(`⚡ ${TAG} PASS ${passes}: ${targetSlots.length} stack → QUICK-MOVE an toàn chống anti-cheat, nhịp=5, click-gap=125-160ms, chunk-gap=220-280ms.`, '#4a9eff');
+            this.log(`⚡ ${TAG} PASS ${passes}: ${targetSlots.length} stack → QUICK-MOVE SIÊU TỐC (delay 0ms)...`, '#4a9eff');
             let movedThisPass = 0;
             let pendingSlots = targetSlots.slice();
 
-            // Giữ đúng cơ chế cũ: windowClick 54 slot cùng lúc. Nếu một slot
-            // bị reject thì chỉ retry slot đó sau 100ms, không chuyển cả batch
-            // thành queue tuần tự.
             let retryRounds = 0;
             let stalledThisPass = false;
             while (pendingSlots.length && this.running && this.bot.currentWindow === chestWindow) {
                 if (this.isPlayerInventoryFull36() || this._chestPlayerSectionFull(chestWindow)) break;
-                if (++retryRounds > 5) break;   // tránh lặp vô hạn nếu click cứ timeout
+                if (++retryRounds > 3) break;
                 const batch = pendingSlots.slice();
                 const beforeCounts = new Map(batch.map(slot => {
                     const item = chestWindow.slots[slot];
@@ -2283,28 +2256,23 @@ class BotInstance {
                     }
                 }
                 pendingSlots = failed;
-                if (failed.stalled) { stalledThisPass = true; this.log(`⚠️ ${TAG} Server không xác nhận click liên tục (balo đầy/hết chỗ) → dừng lấy, đóng GUI.`, '#f5c842'); break; }
+                if (failed.stalled) { stalledThisPass = true; break; }
                 if (this.isPlayerInventoryFull36() || this._chestPlayerSectionFull(chestWindow)) break;
-                if (pendingSlots.length) await this.sleep(100);
+                if (pendingSlots.length) await this.sleep(20);
             }
 
             if (stalledThisPass) break;
             if (this._chestPlayerSectionFull(chestWindow)) {
-                this.log(`🎒 ${TAG} Balo đầy 36/36 (đếm trong window) — dừng lấy, đóng GUI.`, '#2ecc71');
+                this.log(`🎒 ${TAG} Balo đầy 36/36 — dừng lấy, đóng GUI.`, '#2ecc71');
                 break;
             }
 
-            // Nếu pass vừa rồi không chuyển được gì thì dừng để tránh spam click.
             if (movedThisPass <= 0) {
-                if (this.running && this.bot.currentWindow === chestWindow) await this.sleep(150);
                 return { taken, slots: slotsTaken };
             }
         }
 
-        // Đợi transaction/window update ổn định hoàn toàn rồi caller mới được đóng GUI.
-        // Không đóng ngay giữa lúc QUICK-MOVE còn đang cập nhật inventory.
-        if (this.running && this.bot.currentWindow === chestWindow) await this.sleep(150);
-        this.log(`🏁 ${TAG} TỐC ĐỘ ÁNH SÁNG: lấy ${taken} item từ ${slotsTaken} stack, ${passes} pass, đã chờ window settle 150ms.`, '#2ecc71');
+        this.log(`🏁 ${TAG} Lấy xong ${taken} item từ ${slotsTaken} stack.`, '#2ecc71');
         return { taken, slots: slotsTaken };
     }
 
@@ -2336,9 +2304,9 @@ class BotInstance {
             // như flow đẩy item mặc định. windowOpen bình thường về trong
             // vài trăm ms nếu activateBlock ăn; 1200ms là đủ dư mà vẫn
             // nhanh hơn hẳn 8000ms cũ. RETRY_DELAY = 0 -> vừa fail là thử lại ngay.
-            windowOpenTimeoutMs: 1500,
-            retryDelayMs: 200,
-            noAimRetryDelayMs: 200,
+            windowOpenTimeoutMs: 1000,
+            retryDelayMs: 40,
+            noAimRetryDelayMs: 40,
             maxAttempts: 60,
             refreshLockBeforeOpen: true,
             strictCursor: options.strictCursor === true,
@@ -3241,7 +3209,7 @@ class BotInstance {
         return (f.x === bx && f.y === by && f.z === bz) || dist <= 0.85;
     }
 
-    async _runConfiguredChestGoto(dx, deltaY, dz, lockY, pitch, yaw, TAG, aborted, settleMs = 500) {
+    async _runConfiguredChestGoto(dx, deltaY, dz, lockY, pitch, yaw, TAG, aborted, settleMs = 50) {
         const oldDx = this.move_delta_x, oldDy = this.move_delta_y, oldDz = this.move_delta_z;
         try {
             const DX = Math.round(Number(dx) || 0);
@@ -3474,7 +3442,7 @@ class BotInstance {
         const aborted = () => !this.running || !this.bot || this._conn_epoch !== myEpoch || this._storage_cancel_token !== myToken || !this.auto_storage_running || this.findCompassSlot() !== -1 || !this.joined_server;
         const oldLock = this.lock_pitch_yaw;
         const oldPitch = this.lock_pitch, oldYaw = this.lock_yaw;
-        const FAST_OPEN_OPTS = { windowOpenTimeoutMs: 1800, retryDelayMs: 220, noAimRetryDelayMs: 200, maxAttempts: 24, refreshLockBeforeOpen: true };
+        const FAST_OPEN_OPTS = { windowOpenTimeoutMs: 1000, retryDelayMs: 30, noAimRetryDelayMs: 30, maxAttempts: 25, refreshLockBeforeOpen: true };
         const MAX_GOTOS = 3;
         const configs = this._getStorageClearConfigs();
         const clear2Enabled = this.storage_clear2_enabled === true ||
@@ -3606,13 +3574,10 @@ class BotInstance {
                 } catch (e) {
                     this.log(`⚠️ ${TAG} Lỗi dọn ${cfg.name}: ${e && e.message ? e.message : e}`, '#f5c842');
                 } finally {
-                    // Chỉ đóng sau khi toàn bộ QUICK-MOVE đã await xong + có thời gian
-                    // cho transaction/window cập nhật. Không đóng GUI giữa lúc đang lấy.
-                    if (this.running && this.bot.currentWindow === chestWindow) await this.sleep(180);
                     if (this.bot && this.bot.currentWindow) {
                         try { this.bot.closeWindow(this.bot.currentWindow); } catch (e) {}
                     }
-                    await this.sleep(180);
+                    await this.sleep(20);
                 }
                 totalTaken += Number(result.taken) || 0;
 
@@ -3867,6 +3832,12 @@ class BotInstance {
                     // Chuỗi rương là chạy lệnh đầu chu kỳ command /home sang Dọn Phễu (để tạo /back chuẩn về Nhà Rương), sau đó dọn.
                     else if (isAtDeposit) {
                         this._firstDepositNeedsHomeCmd = false;
+                        if (targetCount > 0) {
+                            this.log(`📦 [CHUỖI RƯƠNG] Đang ở Y Nhà Rương và túi đồ có ${targetCount} item → Cất đồ vào rương trước...`, '#2ecc71');
+                            this._storage_chain_phase = 'deposit';
+                            const depOk = await this.runChestDepositFlow();
+                            if (!this.auto_storage_running || this._storage_cancel_token !== myToken || !this.running) break;
+                        }
                         this.log(`🏠 [CHUỖI RƯƠNG] Đang ở Y Nhà Rương (${currentY.toFixed(2)}) → Chạy lệnh đầu chu kỳ "${this.storage_clear_command}" sang Dọn Phễu...`, '#2ecc71');
                         startupChecked = true;
                     }
@@ -4025,8 +3996,8 @@ class BotInstance {
                     this._firstDepositNeedsHomeCmd = false;
                     this._lastDepositUsedHome = true;
                     let homeReconnect = String(this.storage_reconnect_home_command || '').trim();
-                    if (!homeReconnect || homeReconnect === '/home 1 delay 8000' || homeReconnect === '/home 1') {
-                        homeReconnect = '/home 2 delay 8000';
+                    if (!homeReconnect || homeReconnect.startsWith('/home 2') || homeReconnect.startsWith('/home 1')) {
+                        homeReconnect = '/home delay 3000';
                     }
                     depositCmdToRun = homeReconnect;
                     this.log(`🏠 [CHUỖI RƯƠNG] Lần đầu từ chỗ Dọn Phễu về Nhà: Chạy "${depositCmdToRun}" (sethome Nhà Rương)...`, '#4a9eff');
@@ -4499,9 +4470,9 @@ class BotInstance {
         const aborted = () => !this.running || !this.bot || this._conn_epoch !== myEpoch || this._storage_cancel_token !== myToken;
 
         const MAX_CHEST_HOPS = 2000;
-        const GUI_SETTLE_MS = 250;
-        // Retry nhanh y như flow LẤY ITEM: không chờ 8s/lần mới thử lại.
-        const FAST_OPEN_OPTS = { windowOpenTimeoutMs: 1500, retryDelayMs: 150, noAimRetryDelayMs: 150, maxAttempts: 24, refreshLockBeforeOpen: true };
+        const GUI_SETTLE_MS = 20;
+        // Retry nhanh: mở rương và cất item ngay lập tức với delay tối thiểu.
+        const FAST_OPEN_OPTS = { windowOpenTimeoutMs: 1000, retryDelayMs: 30, noAimRetryDelayMs: 30, maxAttempts: 25, refreshLockBeforeOpen: true };
 
         try { if (this.bot && this.bot.pathfinder) this.bot.pathfinder.setGoal(null); } catch (e) {}
 
@@ -4555,7 +4526,7 @@ class BotInstance {
 
             try { this.bot.closeWindow(chestWindow); } catch (e) {}
             chestWindow = null;
-            await this.sleep(200);
+            await this.sleep(20);
 
             if (result.stuck === 0) {
                 this.log(`✅ ${TAG} Đã đẩy hết đồ, tổng cộng ${totalPushed} ô item.`, '#2ecc71');
@@ -4572,7 +4543,7 @@ class BotInstance {
                 this._chest_retry_count++;
                 if (this._chest_retry_count <= 3) {
                     this.log(`🔁 ${TAG} Rương CHƯA đầy nhưng vẫn còn ${result.stuck} ô item sót - thử đẩy lại (lần ${this._chest_retry_count}/3).`, '#f5c842');
-                    await this.sleep(200);
+                    await this.sleep(20);
                     chestWindow = await this.openChestAtCursorWithRetry(TAG, aborted, FAST_OPEN_OPTS);
                     if (!chestWindow) {
                         this._chest_retry_count = 0;
@@ -6158,69 +6129,64 @@ class BotInstance {
             }
 
             // ⭐ CASE 2: Y HIỆN TẠI LÀ Y DỌN RƯƠNG (Y ≈ 190)
+            // Khi xác nhận vào server mà bot đang ở Y Dọn Rương:
+            // Chạy lệnh home để về Nhà Rương, sau đó GOTO tới waypoint rương đã lưu!
             if (isAtClear) {
-                const wp = this._loadDepositWaypoint();
-                const hasWaypointToResume = wp && Number.isFinite(wp.hops) && wp.hops > 0;
                 let homeCmd = String(this.storage_reconnect_home_command || '').trim();
-                if (!homeCmd || homeCmd.startsWith('/home 2')) {
-                    homeCmd = '/home delay 8000';
+                if (!homeCmd || homeCmd.startsWith('/home 2') || homeCmd.startsWith('/home 1')) {
+                    homeCmd = '/home delay 3000';
                 }
 
-                // Nếu có waypoint đang cất dở ở Nhà Rương cần về:
-                if (hasWaypointToResume && homeCmd) {
-                    this.log(`🏠 [VÀO SERVER] Y hiện tại=${curY.toFixed(2)} (Y Dọn Rương) có waypoint cất dở → Chạy lệnh "${homeCmd}" để về Nhà Rương tiếp tục...`, '#4a9eff');
-                    const cmds = this.parseStorageCommands(homeCmd);
-                    if (cmds.length) {
-                        await this.runCommandSequence(cmds);
-                        const waitStart = Date.now();
-                        while (this.running && this.bot && Date.now() - waitStart < 15000) {
-                            await this.sleep(300);
-                            if (this.isNearDepositY(1.5)) {
-                                this.log(`✅ [VỀ NHÀ RƯƠNG] Đã về tới Nhà Rương an toàn (Y=${this.bot.entity.position.y.toFixed(2)}).`, '#2ecc71');
-                                break;
-                            }
+                this.log(`🏠 [VÀO SERVER] Y hiện tại=${curY.toFixed(2)} (Y Dọn Rương) → Chạy lệnh "${homeCmd}" để về Nhà Rương...`, '#4a9eff');
+                const cmds = this.parseStorageCommands(homeCmd);
+                if (cmds.length) {
+                    await this.runCommandSequence(cmds);
+                    const waitStart = Date.now();
+                    while (this.running && this.bot && Date.now() - waitStart < 15000) {
+                        await this.sleep(250);
+                        if (this.isNearDepositY(1.5)) {
+                            this.log(`✅ [VỀ NHÀ RƯƠNG] Đã về tới Nhà Rương an toàn (Y=${this.bot.entity.position.y.toFixed(2)}).`, '#2ecc71');
+                            break;
                         }
                     }
-
-                    if (this.isNearDepositY(1.5)) {
-                        this.lock_pitch = this._safeStoragePitch(this.storage_deposit_pitch);
-                        this.lock_yaw = this._safeStorageYaw(this.storage_deposit_yaw);
-                        this.lock_pitch_yaw = true;
-                        this.applyChestPitchYaw(true);
-                        this.startPitchYawLockLoop();
-
-                        this.log(`📍 [WAYPOINT RESUME] Đã về Nhà Rương → Ngay lập tức GOTO tới waypoint rương vừa lưu: (${wp.x}, ${wp.y}, ${wp.z}) (rương #${wp.hops + 1})...`, '#2ecc71');
-                        await this._gotoSavedWaypointAfterHome('sau khi về Nhà Rương');
-
-                        this._resume_storage_after_rejoin = false;
-                        this.storage_persist = true;
-                        this._saveStorageActiveState(true);
-                        this.log(`▶️ [CHUỖI RƯƠNG] Tiếp tục vòng lặp kích hoạt Chuỗi Rương...`, '#2ecc71');
-                        this.startAutoStorage(true);
-                        return;
-                    }
                 }
 
-                // NẾU KHÔNG CÓ WAYPOINT HOẶC CHƯA VỀ NHÀ RƯƠNG (BOT ĐANG Ở Y DỌN RƯƠNG):
-                // TIẾP TỤC CHUỖI RƯƠNG NGAY TẠI Y DỌN RƯƠNG!
-                this.log(`🧹 [VÀO SERVER] Y hiện tại = Y Dọn Rương (${curY.toFixed(2)}) → Ngay lập tức tiếp tục Chuỗi Rương (mở rương lấy đồ tại Dọn Phễu, khi đầy balo sẽ về Nhà Rương)...`, '#2ecc71');
-                this.lock_pitch = this._safeStoragePitch(this.storage_clear_pitch);
-                this.lock_yaw = this._safeStorageYaw(this.storage_clear_yaw);
-                this.lock_pitch_yaw = true;
-                this.applyChestPitchYaw(false);
-                this.startPitchYawLockLoop();
+                // KHI ĐÃ VỀ TỚI NHÀ RƯƠNG:
+                if (this.isNearDepositY(1.5)) {
+                    this.lock_pitch = this._safeStoragePitch(this.storage_deposit_pitch);
+                    this.lock_yaw = this._safeStorageYaw(this.storage_deposit_yaw);
+                    this.lock_pitch_yaw = true;
+                    this.applyChestPitchYaw(true);
+                    this.startPitchYawLockLoop();
 
-                this._resume_storage_after_rejoin = false;
-                this.storage_persist = true;
-                this._saveStorageActiveState(true);
-                this.startAutoStorage(true);
-                return;
+                    const wp = this._loadDepositWaypoint();
+                    if (wp && Number.isFinite(wp.x) && Number.isFinite(wp.z)) {
+                        this.log(`📍 [WAYPOINT RESUME] Đã về Nhà Rương → Ngay lập tức GOTO tới waypoint rương vừa lưu: (${wp.x}, ${wp.y}, ${wp.z}) [rương #${(wp.hops || 0) + 1}]...`, '#2ecc71');
+                        await this._gotoSavedWaypointAfterHome('sau khi về Nhà Rương');
+                    } else {
+                        this.log(`ℹ️ [WAYPOINT RESUME] Chưa có file waypoint rương lưu trước đó, sẵn sàng cất từ rương đầu.`, '#4a9eff');
+                    }
+
+                    this._resume_storage_after_rejoin = false;
+                    this.storage_persist = true;
+                    this._saveStorageActiveState(true);
+                    this.log(`▶️ [CHUỖI RƯƠNG] Tiếp tục vòng lặp kích hoạt Chuỗi Rương...`, '#2ecc71');
+                    this.startAutoStorage(true);
+                    return;
+                } else {
+                    this.log(`⚠️ [VÀO SERVER] Bot chưa về tới Y Nhà Rương sau khi chạy "${homeCmd}" (Y hiện tại=${this.bot && this.bot.entity ? this.bot.entity.position.y.toFixed(2) : '?'}) → Tiếp tục kích hoạt Chuỗi Rương tại vị trí hiện tại`, '#f5c842');
+                    this._resume_storage_after_rejoin = false;
+                    this.storage_persist = true;
+                    this._saveStorageActiveState(true);
+                    this.startAutoStorage(true);
+                    return;
+                }
             }
 
             // ⭐ CASE 3: Y KHÁC (Spawn hoặc chưa rõ tầng Y)
             let homeCmd = String(this.storage_reconnect_home_command || '').trim();
-            if (!homeCmd || homeCmd.startsWith('/home 2')) {
-                homeCmd = '/home delay 8000';
+            if (!homeCmd || homeCmd.startsWith('/home 2') || homeCmd.startsWith('/home 1')) {
+                homeCmd = '/home delay 3000';
             }
             this.log(`🏠 [VÀO SERVER] Y hiện tại=${curY.toFixed(2)} → Chạy lệnh "${homeCmd}"...`, '#4a9eff');
             const cmds = this.parseStorageCommands(homeCmd);
@@ -6228,7 +6194,7 @@ class BotInstance {
                 await this.runCommandSequence(cmds);
                 const waitStart = Date.now();
                 while (this.running && this.bot && Date.now() - waitStart < 15000) {
-                    await this.sleep(300);
+                    await this.sleep(250);
                     if (this.isNearDepositY(1.5) || this.isNearClearY(1.5)) break;
                 }
             }
@@ -6241,7 +6207,7 @@ class BotInstance {
                 this.startPitchYawLockLoop();
 
                 const wp = this._loadDepositWaypoint();
-                if (wp && Number.isFinite(wp.hops) && wp.hops > 0) {
+                if (wp && Number.isFinite(wp.x) && Number.isFinite(wp.z)) {
                     this.log(`📍 [WAYPOINT RESUME] Đã về Nhà Rương → GOTO tới waypoint (${wp.x}, ${wp.y}, ${wp.z})...`, '#2ecc71');
                     await this._gotoSavedWaypointAfterHome('sau khi về Nhà Rương');
                 }

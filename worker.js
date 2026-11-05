@@ -3828,24 +3828,10 @@ class BotInstance {
                         startupChecked = true;
                     }
                     // ⭐ LOGIC 2: Đang ở đúng Y Nhà Rương:
-                    // Luôn gửi lệnh /home dọn phễu đầu tiên để sang Dọn Phễu (nhờ vậy /back sẽ trỏ chuẩn về Nhà Rương).
+                    // Chuỗi rương là chạy lệnh đầu chu kỳ command /home sang Dọn Phễu (để tạo /back chuẩn về Nhà Rương), sau đó dọn.
                     else if (isAtDeposit) {
                         this._firstDepositNeedsHomeCmd = false;
-                        if (targetCount > 0) {
-                            this._storage_chain_phase = 'startup_deposit';
-                            this.log(`🎒 [CHUỖI RƯƠNG] Đang ở Y Nhà Rương (${currentY.toFixed(2)}) còn ${targetCount} item → CẤT TRƯỚC rồi mới /home sang Dọn Phễu.`, '#f5c842');
-                            const depositOk = await this.runChestDepositFlow();
-                            if (!this.auto_storage_running || this._storage_cancel_token !== myToken || !this.running) return;
-                            const remainAfterDeposit = this.countTargetItems();
-                            if (!depositOk || remainAfterDeposit > 0) {
-                                this.log(`⚠️ [CHUỖI RƯƠNG] Balo vẫn còn ${remainAfterDeposit} item → cất lại sau 2s...`, '#f5c842');
-                                await this.sleep(2000);
-                                continue;
-                            }
-                            this.log(`✅ [CHUỖI RƯƠNG] Đã cất sạch balo → Bắt đầu chạy /home đầu tiên sang Dọn Phễu.`, '#2ecc71');
-                        } else {
-                            this.log(`🏠 [CHUỖI RƯƠNG] Đang ở Y Nhà Rương (${currentY.toFixed(2)}) → Bắt đầu chạy /home đầu tiên sang Dọn Phễu để tạo /back chuẩn.`, '#2ecc71');
-                        }
+                        this.log(`🏠 [CHUỖI RƯƠNG] Đang ở Y Nhà Rương (${currentY.toFixed(2)}) → Chạy lệnh đầu chu kỳ "${this.storage_clear_command}" sang Dọn Phễu...`, '#2ecc71');
                         startupChecked = true;
                     }
                     // ⭐ LOGIC 3: Ở Spawn hoặc vị trí khác:
@@ -6110,19 +6096,9 @@ class BotInstance {
             const isAtClear = this.isNearClearY(1.5);
 
             // ⭐ CASE 1: ĐANG Ở ĐÚNG Y NHÀ RƯƠNG (Y ≈ 254)
-            // Yêu cầu: nếu Y nhà rương là ngay lập tức bật chuỗi rương dọn lại từ đầu
+            // Yêu cầu: "Chuỗi rương ở đây là chạy lệnh đầu chu kỳ command /home, sau đó dọn..."
             if (isAtDep) {
-                this.log(`🏠 [VÀO SERVER] Bot đang ở đúng Y Nhà Rương (Y=${curY.toFixed(2)})!`, '#2ecc71');
-
-                // Kiểm tra balo: nếu còn item thì cất sạch trước
-                const targetCount = this.countTargetItems();
-                if (targetCount > 0) {
-                    this.log(`🎒 [VÀO SERVER] Balô còn ${targetCount} item mục tiêu → Cất sạch vào Nhà Rương trước khi dọn chu trình mới...`, '#4a9eff');
-                    await this.runChestDepositFlow();
-                }
-
-                // Bật chuỗi rương dọn lại từ đầu (clear waypoint cũ, reset hộp 1):
-                this.log(`🚀 [VÀO SERVER] Bắt đầu Chuỗi Rương dọn lại từ đầu (Hộp 1 / GOTO 1)...`, '#2ecc71');
+                this.log(`🏠 [VÀO SERVER] Bot đang ở đúng Y Nhà Rương (Y=${curY.toFixed(2)}) → LẬP TỨC bật Chuỗi Rương (chạy lệnh đầu chu kỳ "${this.storage_clear_command}" sang Dọn Phễu rồi dọn)...`, '#2ecc71');
                 this._resume_storage_after_rejoin = false;
                 this.storage_persist = true;
                 this._clearDepositWaypoint('bật chuỗi dọn lại từ đầu ở Nhà Rương');

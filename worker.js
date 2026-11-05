@@ -2062,12 +2062,19 @@ class BotInstance {
                     return failed;
                 }
             }
+            // Pacing 45ms giữa các click:
+            // - Siêu tốc: 9 stack chỉ mất ~0.36 - 0.4s (mắt người thấy như tức thì)
+            // - Tránh packet-burst dồn vào 0ms làm server/proxy kick ra lobby vì packet-flood / ChestStealer
+            if (i < slotList.length - 1) {
+                await this.sleep(45);
+            }
         }
         return failed;
     }
 
     async _depositIntoOpenWindow(chestWindow, TAG, filterFn = null) {
         if (!this.running || !this.bot || this.bot.currentWindow !== chestWindow) return { pushed: 0, stuck: 0, full: false };
+        await this.sleep(60);
         const invStart = this._getChestInventoryStart(chestWindow);
 
         const getPlayerItemsInWindow = () => {
@@ -2233,7 +2240,10 @@ class BotInstance {
         let passes = 0;
         const MAX_PASSES = 6;
 
-        // Quét lấy sạch item mục tiêu bằng quick-move liên tục với delay 0
+        // Chờ 60ms cho server đồng bộ trạng thái window trước khi bắt đầu lấy
+        await this.sleep(60);
+
+        // Quét lấy sạch item mục tiêu bằng quick-move siêu tốc có nhịp an toàn 45ms chống diss
         while (this.running && this.bot.currentWindow === chestWindow && passes < MAX_PASSES) {
             if (this.isPlayerInventoryFull36() || this._chestPlayerSectionFull(chestWindow)) {
                 this.log(`🎒 ${TAG} Inventory đã đủ 36/36 ô — dừng lấy item.`, '#f5c842');
@@ -2252,7 +2262,7 @@ class BotInstance {
 
             if (targetSlots.length === 0) break;
 
-            this.log(`⚡ ${TAG} PASS ${passes}: ${targetSlots.length} stack → QUICK-MOVE SIÊU TỐC (delay 0ms)...`, '#4a9eff');
+            this.log(`⚡ ${TAG} PASS ${passes}: ${targetSlots.length} stack → QUICK-MOVE SIÊU TỐC (nhịp 45ms chống diss)...`, '#4a9eff');
             let movedThisPass = 0;
             let pendingSlots = targetSlots.slice();
 

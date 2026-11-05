@@ -4469,6 +4469,13 @@ class BotInstance {
 
         try { if (this.bot && this.bot.pathfinder) this.bot.pathfinder.setGoal(null); } catch (e) {}
 
+        // ⭐ LƯU WAYPOINT XYZ NGAY LÚC CHUẨN BỊ MỞ RƯƠNG TẠI Y NHÀ RƯƠNG:
+        if (this.bot && this.bot.entity && this.isNearDepositY(1.5)) {
+            const p = this.bot.entity.position;
+            const curHops = this._saved_resume_hops || 0;
+            this._saveDepositWaypoint(p.x, p.y, p.z, curHops);
+        }
+
         let chestWindow = await this.openChestAtCursorWithRetry(TAG, aborted, FAST_OPEN_OPTS);
         if (!chestWindow) {
             this._chest_busy = false;

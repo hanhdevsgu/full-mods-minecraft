@@ -6117,9 +6117,9 @@ class BotInstance {
             const isAtClear = this.isNearClearY(1.5);
 
             // ⭐ CASE 1: ĐANG Ở ĐÚNG Y NHÀ RƯƠNG (Y ≈ 254)
-            // Yêu cầu: "Y nhà rương thì giữ nguyên ... rồi lúc đó lại tiếp tục vòng lặp kích hoạt chuỗi rương"
+            // Yêu cầu: Y nhà rương thì giữ nguyên, chạy "Lệnh đầu chu kỳ" (ô trên) để sang Dọn Phễu dọn lại
             if (isAtDep) {
-                this.log(`🏠 [VÀO SERVER] Y hiện tại = Y Nhà Rương (${curY.toFixed(2)}) → Giữ nguyên, kích hoạt vòng lặp Chuỗi Rương (chạy lệnh đầu chu kỳ "${this.storage_clear_command}" sang Dọn Phễu rồi dọn)...`, '#2ecc71');
+                this.log(`🏠 [VÀO SERVER] Y hiện tại = Y Nhà Rương (${curY.toFixed(2)}) → Giữ nguyên, kích hoạt Chuỗi Rương (chạy "Lệnh đầu chu kỳ" ô trên: "${this.storage_clear_command}" sang Dọn Phễu rồi dọn)...`, '#2ecc71');
                 this._resume_storage_after_rejoin = false;
                 this.storage_persist = true;
                 this._saveStorageActiveState(true);
@@ -6129,15 +6129,14 @@ class BotInstance {
             }
 
             // ⭐ CASE 2: Y HIỆN TẠI LÀ Y DỌN RƯƠNG (Y ≈ 190)
-            // Khi xác nhận vào server mà bot đang ở Y Dọn Rương:
-            // Chạy lệnh home để về Nhà Rương, sau đó GOTO tới waypoint rương đã lưu!
+            // Yêu cầu: Khi vào server mà Y hiện tại = Y Dọn Rương thì CHẠY "Lệnh về Nhà khi vào lại" (ô dưới), về Nhà Rương rồi GOTO waypoint rương đã lưu!
             if (isAtClear) {
                 let homeCmd = String(this.storage_reconnect_home_command || '').trim();
                 if (!homeCmd || homeCmd.startsWith('/home 2') || homeCmd.startsWith('/home 1')) {
                     homeCmd = '/home delay 3000';
                 }
 
-                this.log(`🏠 [VÀO SERVER] Y hiện tại=${curY.toFixed(2)} (Y Dọn Rương) → Chạy lệnh "${homeCmd}" để về Nhà Rương...`, '#4a9eff');
+                this.log(`🏠 [VÀO SERVER] Y hiện tại = Y Dọn Rương (${curY.toFixed(2)}) → Chạy "Lệnh về Nhà khi vào lại" (ô dưới): "${homeCmd}" để về Nhà Rương...`, '#4a9eff');
                 const cmds = this.parseStorageCommands(homeCmd);
                 if (cmds.length) {
                     await this.runCommandSequence(cmds);

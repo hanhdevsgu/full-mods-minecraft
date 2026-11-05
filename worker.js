@@ -216,7 +216,6 @@ class BotInstance {
 
         this.storage_persist = this._isStorageActivePersisted() || !!settings.storage_persist;
         this._resume_storage_after_rejoin = this.storage_persist;
-        this._storage_resume_check_timer = null;
         this.target_amount = settings.target_amount !== undefined ? settings.target_amount : 0;
         this.storage_commands = settings.storage_commands !== undefined ? settings.storage_commands : '';
         this.storage_loop_delay = settings.storage_loop_delay !== undefined ? settings.storage_loop_delay : 0;
@@ -622,62 +621,35 @@ class BotInstance {
     isNearClearY(tolerance = 1.5) {
         if (!this.bot || !this.bot.entity) return false;
         const y = Number(this.bot.entity.position.y);
-        if (!Number.isFinite(y)) return false;
-        // Nếu ở sảnh lobby (14 hoặc 28.06) thì chắc chắn không phải Dọn Rương
-        if (Math.abs(y - 14.0) <= 2.5 || Math.abs(y - 28.06) <= 2.5) return false;
         const clearY = Number(this.storage_clear_lock_y);
-        if (Number.isFinite(clearY) && clearY > 0) {
-            if (Math.abs(y - clearY) <= tolerance || Math.floor(y) === Math.floor(clearY)) return true;
-        }
-        return Math.abs(y - 190.0) <= tolerance || Math.floor(y) === 190;
+        if (!Number.isFinite(y) || !Number.isFinite(clearY) || clearY === 0) return false;
+        return Math.abs(y - clearY) <= tolerance || Math.floor(y) === Math.floor(clearY);
     }
 
     isNearDepositY(tolerance = 1.5) {
         if (!this.bot || !this.bot.entity) return false;
+        if (this.isAtSpawn && this.isAtSpawn()) return false;
         const y = Number(this.bot.entity.position.y);
         if (!Number.isFinite(y)) return false;
-        // Nếu ở sảnh lobby (14 hoặc 28.06) thì chắc chắn không phải Nhà Rương
-        if (Math.abs(y - 14.0) <= 2.5 || Math.abs(y - 28.06) <= 2.5) return false;
         const depY = Number(this.storage_deposit_lock_y);
-        if (Number.isFinite(depY) && depY > 0) {
-            if (Math.abs(y - depY) <= tolerance || Math.floor(y) === Math.floor(depY)) return true;
+        if (Number.isFinite(depY) && depY > 0 && (Math.abs(y - depY) <= tolerance || Math.floor(y) === Math.floor(depY))) {
+            return true;
         }
-        return Math.abs(y - 254.0) <= tolerance || Math.floor(y) === 254;
+        return false;
     }
 
     isAtSpawn() {
         if (this.is_dead) return false;
         if (!this.bot || !this.bot.entity || !this.bot.entity.position) return false;
 
-        const y = Number(this.bot.entity.position.y);
-
-        // 1. Nếu đang ở tầng Y Dọn Rương hoặc Y Nhà Rương -> 100% trong server game, KHÔNG PHẢI LOBBY
-        if (this.isNearClearY(2.5) || this.isNearDepositY(2.5)) {
-            return false;
-        }
-
-        // 2. Nếu hotbar có item game (kiếm kim cương, cúp, item khác) và không có compass -> 100% trong server game
-        if (this.hasGameItemInHotbar() && this.findCompassSlot() === -1) {
-            return false;
-        }
-
-        // 3. Có compass trong hotbar -> 100% ở sảnh lobby
+        if (this._in_lobby_state) return true;
         if (this.findCompassSlot() !== -1) {
             this._had_compass_state = true;
             return true;
         }
+        if (this.bot && this.bot.currentWindow && this._isServerSelectWindow(this.bot.currentWindow)) return true;
 
-        // 4. GUI chọn server đang mở -> sảnh lobby
-        if (this.bot && this.bot.currentWindow && this._isServerSelectWindow(this.bot.currentWindow)) {
-            return true;
-        }
-
-        // 5. Tọa độ Y ở sảnh lobby chuẩn (28.06 hoặc 14.00)
-        if (Number.isFinite(y) && (Math.abs(y - 28.06) <= 2.5 || Math.abs(y - 14.0) <= 2.5)) {
-            return true;
-        }
-
-        if (this._in_lobby_state && !this.joined_server) return true;
+        if (!this.joined_server && !this._transferring_to_game_server) return true;
 
         return false;
     }
@@ -1833,34 +1805,12 @@ class BotInstance {
 
     // Tạo lại Movements + xoá goal + nhả hết phím → pathfinder về trạng thái sạch (hết "cộng dồn").
     _makeMovements() {
-        try {
-            const movements = new Movements(this.bot);
-            movements.canDig = false;
-            movements.allow1by1towers = false;
-            movements.allowParkour = false;
-            movements.allowSprinting = false;
-            movements.allowFreeMotion = false;
-            if (this.bot && this.bot.registry && this.bot.registry.blocksByName) {
-                const bNames = ['chest', 'trapped_chest', 'hopper', 'ender_chest'];
-                for (const name of bNames) {
-                    const b = this.bot.registry.blocksByName[name];
-                    if (b && b.id) {
-                        if (movements.blocksCantBreak && typeof movements.blocksCantBreak.add === 'function') {
-                            movements.blocksCantBreak.add(b.id);
-                        }
-                        if (movements.blocksToAvoid && typeof movements.blocksToAvoid.add === 'function') {
-                            movements.blocksToAvoid.add(b.id);
-                        }
-                        if (movements.interactableBlocks && typeof movements.interactableBlocks.delete === 'function') {
-                            movements.interactableBlocks.delete(b.id);
-                        }
-                    }
-                }
-            }
-            return movements;
-        } catch (e) {
-            return new Movements(this.bot);
-        }
+        const movements = new Movements(this.bot);
+        movements.canDig = false;
+        movements.allow1by1towers = false;
+        movements.allowParkour = false;
+        movements.allowSprinting = false;
+        return movements;
     }
 
     _hardResetPathfinder() {
@@ -1879,18 +1829,15 @@ class BotInstance {
         } catch (e) {}
     }
 
-    stopAutoStorage(isExplicitUserStop = false) {
+    stopAutoStorage(isExplicitUserStop = true) {
         // TẮT = huỷ ngay phiên hiện tại. Không disconnect bot và không đụng
-        // AFK/Farm/Proxy/ViewLock.
+        // AFK/Farm/Proxy/ViewLock. Lần BẬT tiếp theo sẽ tạo phiên mới từ đầu.
         this.auto_storage_running = false;
         if (isExplicitUserStop) {
             this.storage_persist = false;
             this._resume_storage_after_rejoin = false;
             this._saveStorageActiveState(false);
-            if (this._storage_resume_check_timer) {
-                clearInterval(this._storage_resume_check_timer);
-                this._storage_resume_check_timer = null;
-            }
+            this._clearDepositWaypoint('người dùng tắt Chuỗi Rương');
         }
         this._storage_cancel_token++;
         this._stopExpectGuardMonitor();
@@ -1926,23 +1873,19 @@ class BotInstance {
         }
         if (wantEnabled) {
             this.log(`▶️ [CHUỖI RƯƠNG] BẬT → RESET VỀ HỘP 1 / GOTO 1`, '#2ecc71');
-            this.storage_persist = true;
-            this._saveStorageActiveState(true);
             this.startAutoStorage();
         } else {
-            this.stopAutoStorage(true);
+            this.stopAutoStorage();
         }
     }
 
     toggleAutoStorage() {
         if (this.auto_storage_running) {
-            this.stopAutoStorage(true);
+            this.stopAutoStorage();
             return;
         }
 
         this.log(`▶️ [CHUỖI RƯƠNG] START NEW | Hộp=1 | Bật Rương 2=${!!this.storage_clear2_enabled} | Pitch1=${this.storage_clear_pitch}, Yaw1=${this.storage_clear_yaw}`, '#4a9eff');
-        this.storage_persist = true;
-        this._saveStorageActiveState(true);
         this.startAutoStorage();
     }
 
@@ -2081,8 +2024,8 @@ class BotInstance {
         const fullWin = opts && opts.window ? opts.window : null;
         let consecutiveTimeouts = 0;
         // QUICK-MOVE mô phỏng người thật 100% chống anti-cheat (FastInventory / ChestStealer):
-        // Nhịp 3 stack, click-gap 210-270ms có jitter tự nhiên, chunk-gap 380-460ms.
-        const CHUNK_SIZE = 3;
+        // Nhịp 4 stack, click-gap 200-260ms có jitter tự nhiên, chunk-gap 340-420ms.
+        const CHUNK_SIZE = 4;
         const failed = [];
         for (let start = 0; start < slotList.length; start += CHUNK_SIZE) {
             if (!this.running || !this.bot || !this.bot.currentWindow) break;
@@ -2106,20 +2049,20 @@ class BotInstance {
                 }
                 if (i < chunk.length - 1) {
                     const clickJitter = Math.floor(Math.random() * 61) - 30;
-                    await this.sleep(Math.max(200, 240 + clickJitter));
+                    await this.sleep(Math.max(180, 230 + clickJitter));
                 }
             }
             if (start + CHUNK_SIZE < slotList.length) {
                 const chunkJitter = Math.floor(Math.random() * 81) - 40;
-                await this.sleep(Math.max(360, 420 + chunkJitter));
+                await this.sleep(Math.max(300, 380 + chunkJitter));
             }
         }
         return failed;
     }
 
     async _depositIntoOpenWindow(chestWindow, TAG, filterFn = null) {
-        // ⭐ CHỐNG KICK HACK CHESTSTEALER: Chờ 300-380ms sau khi mở rương trước khi cất đồ
-        await this.sleep(300 + Math.floor(Math.random() * 80));
+        // ⭐ CHỐNG KICK HACK CHESTSTEALER: Chờ 250-320ms sau khi mở rương trước khi cất đồ
+        await this.sleep(250 + Math.floor(Math.random() * 70));
         if (!this.running || !this.bot || this.bot.currentWindow !== chestWindow) return { pushed: 0, stuck: 0, full: false };
         const invStart = this._getChestInventoryStart(chestWindow);
 
@@ -2281,8 +2224,8 @@ class BotInstance {
             return { taken: 0, slots: 0 };
         }
 
-        // ⭐ CHỐNG KICK HACK CHESTSTEALER: Chờ 380-450ms sau khi mở rương trước khi bắt đầu click
-        await this.sleep(380 + Math.floor(Math.random() * 70));
+        // ⭐ CHỐNG KICK HACK CHESTSTEALER: Chờ 320-380ms sau khi mở rương trước khi bắt đầu click
+        await this.sleep(320 + Math.floor(Math.random() * 60));
         if (!this.running || !this.bot || this.bot.currentWindow !== chestWindow) return { taken: 0, slots: 0 };
 
         let taken = 0;
@@ -2310,7 +2253,7 @@ class BotInstance {
 
             if (targetSlots.length === 0) break;
 
-            this.log(`⚡ ${TAG} PASS ${passes}: ${targetSlots.length} stack → QUICK-MOVE an toàn chống anti-cheat, nhịp=3, click-gap=210-270ms, chunk-gap=380-460ms.`, '#4a9eff');
+            this.log(`⚡ ${TAG} PASS ${passes}: ${targetSlots.length} stack → QUICK-MOVE an toàn chống anti-cheat, nhịp=5, click-gap=125-160ms, chunk-gap=220-280ms.`, '#4a9eff');
             let movedThisPass = 0;
             let pendingSlots = targetSlots.slice();
 
@@ -2624,18 +2567,17 @@ class BotInstance {
         // Chỉ thay các giá trị cấu hình trước khi chạy cùng một flow.
         if (!box || !box.settings || typeof box.settings !== 'object') return;
         const c = box.settings;
-        const num = (v, fallback) => { const n = Number(v); return (Number.isFinite(n) && n > 0) ? n : fallback; };
-        const numAny = (v, fallback) => { const n = Number(v); return Number.isFinite(n) ? n : fallback; };
-        if (c.clear_delta_x !== undefined) this.storage_clear_delta_x = numAny(c.clear_delta_x, this.storage_clear_delta_x);
-        if (c.clear_delta_y !== undefined) this.storage_clear_delta_y = numAny(c.clear_delta_y, this.storage_clear_delta_y);
-        if (c.clear_delta_z !== undefined) this.storage_clear_delta_z = numAny(c.clear_delta_z, this.storage_clear_delta_z);
+        const num = (v, fallback) => { const n = Number(v); return Number.isFinite(n) ? n : fallback; };
+        if (c.clear_delta_x !== undefined) this.storage_clear_delta_x = num(c.clear_delta_x, this.storage_clear_delta_x);
+        if (c.clear_delta_y !== undefined) this.storage_clear_delta_y = num(c.clear_delta_y, this.storage_clear_delta_y);
+        if (c.clear_delta_z !== undefined) this.storage_clear_delta_z = num(c.clear_delta_z, this.storage_clear_delta_z);
         if (c.clear_lock_y !== undefined) this.storage_clear_lock_y = num(c.clear_lock_y, this.storage_clear_lock_y);
         if (c.clear_pitch !== undefined) this.storage_clear_pitch = this._safeStoragePitch(c.clear_pitch);
         if (c.clear_yaw !== undefined) this.storage_clear_yaw = this._safeStorageYaw(c.clear_yaw); // giữ nguyên yaw tuyệt đối, KHÔNG đảo 180°
         if (c.clear2_enabled !== undefined) this.storage_clear2_enabled = !!c.clear2_enabled;
-        if (c.clear2_delta_x !== undefined) this.storage_clear2_delta_x = numAny(c.clear2_delta_x, this.storage_clear2_delta_x);
-        if (c.clear2_delta_y !== undefined) this.storage_clear2_delta_y = numAny(c.clear2_delta_y, this.storage_clear2_delta_y);
-        if (c.clear2_delta_z !== undefined) this.storage_clear2_delta_z = numAny(c.clear2_delta_z, this.storage_clear2_delta_z);
+        if (c.clear2_delta_x !== undefined) this.storage_clear2_delta_x = num(c.clear2_delta_x, this.storage_clear2_delta_x);
+        if (c.clear2_delta_y !== undefined) this.storage_clear2_delta_y = num(c.clear2_delta_y, this.storage_clear2_delta_y);
+        if (c.clear2_delta_z !== undefined) this.storage_clear2_delta_z = num(c.clear2_delta_z, this.storage_clear2_delta_z);
         if (c.clear2_lock_y !== undefined) this.storage_clear2_lock_y = num(c.clear2_lock_y, this.storage_clear2_lock_y);
         if (c.clear2_pitch !== undefined) this.storage_clear2_pitch = this._safeStoragePitch(c.clear2_pitch);
         if (c.clear2_yaw !== undefined) this.storage_clear2_yaw = this._safeStorageYaw(c.clear2_yaw); // giữ nguyên yaw tuyệt đối, KHÔNG đảo 180°
@@ -2648,9 +2590,9 @@ class BotInstance {
             const own = (c.deposit_command !== undefined && String(c.deposit_command).trim()) ? String(c.deposit_command) : '';
             this.storage_deposit_command = (own && strip(own) !== strip(base)) ? own : base;
         }
-        if (c.deposit_delta_x !== undefined) this.storage_deposit_delta_x = numAny(c.deposit_delta_x, this.storage_deposit_delta_x);
-        if (c.deposit_delta_y !== undefined) this.storage_deposit_delta_y = numAny(c.deposit_delta_y, this.storage_deposit_delta_y);
-        if (c.deposit_delta_z !== undefined) this.storage_deposit_delta_z = numAny(c.deposit_delta_z, this.storage_deposit_delta_z);
+        if (c.deposit_delta_x !== undefined) this.storage_deposit_delta_x = num(c.deposit_delta_x, this.storage_deposit_delta_x);
+        if (c.deposit_delta_y !== undefined) this.storage_deposit_delta_y = num(c.deposit_delta_y, this.storage_deposit_delta_y);
+        if (c.deposit_delta_z !== undefined) this.storage_deposit_delta_z = num(c.deposit_delta_z, this.storage_deposit_delta_z);
         if (c.deposit_lock_y !== undefined) this.storage_deposit_lock_y = num(c.deposit_lock_y, this.storage_deposit_lock_y);
         if (c.deposit_pitch !== undefined) this.storage_deposit_pitch = this._safeStoragePitch(c.deposit_pitch);
         if (c.deposit_yaw !== undefined) this.storage_deposit_yaw = this._safeStorageYaw(c.deposit_yaw); // giữ nguyên yaw tuyệt đối, KHÔNG đảo 180°
@@ -2796,32 +2738,29 @@ class BotInstance {
 
     _getStorageActiveFilePath() {
         const username = this.username || 'default';
-        return path.join(__dirname, `_storage_active_${username}.json`);
+        return path.join(__dirname, `.storage_active_${username}.json`);
     }
 
-    _saveStorageActiveState(active = true) {
+    _saveStorageActiveState(active) {
         try {
-            const filePath = this._getStorageActiveFilePath();
+            const fp = this._getStorageActiveFilePath();
             if (active) {
-                fs.writeFileSync(filePath, JSON.stringify({ active: true, username: this.username, updatedAt: Date.now() }, null, 2), 'utf-8');
+                fs.writeFileSync(fp, JSON.stringify({ active: true, username: this.username, updatedAt: Date.now() }), 'utf8');
             } else {
-                if (fs.existsSync(filePath)) {
-                    fs.unlinkSync(filePath);
-                }
+                if (fs.existsSync(fp)) fs.unlinkSync(fp);
             }
-        } catch (e) {}
+        } catch (_) {}
     }
 
     _isStorageActivePersisted() {
         try {
-            const filePath = this._getStorageActiveFilePath();
-            if (fs.existsSync(filePath)) {
-                const raw = fs.readFileSync(filePath, 'utf-8');
-                const data = JSON.parse(raw);
-                return data && data.active === true;
-            }
-        } catch (e) {}
-        return false;
+            const fp = this._getStorageActiveFilePath();
+            if (!fs.existsSync(fp)) return false;
+            const data = JSON.parse(fs.readFileSync(fp, 'utf8'));
+            return !!(data && data.active);
+        } catch (_) {
+            return false;
+        }
     }
 
     _getWaypointFilePath() {
@@ -3016,7 +2955,6 @@ class BotInstance {
         this.lock_pitch_yaw = false;
         this._goto_in_progress = true;
 
-        await this.sleep(350);
         const movements = this._makeMovements();
         try { this.bot.pathfinder.setMovements(movements); } catch (e) {}
 
@@ -4019,9 +3957,6 @@ class BotInstance {
                         // bắt đầu Hộp mới. Không mang GOTO/R1-R2 của Hộp cũ sang Hộp mới.
                         this._resetStorageGotoRuntime(`Hộp ${currentBoxNumber} đạt 3/3 → chuẩn bị Hộp ${nextBoxAfterClear.index + 1}`);
                         this._storage_chain_phase = 'clear';
-                        this._storage_box_index = nextBoxAfterClear.index;
-                        this._storage_in_box2 = this._storage_box_index >= 1;
-                        this._applyStorageBoxSettings(nextBoxAfterClear);
 
                         const boxLabel = `HỘP ${nextBoxAfterClear.index + 1}`;
                         const nextGotoOk = await this._pathfinderGotoExactXYZ(
@@ -4035,6 +3970,9 @@ class BotInstance {
                             continue;
                         }
 
+                        this._storage_box_index = nextBoxAfterClear.index;
+                        this._storage_in_box2 = this._storage_box_index >= 1;
+                        this._applyStorageBoxSettings(nextBoxAfterClear);
                         this._resetStorageGotoRuntime(`đã tới ${boxLabel} → GOTO 1/3`);
                         this.log(`📦 [${boxLabel}] Đã tới XYZ → reset sạch state, bắt đầu lại từ GOTO 1/3.`, '#2ecc71');
                         continue;
@@ -4113,16 +4051,11 @@ class BotInstance {
                     // Nếu có Hộp kế tiếp: /back về Y Dọn Rương trước, rồi #goto XYZ.
                     if (nextBoxAfterDeposit) {
                         this._storage_chain_phase = 'clear';
-                        this._storage_box_index = nextBoxAfterDeposit.index;
-                        this._storage_in_box2 = this._storage_box_index >= 1;
-                        this._storage_active_clear_config = null;
-                        this._applyStorageBoxSettings(nextBoxAfterDeposit);
-
                         const backToClearBeforeNextBox = this.parseStorageCommands(this.storage_deposit_command);
                         if (backToClearBeforeNextBox.length) {
                             this.log(`🔙 [CHUỖI RƯƠNG] Đã đẩy hết item → ${this.storage_deposit_command} → quay lại Y DỌN RƯƠNG trước khi sang Hộp ${nextBoxAfterDeposit.index + 1}.`, '#4a9eff');
                             await this.runCommandSequence(backToClearBeforeNextBox);
-                            await this.sleep(1000);
+                            await this.sleep(700);
                         }
                         if (!this.auto_storage_running || this._storage_cancel_token !== myToken || !this.running) break;
 
@@ -4134,6 +4067,11 @@ class BotInstance {
                             await this.sleep(500);
                             continue;
                         }
+                        this._storage_box_index = nextBoxAfterDeposit.index;
+                        this._storage_in_box2 = this._storage_box_index >= 1;
+                        this._storage_active_clear_config = null;
+                        this._applyStorageBoxSettings(nextBoxAfterDeposit);
+                        // _applyStorageBoxSettings đã áp dụng VIEWLOCK ngay theo Y của Hộp mới.
                         this._storage_clear_stage = 0;
                         this._storage_clear_gotos = 0;
                         this._storage_clear_pair_step = 0;
@@ -4174,14 +4112,6 @@ class BotInstance {
             }
         } catch (e) {
             this.log(`❌ [CHUỖI RƯƠNG] Lỗi: ${e && e.message ? e.message : e}`, '#ff4d6d');
-            if (this.auto_storage_running && this.running) {
-                this.log(`🔄 [CHUỖI RƯƠNG] Tự động thử lại chu kỳ sau 3s...`, '#f5c842');
-                setTimeout(() => {
-                    if (this.auto_storage_running && this.running && !this._storage_cycle_in_progress) {
-                        this._storageLoop();
-                    }
-                }, 3000);
-            }
         } finally {
             this._storage_cycle_in_progress = false;
         }
@@ -4258,8 +4188,7 @@ class BotInstance {
 
         // Huỷ chuỗi hiện tại (token++ → mọi flow đang chạy tự thoát), KHÔNG disconnect.
         this.auto_storage_running = false;
-        this.storage_persist = true;
-        this._saveStorageActiveState(true);
+        this.storage_persist = false;
         this._storage_cancel_token++;
         if (this.auto_storage_timer) { clearTimeout(this.auto_storage_timer); this.auto_storage_timer = null; }
         try { if (this.bot && this.bot.pathfinder) this.bot.pathfinder.setGoal(null); } catch (e) {}
@@ -4950,7 +4879,9 @@ class BotInstance {
         }
         if (settings.storage_persist !== undefined) {
             this.storage_persist = !!settings.storage_persist;
-            if (this.storage_persist) this._saveStorageActiveState(true);
+            if (this.storage_persist) {
+                this._saveStorageActiveState(true);
+            }
         }
         if (settings.target_amount !== undefined) this.target_amount = settings.target_amount;
         if (settings.storage_commands !== undefined) this.storage_commands = settings.storage_commands;
@@ -5072,10 +5003,12 @@ class BotInstance {
                 this.stopAntiAfk();
             }
 
-            if (this.storage_persist && !this.auto_storage_running) {
-                this.startAutoStorage();
-            } else if (!this.storage_persist && this.auto_storage_running) {
-                this.stopAutoStorage();
+            if (settings.storage_persist !== undefined) {
+                if (this.storage_persist && !this.auto_storage_running) {
+                    this.startAutoStorage();
+                } else if (!this.storage_persist && this.auto_storage_running) {
+                    this.stopAutoStorage(true);
+                }
             }
         }
 
@@ -5592,7 +5525,7 @@ class BotInstance {
                     const lockPitchRad = (Number(this.lock_pitch) || 0) * Math.PI / 180;
                     yaw = lockYawRad;
                     if (Math.abs(this.bot.entity.yaw - lockYawRad) > 0.05 || Math.abs(this.bot.entity.pitch - lockPitchRad) > 0.05) {
-                        try { this.bot.look(lockYawRad, lockPitchRad, false); } catch (e) {}
+                        try { this.bot.look(lockYawRad, lockPitchRad, true); } catch (e) {}
                     }
                 }
                 const forward = -dx * Math.sin(yaw) - dz * Math.cos(yaw);
@@ -6105,27 +6038,33 @@ class BotInstance {
             return false;
         }
 
-        // 3. Nếu đã đánh dấu joined_server -> chắc chắn đã vào server
-        if (this.joined_server) return true;
-
-        // 4. Nếu đang ở đúng Y Dọn (190) hoặc Y Nhà (254) -> 100% ĐÃ Ở TRONG SERVER GAME!
-        if (this.isNearClearY(2.5) || this.isNearDepositY(2.5)) {
-            return true;
-        }
-
-        // 5. Nếu hotbar có item game thực sự (kiếm, cuốc, v.v.) và không có compass -> Đã ở trong server game
-        if (this.hasGameItemInHotbar()) {
-            return true;
-        }
-
-        // 6. Kiểm tra lobby spawn
+        // 3. Đang ở sảnh lobby (theo isAtSpawn) -> CHƯA VÀO SERVER!
         if (this.isAtSpawn()) return false;
 
-        // 7. ⭐ SAU KHI CLICK RÌU (DIAMOND AXE):
+        // 4. Nếu đã đánh dấu joined_server -> chắc chắn đã vào server
+        if (this.joined_server) return true;
+
+        const y = this.bot.entity && this.bot.entity.position ? Number(this.bot.entity.position.y) : NaN;
+        const clearY = Number(this.storage_clear_lock_y);
+        const depY = Number(this.storage_deposit_lock_y);
+
+        // 5. Nếu đang ở đúng Y Dọn (190) hoặc Y Nhà (254) -> 100% ĐÃ Ở TRONG SERVER GAME!
+        if (Number.isFinite(y)) {
+            const atClearY = Number.isFinite(clearY) && clearY > 0 && Math.abs(y - clearY) <= 2.5;
+            const atDepY = Number.isFinite(depY) && depY > 0 && Math.abs(y - depY) <= 2.5;
+            if (atClearY || atDepY) return true;
+        }
+
+        // 6. ⭐ SAU KHI CLICK RÌU (DIAMOND AXE):
         // GUI đã đóng, không còn compass trong túi đồ.
         // Kể cả hotbar có item game HOẶC TAY TRỐNG (không có item nào) → ĐỀU TÍNH LÀ ĐÃ VÀO SERVER!
         const axeClicked = this.clicked_axe || (this._last_axe_click_at && Date.now() - this._last_axe_click_at < 60000);
         if (axeClicked && (!this.bot.currentWindow || !this._isServerSelectWindow(this.bot.currentWindow))) {
+            return true;
+        }
+
+        // 7. Nếu hotbar có item game thực sự (kiếm, cuốc, v.v.) và không có compass -> Đã ở trong server game
+        if (this.hasGameItemInHotbar()) {
             return true;
         }
 
@@ -6153,68 +6092,6 @@ class BotInstance {
 
     hasStorageConfig() {
         return true;
-    }
-
-    _scheduleStorageLocationCheck(reason = 'vào server') {
-        if (this._storage_resume_check_timer) {
-            clearInterval(this._storage_resume_check_timer);
-            this._storage_resume_check_timer = null;
-        }
-
-        this.log(`🔍 [CHUỖI RƯƠNG] Khởi động bộ dò vị trí Y sau reconnect (${reason})...`, '#4a9eff');
-        let attempts = 0;
-        const maxAttempts = 35; // tối đa 35 giây
-
-        this._storage_resume_check_timer = setInterval(async () => {
-            attempts++;
-            if (!this.running || !this.bot) {
-                if (this._storage_resume_check_timer) {
-                    clearInterval(this._storage_resume_check_timer);
-                    this._storage_resume_check_timer = null;
-                }
-                return;
-            }
-
-            // Chưa vào server chơi hoặc đang ở sảnh lobby -> tiếp tục chờ
-            if (!this.joined_server || this.isAtSpawn() || this.findCompassSlot() !== -1) {
-                if (attempts % 5 === 0) {
-                    this.log(`⏳ [CHUỖI RƯƠNG] Đang chờ vào server chơi trước khi kiểm tra vị trí (${attempts}s)...`, '#8b949e');
-                }
-                if (attempts >= maxAttempts) {
-                    if (this._storage_resume_check_timer) {
-                        clearInterval(this._storage_resume_check_timer);
-                        this._storage_resume_check_timer = null;
-                    }
-                }
-                return;
-            }
-
-            const entity = this.bot.entity;
-            if (!entity || !entity.position) {
-                if (attempts >= maxAttempts) {
-                    if (this._storage_resume_check_timer) {
-                        clearInterval(this._storage_resume_check_timer);
-                        this._storage_resume_check_timer = null;
-                    }
-                }
-                return;
-            }
-
-            const y = Number(entity.position.y);
-            // Nếu tọa độ Y vẫn là tọa độ sảnh lobby (Y=14, Y=28) -> tiếp tục chờ
-            if (Math.abs(y - 14.0) <= 2.5 || Math.abs(y - 28.06) <= 2.5) {
-                return;
-            }
-
-            // Tọa độ đã ổn định ở subserver (Y=190 hoặc Y=254 hoặc tầng rương khác)!
-            if (this._storage_resume_check_timer) {
-                clearInterval(this._storage_resume_check_timer);
-                this._storage_resume_check_timer = null;
-            }
-
-            this.log(`🎯 [CHUỖI RƯƠNG] Tọa độ subserver ổn định (Y=${y.toFixed(2)}) → Kiểm tra vị trí Y và kích hoạt Chuỗi Rương ngay!`, '#2ecc71');
-            await this.checkLocationAndAutoStartStorage(reason);
-        }, 1000);
     }
 
     async checkLocationAndAutoStartStorage(reason = 'vào server') {
@@ -6265,8 +6142,8 @@ class BotInstance {
 
             this.log(`📍 [KIỂM TRA VỊ TRÍ] (${reason}): Y hiện tại=${curY.toFixed(3)} | Y Khóa Dọn=${clearY.toFixed(3)} | Y Khóa Nhà=${depY.toFixed(3)}`, '#4a9eff');
 
-            const isAtDep = this.isNearDepositY(1.5) || Math.abs(curY - depY) <= 1.5;
-            const isAtClear = this.isNearClearY(1.5) || Math.abs(curY - clearY) <= 1.5;
+            const isAtDep = this.isNearDepositY(1.5);
+            const isAtClear = this.isNearClearY(1.5);
 
             // ⭐ CASE 1: ĐANG Ở ĐÚNG Y NHÀ RƯƠNG (Y ≈ 254)
             // Yêu cầu: "Y nhà rương thì giữ nguyên ... rồi lúc đó lại tiếp tục vòng lặp kích hoạt chuỗi rương"
@@ -6274,64 +6151,107 @@ class BotInstance {
                 this.log(`🏠 [VÀO SERVER] Y hiện tại = Y Nhà Rương (${curY.toFixed(2)}) → Giữ nguyên, kích hoạt vòng lặp Chuỗi Rương (chạy lệnh đầu chu kỳ "${this.storage_clear_command}" sang Dọn Phễu rồi dọn)...`, '#2ecc71');
                 this._resume_storage_after_rejoin = false;
                 this.storage_persist = true;
+                this._saveStorageActiveState(true);
                 this._clearDepositWaypoint('bật chuỗi dọn lại từ đầu ở Nhà Rương');
                 this.startAutoStorage(false);
                 return;
             }
 
-            // ⭐ CASE 2: Y HIỆN TẠI KHÁC Y NHÀ RƯƠNG (Y hiện tại = Y Dọn Rương hoặc spawn)
-            // Yêu cầu: "Y dọn rương thì chạy cái command home khi vào server lại dưới cái comand home chu kỳ sau đó ngay lập tức goto tới waypoint rồi lúc đó lại tiếp tục vòng lặp kích hoạt chuỗi rương"
-            let homeCmd = String(this.storage_reconnect_home_command || '').trim();
-            if (!homeCmd || homeCmd === '/home 1 delay 8000' || homeCmd === '/home 1') {
-                homeCmd = '/home 2 delay 1000';
+            // ⭐ CASE 2: Y HIỆN TẠI LÀ Y DỌN RƯƠNG (Y ≈ 190)
+            if (isAtClear) {
+                const wp = this._loadDepositWaypoint();
+                const hasWaypointToResume = wp && Number.isFinite(wp.hops) && wp.hops > 0;
+                let homeCmd = String(this.storage_reconnect_home_command || '').trim();
+                if (!homeCmd || homeCmd.startsWith('/home 2')) {
+                    homeCmd = '/home delay 8000';
+                }
+
+                // Nếu có waypoint đang cất dở ở Nhà Rương cần về:
+                if (hasWaypointToResume && homeCmd) {
+                    this.log(`🏠 [VÀO SERVER] Y hiện tại=${curY.toFixed(2)} (Y Dọn Rương) có waypoint cất dở → Chạy lệnh "${homeCmd}" để về Nhà Rương tiếp tục...`, '#4a9eff');
+                    const cmds = this.parseStorageCommands(homeCmd);
+                    if (cmds.length) {
+                        await this.runCommandSequence(cmds);
+                        const waitStart = Date.now();
+                        while (this.running && this.bot && Date.now() - waitStart < 15000) {
+                            await this.sleep(300);
+                            if (this.isNearDepositY(1.5)) {
+                                this.log(`✅ [VỀ NHÀ RƯƠNG] Đã về tới Nhà Rương an toàn (Y=${this.bot.entity.position.y.toFixed(2)}).`, '#2ecc71');
+                                break;
+                            }
+                        }
+                    }
+
+                    if (this.isNearDepositY(1.5)) {
+                        this.lock_pitch = this._safeStoragePitch(this.storage_deposit_pitch);
+                        this.lock_yaw = this._safeStorageYaw(this.storage_deposit_yaw);
+                        this.lock_pitch_yaw = true;
+                        this.applyChestPitchYaw(true);
+                        this.startPitchYawLockLoop();
+
+                        this.log(`📍 [WAYPOINT RESUME] Đã về Nhà Rương → Ngay lập tức GOTO tới waypoint rương vừa lưu: (${wp.x}, ${wp.y}, ${wp.z}) (rương #${wp.hops + 1})...`, '#2ecc71');
+                        await this._gotoSavedWaypointAfterHome('sau khi về Nhà Rương');
+
+                        this._resume_storage_after_rejoin = false;
+                        this.storage_persist = true;
+                        this._saveStorageActiveState(true);
+                        this.log(`▶️ [CHUỖI RƯƠNG] Tiếp tục vòng lặp kích hoạt Chuỗi Rương...`, '#2ecc71');
+                        this.startAutoStorage(true);
+                        return;
+                    }
+                }
+
+                // NẾU KHÔNG CÓ WAYPOINT HOẶC CHƯA VỀ NHÀ RƯƠNG (BOT ĐANG Ở Y DỌN RƯƠNG):
+                // TIẾP TỤC CHUỖI RƯƠNG NGAY TẠI Y DỌN RƯƠNG!
+                this.log(`🧹 [VÀO SERVER] Y hiện tại = Y Dọn Rương (${curY.toFixed(2)}) → Ngay lập tức tiếp tục Chuỗi Rương (mở rương lấy đồ tại Dọn Phễu, khi đầy balo sẽ về Nhà Rương)...`, '#2ecc71');
+                this.lock_pitch = this._safeStoragePitch(this.storage_clear_pitch);
+                this.lock_yaw = this._safeStorageYaw(this.storage_clear_yaw);
+                this.lock_pitch_yaw = true;
+                this.applyChestPitchYaw(false);
+                this.startPitchYawLockLoop();
+
+                this._resume_storage_after_rejoin = false;
+                this.storage_persist = true;
+                this._saveStorageActiveState(true);
+                this.startAutoStorage(true);
+                return;
             }
 
-            this.log(`🏠 [VÀO SERVER] Y hiện tại=${curY.toFixed(2)} (Y Dọn Rương) KHÁC Y Nhà Rương (${depY.toFixed(2)}) → Chạy lệnh home khi vào server lại "${homeCmd}" để về Nhà Rương...`, '#4a9eff');
+            // ⭐ CASE 3: Y KHÁC (Spawn hoặc chưa rõ tầng Y)
+            let homeCmd = String(this.storage_reconnect_home_command || '').trim();
+            if (!homeCmd || homeCmd.startsWith('/home 2')) {
+                homeCmd = '/home delay 8000';
+            }
+            this.log(`🏠 [VÀO SERVER] Y hiện tại=${curY.toFixed(2)} → Chạy lệnh "${homeCmd}"...`, '#4a9eff');
             const cmds = this.parseStorageCommands(homeCmd);
             if (cmds.length) {
                 await this.runCommandSequence(cmds);
-
-                // Chờ bot dịch chuyển về tới Nhà Rương (tối đa 15s)
                 const waitStart = Date.now();
                 while (this.running && this.bot && Date.now() - waitStart < 15000) {
                     await this.sleep(300);
-                    if (this.isNearDepositY(1.5) || (this.bot.entity && Math.abs(this.bot.entity.position.y - depY) <= 1.5)) {
-                        this.log(`✅ [VỀ NHÀ RƯƠNG] Đã về tới Nhà Rương an toàn (Y=${this.bot.entity.position.y.toFixed(2)}).`, '#2ecc71');
-                        break;
-                    }
+                    if (this.isNearDepositY(1.5) || this.isNearClearY(1.5)) break;
                 }
             }
 
-            // KHI ĐÃ VỀ TỚI NHÀ RƯƠNG: NGAY LẬP TỨC GOTO TỚI WAYPOINT
-            if (this.isNearDepositY(1.5) || (this.bot && this.bot.entity && Math.abs(this.bot.entity.position.y - depY) <= 1.5)) {
-                // Khóa góc nhìn Nhà Rương
+            if (this.isNearDepositY(1.5)) {
                 this.lock_pitch = this._safeStoragePitch(this.storage_deposit_pitch);
                 this.lock_yaw = this._safeStorageYaw(this.storage_deposit_yaw);
                 this.lock_pitch_yaw = true;
                 this.applyChestPitchYaw(true);
                 this.startPitchYawLockLoop();
 
-                // Ngay lập tức GOTO tới waypoint rương vừa lưu lúc chuẩn bị mở rương ở Nhà Rương
                 const wp = this._loadDepositWaypoint();
                 if (wp && Number.isFinite(wp.hops) && wp.hops > 0) {
-                    this.log(`📍 [WAYPOINT RESUME] Đã về Nhà Rương → Ngay lập tức GOTO tới waypoint rương vừa lưu: (${wp.x}, ${wp.y}, ${wp.z}) (rương #${wp.hops + 1})...`, '#2ecc71');
+                    this.log(`📍 [WAYPOINT RESUME] Đã về Nhà Rương → GOTO tới waypoint (${wp.x}, ${wp.y}, ${wp.z})...`, '#2ecc71');
                     await this._gotoSavedWaypointAfterHome('sau khi về Nhà Rương');
-                } else {
-                    this.log(`ℹ️ [WAYPOINT RESUME] Chưa có waypoint rương cất dở trước đó, sẵn sàng cất từ rương đầu.`, '#4a9eff');
                 }
-
-                // Tiếp tục vòng lặp kích hoạt Chuỗi Rương
-                this._resume_storage_after_rejoin = false;
-                this.storage_persist = true;
-                this.log(`▶️ [CHUỖI RƯƠNG] Tiếp tục vòng lặp kích hoạt Chuỗi Rương...`, '#2ecc71');
-                this.startAutoStorage(true);
-            } else {
-                this.log(`⚠️ [VÀO SERVER] Bot chưa về tới Y Nhà Rương sau khi chạy "${homeCmd}" (Y hiện tại=${this.bot && this.bot.entity ? this.bot.entity.position.y.toFixed(2) : '?'}) → Tiếp tục kích hoạt Chuỗi Rương tại vị trí hiện tại!`, '#f5c842');
-                this._resume_storage_after_rejoin = false;
-                this.storage_persist = true;
-                this._saveStorageActiveState(true);
-                this.startAutoStorage(true);
             }
+
+            this._resume_storage_after_rejoin = false;
+            this.storage_persist = true;
+            this._saveStorageActiveState(true);
+            this.log(`▶️ [CHUỖI RƯƠNG] Tiếp tục vòng lặp kích hoạt Chuỗi Rương...`, '#2ecc71');
+            this.startAutoStorage(true);
         } catch (e) {
             this.log(`⚠️ [KIỂM TRA VỊ TRÍ] Lỗi: ${e && e.message ? e.message : e}`, '#ff4d6d');
         } finally {
@@ -6379,10 +6299,20 @@ class BotInstance {
         setTimeout(() => this.ensureSwordInHand(), 2500);
 
         // ⭐ TỰ ĐỘNG KIỂM TRA VỊ TRÍ Y VÀ KHÔI PHỤC / CHẠY CHUỖI RƯƠNG SAU KHI VÀO LẠI SERVER:
-        if (this.storage_persist || this._resume_storage_after_rejoin || this._isStorageActivePersisted() || this.storage_autostart_on_join) {
+        if (this.storage_persist || this._resume_storage_after_rejoin || this._isStorageActivePersisted()) {
             this.storage_persist = true;
             this._resume_storage_after_rejoin = true;
-            this._scheduleStorageLocationCheck('vào server');
+            this.log(`🔍 [CHUỖI RƯƠNG] Nhận diện bot vừa kết nối lại server → Kiểm tra vị trí Y sau 1.5s...`, '#4a9eff');
+            setTimeout(() => {
+                if (this.running && this.joined_server && !this.isAtSpawn()) {
+                    this.checkLocationAndAutoStartStorage('vào server');
+                }
+            }, 1500);
+            setTimeout(() => {
+                if (this.running && this.joined_server && !this.isAtSpawn() && !this.auto_storage_running && !this._location_check_in_progress) {
+                    this.checkLocationAndAutoStartStorage('vào server (dự phòng)');
+                }
+            }, 3500);
         }
 
         if (this.afk_persist && !this.anti_afk_running) {
@@ -6598,8 +6528,8 @@ class BotInstance {
                     if (!this.running || !this.bot || !this.bot.entity) return;
                     const y = Number(this.bot.entity.position.y);
 
-                    // ⭐ PHÁT HIỆN LOBBY CHÍNH XÁC KHI TỌA ĐỘ Y Ở SẢNH HOẶC CÓ COMPASS:
-                    if (this.isAtSpawn() && (Math.abs(y - 28.06) <= 2.5 || Math.abs(y - 14.0) <= 2.5 || this.findCompassSlot() !== -1)) {
+                    // ⭐ PHÁT HIỆN LOBBY NGAY LẬP TỨC KHI THAY ĐỔI TỌA ĐỘ Y:
+                    if (this.isAtSpawn()) {
                         if (this.joined_server || !this._in_lobby_state) {
                             this._handleCompassDetected(`move Y=${y.toFixed(2)} ở lobby`);
                             return;
@@ -6616,18 +6546,22 @@ class BotInstance {
                             this._storage_viewlock_last_key = key;
                             this.applyStorageViewLockByY(phase);
                         }
+                        if ((this.storage_persist || this._resume_storage_after_rejoin || this._isStorageActivePersisted()) && !this.auto_storage_running && !this._location_check_in_progress) {
+                            if (this.isNearClearY(1.5) || this.isNearDepositY(1.5)) {
+                                this.checkLocationAndAutoStartStorage('di chuyển đến tầng Y chơi');
+                            }
+                        }
                     }
                 } catch (e) {}
             });
 
             this.bot.on('spawn', () => {
-                const y = this.bot && this.bot.entity ? Number(this.bot.entity.position.y) : NaN;
                 if (this.isJoinedServer()) {
-                    this.log(`🎉 [SPAWN] Phát hiện đã ở trong server game (Y=${Number.isFinite(y) ? y.toFixed(2) : '?'})!`, '#2ecc71');
+                    this.log(`🎉 [SPAWN] Phát hiện đã ở trong server game (Y=${this.bot && this.bot.entity ? this.bot.entity.position.y.toFixed(2) : '?'})!`, '#2ecc71');
                     this.sendJoined();
                     this.markJoinedServer();
-                } else if (this.findCompassSlot() !== -1 || (this.isAtSpawn() && (Math.abs(y - 28.06) <= 2.5 || Math.abs(y - 14.0) <= 2.5))) {
-                    this.log(`🌍 Đang ở spawn lobby (Y=${Number.isFinite(y) ? y.toFixed(2) : '?'}) → chuyển sang quy trình lobby...`, '#f5c842');
+                } else if (this.findCompassSlot() !== -1 || this.isAtSpawn()) {
+                    this.log(`🌍 Đang ở spawn lobby (Y=${this.bot && this.bot.entity ? this.bot.entity.position.y.toFixed(2) : '?'}) → chuyển sang quy trình lobby...`, '#f5c842');
                     this._handleCompassDetected('spawn lobby');
                 }
                 if (this._spawn_logged) {
@@ -6636,19 +6570,17 @@ class BotInstance {
                         this.hotbarTick('spawn lại');
                         if (this.joined_server && !this.isAtSpawn()) {
                             this.ensureSwordInHand();
-                            if ((this.storage_persist || this._resume_storage_after_rejoin || this._isStorageActivePersisted()) && !this.auto_storage_running) {
-                                this._scheduleStorageLocationCheck('spawn lại');
+                            if ((this.storage_persist || this._resume_storage_after_rejoin || this._isStorageActivePersisted()) && !this.auto_storage_running && !this._location_check_in_progress) {
+                                this.checkLocationAndAutoStartStorage('spawn lại vào server');
                             }
                         }
-                    }, 500);
+                    }, 800);
                     return;
                 }
                 if (!this._spawn_logged) {
                     this._spawn_logged = true;
                     this._spawn_at = Date.now();
-                    if (!this.isJoinedServer()) {
-                        this.joined_server = false;
-                    }
+                    this.joined_server = false;
                     this.touchActivity();
 
                     this.fetchPublicIp().then((ip) => {

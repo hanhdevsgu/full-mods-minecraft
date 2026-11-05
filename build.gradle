@@ -1,0 +1,79 @@
+buildscript {
+    repositories {
+        mavenCentral()
+        maven {
+            name = "forge"
+            url = "https://maven.minecraftforge.net/"
+        }
+    }
+    dependencies {
+        classpath 'net.minecraftforge.gradle:ForgeGradle:2.3-SNAPSHOT'
+    }
+}
+
+apply plugin: 'net.minecraftforge.gradle.forge'
+
+version = "1.0"
+group = "com.autorefill"
+archivesBaseName = "AutoAimSellSign-1.12.2"
+
+sourceCompatibility = targetCompatibility = '1.8'
+compileJava {
+    sourceCompatibility = targetCompatibility = '1.8'
+    options.encoding = 'UTF-8'
+}
+
+minecraft {
+    version = "1.12.2-14.23.5.2847"
+    runDir = "run"
+    mappings = "stable_39"
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    // Baritone is accessed via reflection in code
+}
+
+processResources {
+    // Keep resources exactly as they are in src/main/resources
+}
+
+jar {
+    exclude 'META-INF/fml_cache_*'
+    manifest {
+        attributes([
+            "Specification-Title": "examplemod",
+            "Specification-Vendor": "examplemodsareus",
+            "Specification-Version": "1",
+            "Implementation-Title": "AutoAimSellSign",
+            "Implementation-Version": "1.0",
+            "Implementation-Vendor" :"examplemodsareus",
+            "Implementation-Timestamp": "2026-10-24T06:11:59+0700"
+        ])
+    }
+}
+
+
+build.doLast {
+    File jarFile = new File(project.buildDir, 'libs/AutoAimSellSign-1.12.2-1.0.jar')
+    if (jarFile.exists()) {
+        def zipFile = new java.util.zip.ZipFile(jarFile)
+        def tempFile = new File(jarFile.parentFile, jarFile.name + '.tmp')
+        def zipOut = new java.util.zip.ZipOutputStream(new FileOutputStream(tempFile))
+        
+        zipFile.entries().each { entry ->
+            if (!entry.name.startsWith('META-INF/fml_cache_')) {
+                zipOut.putNextEntry(new java.util.zip.ZipEntry(entry.name))
+                zipOut << zipFile.getInputStream(entry)
+                zipOut.closeEntry()
+            }
+        }
+        zipOut.close()
+        zipFile.close()
+        jarFile.delete()
+        tempFile.renameTo(jarFile)
+    }
+}

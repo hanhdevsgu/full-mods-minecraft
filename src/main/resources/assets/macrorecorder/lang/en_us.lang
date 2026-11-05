@@ -1,0 +1,107 @@
+# ============================================================
+# English Language File for Macro Recorder Mod
+# ============================================================
+
+# ============================================================
+# CATEGORY
+# ============================================================
+key.categories.macro=Macro Recorder
+
+# ============================================================
+# VIEW LOCK (AimTool)
+# ============================================================
+key.categories.aimtool=View Lock (AimTool)
+key.aimtool.togglelock=Toggle View Lock
+key.aimtool.opengui=Open Yaw/Pitch GUI
+
+# ============================================================
+# KEY BINDINGS
+# ============================================================
+key.macro.open_gui=Open Config GUI
+key.macro.run=Run Macro
+key.macro.stop=Stop Macro
+
+# ============================================================
+# GUI
+# ============================================================
+gui.macro.config.title=MACRO CONFIG
+gui.macro.vaults=Number of vaults to use:
+gui.macro.action_delay=Action Delay (ticks):
+gui.macro.action_delay_note=(0=fastest, 20=1 second)
+gui.macro.move_wait=Move Wait (ticks):
+gui.macro.move_wait_note=(time to wait while moving)
+gui.macro.wait_after_click=Wait After Click (ticks):
+gui.macro.wait_after_click_note=(wait after each action)
+gui.macro.help1=ENTER to Save & Close | ESC to Cancel
+gui.macro.help2=Save = Save config | Start = Save and Run now
+gui.save=Save
+gui.start=Start
+gui.cancel=Cancel
+
+# ============================================================
+# GUI TOOLTIPS
+# ============================================================
+gui.tooltip.vaults=Number of /pv vaults to run, from 1 to N
+gui.tooltip.action_delay=Delay between actions (0 = fastest)
+gui.tooltip.move_wait=Time to wait moving between vaults
+gui.tooltip.wait_after_click=Time to wait after each action
+gui.tooltip.save=Save config and close the GUI
+gui.tooltip.start=Save config and start the macro now
+gui.tooltip.cancel=Close the GUI without saving
+
+# ============================================================
+# CONSOLE LOGS
+# ============================================================
+macro.log.init=Macro Recorder Mod initialized!
+macro.log.start=MACRO STARTED
+macro.log.stop=MACRO STOPPED
+macro.log.complete=MACRO COMPLETE
+macro.log.vault=Processing vault %d
+macro.log.take_sugar=Took %d stacks of sugar cane
+macro.log.move_sugar=Deposited %d stacks of sugar cane
+macro.log.send_pv=Sent /pv %d
+macro.log.moving=Moving to the next vault...
+macro.log.moved=Finished moving
+macro.log.total_sugar=Total sugar cane: %d stacks
+macro.log.error=Error: %s
+macro.log.config_saved=Config saved
+
+# ============================================================
+# STATUS MESSAGES
+# ============================================================
+macro.status.stopped=MACRO STOPPED at vault %d
+macro.status.completed=COMPLETE! Processed %d vaults
+
+# ============================================================
+# USAGE GUIDE
+# ============================================================
+macro.help.title=MACRO USAGE GUIDE
+macro.help.line1=1. Stand in front of a real chest, look at it
+macro.help.line2=2. Press F8 to open the config GUI
+macro.help.line3=3. Enter the number of vaults to use
+macro.help.line4=4. Press Save to save the config
+macro.help.line5=5. Press F9 to start running the macro
+macro.help.line6=6. Press F10 to stop the macro at any time
+macro.help.footer=Good luck!
+
+# ============================================================
+# ERROR MESSAGES
+# ============================================================
+error.invalid_number=Please enter a valid number (1-9999)
+error.running=Macro is running, cannot open GUI
+error.not_ready=Cannot start: player not ready
+error.no_chest=No chest found, please look at a chest
+error.no_sugar=No sugar cane found in this chest
+error.inventory_full=Inventory is full, cannot take more
+
+# ============================================================
+# BUTTON LABELS
+# ============================================================
+button.save=Save
+button.start=Start
+button.cancel=Cancel
+button.close=Close
+button.apply=Apply
+button.reset=Reset
+key.categories.quizpeek=QuizPeek
+key.quizpeek.timingconfig=Answer click timing

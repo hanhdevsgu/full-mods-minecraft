@@ -732,6 +732,12 @@ function startWsServer() {
 
                     case 'set_storage':
                         if (username) {
+                            if (bots[username]) {
+                                if (!bots[username].settings) bots[username].settings = {};
+                                bots[username].settings.storage_persist = !!enabled;
+                                bots[username].auto_storage_running = !!enabled;
+                                saveRunningState();
+                            }
                             sendBotCommand(username, 'set_storage', { enabled: !!enabled });
                         }
                         break;

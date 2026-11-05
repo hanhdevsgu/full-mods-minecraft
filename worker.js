@@ -214,7 +214,9 @@ class BotInstance {
         this.afk_persist = settings.afk_persist !== undefined ? settings.afk_persist : true;
         this.farm_persist = settings.farm_persist !== undefined ? settings.farm_persist : false;
 
-        this.storage_persist = false;
+        this.storage_persist = this._isStorageActivePersisted() || !!settings.storage_persist;
+        this._resume_storage_after_rejoin = this.storage_persist;
+        this._storage_resume_check_timer = null;
         this.target_amount = settings.target_amount !== undefined ? settings.target_amount : 0;
         this.storage_commands = settings.storage_commands !== undefined ? settings.storage_commands : '';
         this.storage_loop_delay = settings.storage_loop_delay !== undefined ? settings.storage_loop_delay : 0;
@@ -700,6 +702,7 @@ class BotInstance {
     sendDn(reason = '', minGapMs = 2000, force = false) {
         if (!this.bot || !this.running) return false;
         if (!this.password) return false;
+        if (this.isJoinedServer() || (this.joined_server && !this.isAtSpawn())) return false;
         if (!force && this._already_logged_in && this.joined_server && this.clicked_axe) return false;
         const now = Date.now();
         if (now - this._last_dn_at < minGapMs) return false;
@@ -738,6 +741,7 @@ class BotInstance {
     startDnLoop(reason = '') {
         if (this._dn_loop_active) return;
         if (!this.bot || !this.running) return;
+        if (this.isJoinedServer() || (this.joined_server && !this.isAtSpawn())) return;
         if (this._already_logged_in && this.joined_server && this.clicked_axe) return;
         this._dn_loop_active = true;
         this._dn_attempts = 0;
@@ -1790,6 +1794,7 @@ class BotInstance {
 
         this.auto_storage_running = true;
         this.storage_persist = true;
+        this._saveStorageActiveState(true);
         this.sendStatus();
         this._expect_guard_busy = false;
         this._startExpectGuardMonitor();
@@ -1860,11 +1865,19 @@ class BotInstance {
         } catch (e) {}
     }
 
-    stopAutoStorage() {
+    stopAutoStorage(isExplicitUserStop = false) {
         // TẮT = huỷ ngay phiên hiện tại. Không disconnect bot và không đụng
-        // AFK/Farm/Proxy/ViewLock. Lần BẬT tiếp theo sẽ tạo phiên mới từ đầu.
+        // AFK/Farm/Proxy/ViewLock.
         this.auto_storage_running = false;
-        this.storage_persist = false;
+        if (isExplicitUserStop) {
+            this.storage_persist = false;
+            this._resume_storage_after_rejoin = false;
+            this._saveStorageActiveState(false);
+            if (this._storage_resume_check_timer) {
+                clearInterval(this._storage_resume_check_timer);
+                this._storage_resume_check_timer = null;
+            }
+        }
         this._storage_cancel_token++;
         this._stopExpectGuardMonitor();
         if (this.auto_storage_timer) {
@@ -1899,19 +1912,23 @@ class BotInstance {
         }
         if (wantEnabled) {
             this.log(`▶️ [CHUỖI RƯƠNG] BẬT → RESET VỀ HỘP 1 / GOTO 1`, '#2ecc71');
+            this.storage_persist = true;
+            this._saveStorageActiveState(true);
             this.startAutoStorage();
         } else {
-            this.stopAutoStorage();
+            this.stopAutoStorage(true);
         }
     }
 
     toggleAutoStorage() {
         if (this.auto_storage_running) {
-            this.stopAutoStorage();
+            this.stopAutoStorage(true);
             return;
         }
 
         this.log(`▶️ [CHUỖI RƯƠNG] START NEW | Hộp=1 | Bật Rương 2=${!!this.storage_clear2_enabled} | Pitch1=${this.storage_clear_pitch}, Yaw1=${this.storage_clear_yaw}`, '#4a9eff');
+        this.storage_persist = true;
+        this._saveStorageActiveState(true);
         this.startAutoStorage();
     }
 
@@ -2761,6 +2778,36 @@ class BotInstance {
             this._hotbar_restored = true;
             this.saved_hotbar_slot = targetSlot;
         } catch (e) {}
+    }
+
+    _getStorageActiveFilePath() {
+        const username = this.username || 'default';
+        return path.join(__dirname, `_storage_active_${username}.json`);
+    }
+
+    _saveStorageActiveState(active = true) {
+        try {
+            const filePath = this._getStorageActiveFilePath();
+            if (active) {
+                fs.writeFileSync(filePath, JSON.stringify({ active: true, username: this.username, updatedAt: Date.now() }, null, 2), 'utf-8');
+            } else {
+                if (fs.existsSync(filePath)) {
+                    fs.unlinkSync(filePath);
+                }
+            }
+        } catch (e) {}
+    }
+
+    _isStorageActivePersisted() {
+        try {
+            const filePath = this._getStorageActiveFilePath();
+            if (fs.existsSync(filePath)) {
+                const raw = fs.readFileSync(filePath, 'utf-8');
+                const data = JSON.parse(raw);
+                return data && data.active === true;
+            }
+        } catch (e) {}
+        return false;
     }
 
     _getWaypointFilePath() {
@@ -4189,7 +4236,8 @@ class BotInstance {
 
         // Huỷ chuỗi hiện tại (token++ → mọi flow đang chạy tự thoát), KHÔNG disconnect.
         this.auto_storage_running = false;
-        this.storage_persist = false;
+        this.storage_persist = true;
+        this._saveStorageActiveState(true);
         this._storage_cancel_token++;
         if (this.auto_storage_timer) { clearTimeout(this.auto_storage_timer); this.auto_storage_timer = null; }
         try { if (this.bot && this.bot.pathfinder) this.bot.pathfinder.setGoal(null); } catch (e) {}
@@ -4878,7 +4926,10 @@ class BotInstance {
             this.target_item_id = settings.target_item_id;
             this.logTargetItemDebugName();
         }
-        this.storage_persist = false;
+        if (settings.storage_persist !== undefined) {
+            this.storage_persist = !!settings.storage_persist;
+            if (this.storage_persist) this._saveStorageActiveState(true);
+        }
         if (settings.target_amount !== undefined) this.target_amount = settings.target_amount;
         if (settings.storage_commands !== undefined) this.storage_commands = settings.storage_commands;
         if (settings.storage_loop_delay !== undefined) this.storage_loop_delay = settings.storage_loop_delay;
@@ -6082,6 +6133,68 @@ class BotInstance {
         return true;
     }
 
+    _scheduleStorageLocationCheck(reason = 'vào server') {
+        if (this._storage_resume_check_timer) {
+            clearInterval(this._storage_resume_check_timer);
+            this._storage_resume_check_timer = null;
+        }
+
+        this.log(`🔍 [CHUỖI RƯƠNG] Khởi động bộ dò vị trí Y sau reconnect (${reason})...`, '#4a9eff');
+        let attempts = 0;
+        const maxAttempts = 35; // tối đa 35 giây
+
+        this._storage_resume_check_timer = setInterval(async () => {
+            attempts++;
+            if (!this.running || !this.bot) {
+                if (this._storage_resume_check_timer) {
+                    clearInterval(this._storage_resume_check_timer);
+                    this._storage_resume_check_timer = null;
+                }
+                return;
+            }
+
+            // Chưa vào server chơi hoặc đang ở sảnh lobby -> tiếp tục chờ
+            if (!this.joined_server || this.isAtSpawn() || this.findCompassSlot() !== -1) {
+                if (attempts % 5 === 0) {
+                    this.log(`⏳ [CHUỖI RƯƠNG] Đang chờ vào server chơi trước khi kiểm tra vị trí (${attempts}s)...`, '#8b949e');
+                }
+                if (attempts >= maxAttempts) {
+                    if (this._storage_resume_check_timer) {
+                        clearInterval(this._storage_resume_check_timer);
+                        this._storage_resume_check_timer = null;
+                    }
+                }
+                return;
+            }
+
+            const entity = this.bot.entity;
+            if (!entity || !entity.position) {
+                if (attempts >= maxAttempts) {
+                    if (this._storage_resume_check_timer) {
+                        clearInterval(this._storage_resume_check_timer);
+                        this._storage_resume_check_timer = null;
+                    }
+                }
+                return;
+            }
+
+            const y = Number(entity.position.y);
+            // Nếu tọa độ Y vẫn là tọa độ sảnh lobby (Y=14, Y=28) -> tiếp tục chờ
+            if (Math.abs(y - 14.0) <= 2.5 || Math.abs(y - 28.06) <= 2.5) {
+                return;
+            }
+
+            // Tọa độ đã ổn định ở subserver (Y=190 hoặc Y=254 hoặc tầng rương khác)!
+            if (this._storage_resume_check_timer) {
+                clearInterval(this._storage_resume_check_timer);
+                this._storage_resume_check_timer = null;
+            }
+
+            this.log(`🎯 [CHUỖI RƯƠNG] Tọa độ subserver ổn định (Y=${y.toFixed(2)}) → Kiểm tra vị trí Y và kích hoạt Chuỗi Rương ngay!`, '#2ecc71');
+            await this.checkLocationAndAutoStartStorage(reason);
+        }, 1000);
+    }
+
     async checkLocationAndAutoStartStorage(reason = 'vào server') {
         if (!this.running || !this.bot) return;
         if (this._location_check_in_progress) return;
@@ -6191,7 +6304,11 @@ class BotInstance {
                 this.log(`▶️ [CHUỖI RƯƠNG] Tiếp tục vòng lặp kích hoạt Chuỗi Rương...`, '#2ecc71');
                 this.startAutoStorage(true);
             } else {
-                this.log(`⚠️ [VÀO SERVER] Bot chưa về tới Y Nhà Rương sau khi chạy "${homeCmd}" (Y hiện tại=${this.bot && this.bot.entity ? this.bot.entity.position.y.toFixed(2) : '?'})`, '#f5c842');
+                this.log(`⚠️ [VÀO SERVER] Bot chưa về tới Y Nhà Rương sau khi chạy "${homeCmd}" (Y hiện tại=${this.bot && this.bot.entity ? this.bot.entity.position.y.toFixed(2) : '?'}) → Tiếp tục kích hoạt Chuỗi Rương tại vị trí hiện tại!`, '#f5c842');
+                this._resume_storage_after_rejoin = false;
+                this.storage_persist = true;
+                this._saveStorageActiveState(true);
+                this.startAutoStorage(true);
             }
         } catch (e) {
             this.log(`⚠️ [KIỂM TRA VỊ TRÍ] Lỗi: ${e && e.message ? e.message : e}`, '#ff4d6d');
@@ -6240,13 +6357,10 @@ class BotInstance {
         setTimeout(() => this.ensureSwordInHand(), 2500);
 
         // ⭐ TỰ ĐỘNG KIỂM TRA VỊ TRÍ Y VÀ KHÔI PHỤC / CHẠY CHUỖI RƯƠNG SAU KHI VÀO LẠI SERVER:
-        if (this.storage_persist || this._resume_storage_after_rejoin) {
-            this.log(`🔍 [CHUỖI RƯƠNG] Nhận diện bot vừa kết nối lại server → Kiểm tra vị trí Y sau 1.5s...`, '#4a9eff');
-            setTimeout(() => {
-                if (this.running && this.joined_server && !this.isAtSpawn()) {
-                    this.checkLocationAndAutoStartStorage('vào server');
-                }
-            }, 1500);
+        if (this.storage_persist || this._resume_storage_after_rejoin || this._isStorageActivePersisted() || this.storage_autostart_on_join) {
+            this.storage_persist = true;
+            this._resume_storage_after_rejoin = true;
+            this._scheduleStorageLocationCheck('vào server');
         }
 
         if (this.afk_persist && !this.anti_afk_running) {
@@ -6500,6 +6614,9 @@ class BotInstance {
                         this.hotbarTick('spawn lại');
                         if (this.joined_server && !this.isAtSpawn()) {
                             this.ensureSwordInHand();
+                            if ((this.storage_persist || this._resume_storage_after_rejoin || this._isStorageActivePersisted()) && !this.auto_storage_running) {
+                                this._scheduleStorageLocationCheck('spawn lại');
+                            }
                         }
                     }, 500);
                     return;

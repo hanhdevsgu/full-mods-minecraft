@@ -2105,7 +2105,8 @@ class BotManager:
                 "Chưa cấu hình Item ID cho Dọn Rương!\n"
                 "Vào ⚙️ Cấu hình để nhập Item ID (F3+H) trước.")
             return
-        bot.storage_persist = False
+        desired_enabled = not bool(bot.auto_storage_running)
+        bot.storage_persist = desired_enabled
         if self.connected:
             # Đồng bộ TOÀN BỘ cấu hình Chuỗi Rương ngay trước khi bấm chạy.
             # Đặc biệt storage_clear2_enabled phải được gửi lại để worker không
@@ -2113,6 +2114,7 @@ class BotManager:
             self.send_command(
                 'update_settings',
                 username=bot.username,
+                storage_persist=desired_enabled,
                 target_item_id=bot.target_item_id,
                 storage_restart_hours=bot.storage_restart_hours,
                 storage_restart_minutes=bot.storage_restart_minutes,
@@ -3542,7 +3544,7 @@ class BotManager:
                     _st(text="⚠️ Đã bật 'Tự vứt item không phải mục tiêu' nhưng thiếu Item ID!", fg='#ef4444')
                     return
 
-                storage_persist = False
+                storage_persist = getattr(bot, 'storage_persist', False)
 
 
                 clear_command = clear_cmd_entry.get().strip()

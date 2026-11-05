@@ -123,6 +123,9 @@ class BotInstance {
         this.running = false;
         this.gui_opened = false;
         this.clicked_axe = false;
+        this._transferring_to_game_server = false;
+        this._last_axe_click_at = 0;
+        this._had_compass_state = false;
         this._inventory_listener_attached = false;
         this.joined_server = false;
         this._spawn_logged = false;
@@ -364,7 +367,7 @@ class BotInstance {
 
         // Thời gian chờ TỐI THIỂU trước khi login lại sau khi mất kết nối / bị kick (2 phút,
         // không login vô liền). Áp dụng cho cả backoff thường, "already playing" và hardReset.
-        this.RECONNECT_DELAY_MS = settings.reconnect_delay_ms !== undefined ? settings.reconnect_delay_ms : 2 * 60 * 1000;
+        this.RECONNECT_DELAY_MS = settings.reconnect_delay_ms !== undefined ? settings.reconnect_delay_ms : 3000;
 
         // Giám sát hotbar liên tục: thấy compass => gửi /dn + mở GUI + click axe tới khi vào được server
         this.hotbarTimer = null;
@@ -635,35 +638,36 @@ class BotInstance {
     }
 
     isAtSpawn() {
+        if (this.is_dead) return false;
         if (!this.bot || !this.bot.entity || !this.bot.entity.position) return false;
 
-        // 1. Nếu thực sự có compass hoặc đang mở GUI chọn server -> 100% ở lobby
-        if (this.findCompassSlot() !== -1) return true;
+        if (this._in_lobby_state) return true;
+        if (this.findCompassSlot() !== -1) {
+            this._had_compass_state = true;
+            return true;
+        }
         if (this.bot && this.bot.currentWindow && this._isServerSelectWindow(this.bot.currentWindow)) return true;
 
-        const y = Number(this.bot.entity.position.y);
-        if (!Number.isFinite(y)) return false;
-
-        // 2. Tọa độ Y ở sảnh lobby Bungee (Y = 14.000) -> 100% Ở LOBBY (bất kể hotbar có item gì)
-        if (Math.abs(y - 14.0) <= 2.0) return true;
-
-        // 3. Nếu chưa click rìu và chưa vào server mà ở sảnh lobby (Y = 28.06) -> 100% Ở LOBBY
-        if (!this.joined_server && !this.clicked_axe && Math.abs(y - 28.06) <= 1.5) return true;
-
-        // 4. Nếu đã vào server hoặc đã click axe -> Chắc chắn KHÔNG PHẢI ở lobby
-        if (this.joined_server || this.clicked_axe) return false;
-
-        // 5. Nếu hotbar có item game thực sự -> Đang ở trong server game
-        if (this.hasGameItemInHotbar && this.hasGameItemInHotbar()) return false;
+        if (!this.joined_server && !this._transferring_to_game_server) return true;
 
         return false;
     }
 
     hasGameItemInHotbar() {
         if (!this.bot || !this.bot.inventory) return false;
-        const lobbyItemNames = ['compass', 'book', 'written_book', 'emerald', 'nether_star', 'clock'];
+        const lobbyItemNames = ['compass', 'book', 'written_book', 'emerald', 'nether_star', 'clock', 'sign', 'bow', 'stick'];
         const hotbarSlots = this.bot.inventory.slots.slice(36, 45);
         return hotbarSlots.some(s => s && s.name && !lobbyItemNames.includes(s.name.toLowerCase()));
+    }
+
+    _hotbarHasLobbyItem() {
+        try {
+            if (!this.bot || !this.bot.inventory) return false;
+            const lobbyItemNames = ['compass', 'book', 'written_book', 'emerald', 'nether_star', 'clock', 'sign', 'bow', 'stick'];
+            const hotbarSlots = this.bot.inventory.slots.slice(36, 45);
+            return hotbarSlots.some(s => s && s.name && lobbyItemNames.includes(s.name.toLowerCase()));
+        } catch (e) {}
+        return false;
     }
 
     sendDn(reason = '', minGapMs = 2000, force = false) {
@@ -800,17 +804,10 @@ class BotInstance {
     _handleCompassDetected(reason = 'compass') {
         if (!this.running || !this.bot) return;
 
-        // BẢO VỆ TUYỆT ĐỐI: Nếu không hề có compass và không có GUI chọn server,
-        // đồng thời bot đang ở trong server game (đã vào server, đã click rìu hoặc có item game như kiếm/rìu):
-        // Tuyệt đối không được kích hoạt quy trình lobby!
-        if (this.findCompassSlot() === -1 && (!this.bot.currentWindow || !this._isServerSelectWindow(this.bot.currentWindow))) {
-            if (this.joined_server || this.clicked_axe || this.hasGameItemInHotbar()) {
-                return;
-            }
-        }
-
-        // Tránh trigger lặp liên tục mỗi giây nếu đang ở trạng thái lobby
-        if (this._in_lobby_state) return;
+        // Tránh trigger lặp liên tục dồn dập
+        const now = Date.now();
+        if (this._last_lobby_handle_at && (now - this._last_lobby_handle_at < 2000)) return;
+        this._last_lobby_handle_at = now;
         this._in_lobby_state = true;
 
         this._had_compass_state = true;
@@ -818,6 +815,7 @@ class BotInstance {
         this._already_logged_in = false;
         this.gui_opened = false;
         this.clicked_axe = false;
+        this._transferring_to_game_server = false;
         this._compass_opened = false;
         this._compass_open_attempts = 0;
         this._verify_join_running = false;
@@ -860,10 +858,19 @@ class BotInstance {
     }
 
     hotbarTick(reason = 'hotbar') {
-        if (!this.running || !this.bot) return;
+        if (this.is_dead || !this.running || !this.bot) return;
+
+        // Nếu hotbar không còn compass (khác compass, kể cả tay trống / không có item) và đã vào server:
+        if (!this.joined_server && this.isJoinedServer()) {
+            const hasItem = this._hotbarHasAnyItem();
+            this.log(`🎉 [HOTBAR CHECK] Hotbar không còn compass (${hasItem ? 'có item' : 'tay trống'}) (${reason}) → Đã vào server!`, '#2ecc71');
+            this.sendJoined();
+            this.markJoinedServer();
+            return;
+        }
 
         // ⭐ CHECK Y VÀ COMPASS LIÊN TỤC TRÁNH LAG/KẸT LOBBY:
-        const inLobby = this.findCompassSlot() !== -1 || this.isAtSpawn();
+        const inLobby = !this.joined_server && !this.isJoinedServer() && (this.findCompassSlot() !== -1 || this.isAtSpawn());
         if (inLobby) {
             const curY = this.bot.entity && this.bot.entity.position ? Number(this.bot.entity.position.y).toFixed(2) : '?';
             if (!this._lobby_stuck_since) {
@@ -877,14 +884,6 @@ class BotInstance {
             return;
         } else {
             this._lobby_stuck_since = null;
-        }
-
-        // Nếu hotbar không còn compass (khác compass, kể cả tay trống / không có item) và đã vào server:
-        if (!this.joined_server && this.isJoinedServer()) {
-            const hasItem = this._hotbarHasAnyItem();
-            this.log(`🎉 [HOTBAR CHECK] Hotbar khác compass (${hasItem ? 'có item' : 'tay trống'}) (${reason}) → Đã vào server!`, '#2ecc71');
-            this.sendJoined();
-            this.markJoinedServer();
         }
 
         // ⭐ LUÔN TỰ TÌM VÀ CẦM CÂY KIẾM TRÊN TAY KHI Ở TRONG SERVER:
@@ -919,6 +918,8 @@ class BotInstance {
         this._storage_active_clear_config = null;
         this.joined_server = false;
         this.clicked_axe = false;
+        this._last_axe_click_at = 0;
+        this._had_compass_state = false;
         this._compass_opened = false;
         this._in_lobby_state = true;
         this._already_logged_in = false;
@@ -2013,11 +2014,9 @@ class BotInstance {
         const stopWhenInvFull = !!(opts && opts.stopWhenInvFull);
         const fullWin = opts && opts.window ? opts.window : null;
         let consecutiveTimeouts = 0;
-        // QUICK-MOVE vẫn rất nhanh, nhưng không bắn 36/54 click cùng một tick.
-        // 9 slot / nhịp + gap nhỏ giúp server nhận liên tục và giảm burst packet.
-        const CHUNK_SIZE = 5;
-        const CLICK_GAP_MS = 125 + Math.floor(Math.random() * 35); // 125-160ms (nhịp click tự nhiên của người chơi, 100% bypass FastInventory / ChestStealer)
-        const CHUNK_GAP_MS = 220 + Math.floor(Math.random() * 60); // 220-280ms giữa các nhịp 5 ô (ngắt nhịp buffer anti-cheat)
+        // QUICK-MOVE mô phỏng người thật 100% chống anti-cheat (FastInventory / ChestStealer):
+        // Nhịp 4 stack, click-gap 200-260ms có jitter tự nhiên, chunk-gap 340-420ms.
+        const CHUNK_SIZE = 4;
         const failed = [];
         for (let start = 0; start < slotList.length; start += CHUNK_SIZE) {
             if (!this.running || !this.bot || !this.bot.currentWindow) break;
@@ -2028,7 +2027,7 @@ class BotInstance {
                 if (!this.running || !this.bot || !this.bot.currentWindow) return failed;
                 const slot = chunk[i];
                 try {
-                    await this._clickWithTimeout(slot, 0, mode, 700);
+                    await this._clickWithTimeout(slot, 0, mode, 1200);
                     consecutiveTimeouts = 0;
                 } catch (e) {
                     failed.push(slot);
@@ -2039,9 +2038,15 @@ class BotInstance {
                         return failed;
                     }
                 }
-                if (i < chunk.length - 1) await this.sleep(CLICK_GAP_MS);
+                if (i < chunk.length - 1) {
+                    const clickJitter = Math.floor(Math.random() * 61) - 30;
+                    await this.sleep(Math.max(180, 230 + clickJitter));
+                }
             }
-            if (start + CHUNK_SIZE < slotList.length) await this.sleep(CHUNK_GAP_MS);
+            if (start + CHUNK_SIZE < slotList.length) {
+                const chunkJitter = Math.floor(Math.random() * 81) - 40;
+                await this.sleep(Math.max(300, 380 + chunkJitter));
+            }
         }
         return failed;
     }
@@ -2210,8 +2215,8 @@ class BotInstance {
             return { taken: 0, slots: 0 };
         }
 
-        // ⭐ CHỐNG KICK HACK CHESTSTEALER: Chờ 250-320ms sau khi mở rương trước khi bắt đầu click
-        await this.sleep(250 + Math.floor(Math.random() * 70));
+        // ⭐ CHỐNG KICK HACK CHESTSTEALER: Chờ 320-380ms sau khi mở rương trước khi bắt đầu click
+        await this.sleep(320 + Math.floor(Math.random() * 60));
         if (!this.running || !this.bot || this.bot.currentWindow !== chestWindow) return { taken: 0, slots: 0 };
 
         let taken = 0;
@@ -2924,7 +2929,7 @@ class BotInstance {
             const goal = new goals.GoalNear(X + 0.5, Y, Z + 0.5, 0.55);
             const gotoPromise = this.bot.pathfinder.goto(goal);
             gotoPromise.catch(() => {});
-            const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('goto XYZ timeout (25s)')), 25000));
+            const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('goto XYZ timeout (35s)')), 35000));
             await Promise.race([gotoPromise, timeoutPromise]);
             if (aborted && aborted()) return false;
 
@@ -2956,8 +2961,12 @@ class BotInstance {
             this.log(`⚠️ ${TAG} Không tới được XYZ (${X},${Y},${Z}): ${e && e.message ? e.message : e}`, '#f5c842');
             return false;
         } finally {
+            for (const k of ['forward', 'back', 'left', 'right', 'sprint', 'jump', 'sneak']) {
+                try { this.bot.setControlState(k, false); } catch (e) {}
+            }
             try { if (this.bot && this.bot.pathfinder) this.bot.pathfinder.setGoal(null); } catch (e) {}
             this._goto_in_progress = false;
+            await this.sleep(250);
         }
     }
 
@@ -3563,15 +3572,11 @@ class BotInstance {
                 } finally {
                     // Chỉ đóng sau khi toàn bộ QUICK-MOVE đã await xong + có thời gian
                     // cho transaction/window cập nhật. Không đóng GUI giữa lúc đang lấy.
-                    if (this.running && this.bot.currentWindow === chestWindow) await this.sleep(150);
-                    try { this.bot.closeWindow(chestWindow); } catch (e) {}
-                    // Cho window close packet/transaction state settle trước bước tiếp theo.
-                    await this.sleep(50);
-                    // Dự phòng: nếu GUI vẫn còn mở thì đóng lại lần nữa.
+                    if (this.running && this.bot.currentWindow === chestWindow) await this.sleep(180);
                     if (this.bot && this.bot.currentWindow) {
                         try { this.bot.closeWindow(this.bot.currentWindow); } catch (e) {}
-                        await this.sleep(50);
                     }
+                    await this.sleep(180);
                 }
                 totalTaken += Number(result.taken) || 0;
 
@@ -4028,6 +4033,7 @@ class BotInstance {
                         if (backToClearBeforeNextBox.length) {
                             this.log(`🔙 [CHUỖI RƯƠNG] Đã đẩy hết item → ${this.storage_deposit_command} → quay lại Y DỌN RƯƠNG trước khi sang Hộp ${nextBoxAfterDeposit.index + 1}.`, '#4a9eff');
                             await this.runCommandSequence(backToClearBeforeNextBox);
+                            await this.sleep(700);
                         }
                         if (!this.auto_storage_running || this._storage_cancel_token !== myToken || !this.running) break;
 
@@ -4099,6 +4105,7 @@ class BotInstance {
     }
 
     _startExpectGuardMonitor() {
+        return;
         if (!this.storage_expect_guard) return;
         if (this._expect_guard_timer) return;
         // Chống báo động giả: EXPECT phải > 0 ở N lần đọc LIÊN TIẾP (mỗi lần đọc ~1s) mới kill.
@@ -4436,10 +4443,6 @@ class BotInstance {
                 });
                 const { face, cursor } = this._computeHitFaceAndCursor(block);
                 await this.bot.activateBlock(block, face, cursor);
-                // Khôi phục ngay lập tức góc nhìn đã khóa (chống Mineflayer xoay mặt ra sau lưng)
-                if (this.lock_pitch_yaw) {
-                    this.applyChestPitchYaw();
-                }
                 const win = await windowOpenPromise;
                 if (attempt > 1) {
                     this.log(`✅ ${TAG} Mở rương thành công sau ${attempt} lần thử.`, '#2ecc71');
@@ -4616,6 +4619,7 @@ class BotInstance {
     // Test 1 chu kỳ DỌN RƯƠNG duy nhất, không lặp — dùng cho nút debug test,
     // không đụng tới trạng thái bật/tắt auto_storage_running.
     async debugTestStorage() {
+        return;
         if (!this.bot || !this.running) return;
         this._storage_clear_stage = 0;
         this._storage_clear_gotos = 0;
@@ -5688,12 +5692,7 @@ class BotInstance {
                 return;
             }
 
-            if (this.joined_server) {
-                this._verify_join_running = false;
-                return;
-            }
-
-            if (this.isJoinedServer()) {
+            if (this.joined_server || this.isJoinedServer()) {
                 this._verify_join_running = false;
                 this.log("🎉 THÀNH CÔNG! Đã vào server! (phát hiện qua hotbar & vị trí)", '#2ecc71');
                 this.sendJoined();
@@ -5703,6 +5702,14 @@ class BotInstance {
 
             attempt++;
             if (attempt > maxRetries) {
+                // Kiểm tra lại lần cuối trước khi kill node: nếu GUI đã đóng và không có compass
+                if (this.isJoinedServer() || (this.findCompassSlot() === -1 && (!this.bot.currentWindow || !this._isServerSelectWindow(this.bot.currentWindow)))) {
+                    this._verify_join_running = false;
+                    this.log("🎉 THÀNH CÔNG! Đã vào server! (kiểm tra lần cuối: không còn compass / GUI đã đóng)", '#2ecc71');
+                    this.sendJoined();
+                    this.markJoinedServer();
+                    return;
+                }
                 this._verify_join_running = false;
                 this.log(`⛔ Đã spam click diamond/axe ${maxRetries} lần mà vẫn kẹt ở lobby (khả năng bị ban hoặc server không nhận) → Tự động kill node.exe session này!`, '#ff4d6d');
                 this.showManualRestartHint(`Spam click diamond/axe ${maxRetries} lần không vào được server`);
@@ -5949,6 +5956,7 @@ class BotInstance {
             } catch (err) {}
 
             this.clicked_axe = true;
+            this._last_axe_click_at = Date.now();
             this.log(`✅ Đã gửi click ô ${targetSlot}`, '#2ecc71');
             this.debugDumpHotbar('Ngay sau khi click');
 
@@ -5969,7 +5977,7 @@ class BotInstance {
             setTimeout(() => {
                 this.debugDumpHotbar('500ms sau khi click');
                 if (this.isJoinedServer()) {
-                    this.log("🎉 THÀNH CÔNG! Đã vào server!", '#2ecc71');
+                    this.log("🎉 THÀNH CÔNG! Đã vào server! (hotbar không còn compass / tay trống)", '#2ecc71');
                     this.sendJoined();
                     this.markJoinedServer();
                 }
@@ -5983,35 +5991,49 @@ class BotInstance {
     }
 
     isJoinedServer() {
-        if (!this.bot || !this.bot.inventory || !this.bot.entity || !this.bot.entity.position) return false;
+        if (this.is_dead) return true;
+        if (!this.bot || !this.bot.inventory) return false;
 
-        // 1. Đang ở sảnh lobby (Y = 14 hoặc có compass hoặc GUI mở) -> 100% Ở LOBBY, CHƯA VÀO SERVER!
-        if (this.isAtSpawn()) return false;
-
-        // 2. Nếu thực sự có compass trong hotbar hoặc túi đồ -> chắc chắn ở lobby
+        // 1. Nếu thực sự có compass trong hotbar hoặc túi đồ -> chắc chắn ở lobby, chưa vào server
         if (this.findCompassSlot() !== -1) return false;
 
-        // 3. Nếu GUI chọn server đang mở -> chắc chắn ở lobby
+        // 2. Nếu GUI chọn server đang mở -> chắc chắn ở lobby
         if (this.bot.currentWindow && this._isServerSelectWindow(this.bot.currentWindow)) {
             return false;
         }
 
-        const y = Number(this.bot.entity.position.y);
+        // 3. Đang ở sảnh lobby (theo isAtSpawn) -> CHƯA VÀO SERVER!
+        if (this.isAtSpawn()) return false;
+
+        // 4. Nếu đã đánh dấu joined_server -> chắc chắn đã vào server
+        if (this.joined_server) return true;
+
+        const y = this.bot.entity && this.bot.entity.position ? Number(this.bot.entity.position.y) : NaN;
         const clearY = Number(this.storage_clear_lock_y);
         const depY = Number(this.storage_deposit_lock_y);
 
-        // 4. Nếu đang ở đúng Y Dọn (190) hoặc Y Nhà (254) -> 100% ĐÃ Ở TRONG SERVER GAME!
-        const atClearY = Number.isFinite(clearY) && clearY > 0 && Math.abs(y - clearY) <= 2.5;
-        const atDepY = Number.isFinite(depY) && depY > 0 && Math.abs(y - depY) <= 2.5;
-        if (atClearY || atDepY) return true;
+        // 5. Nếu đang ở đúng Y Dọn (190) hoặc Y Nhà (254) -> 100% ĐÃ Ở TRONG SERVER GAME!
+        if (Number.isFinite(y)) {
+            const atClearY = Number.isFinite(clearY) && clearY > 0 && Math.abs(y - clearY) <= 2.5;
+            const atDepY = Number.isFinite(depY) && depY > 0 && Math.abs(y - depY) <= 2.5;
+            if (atClearY || atDepY) return true;
+        }
 
-        // 5. Nếu đã click rìu và GUI đã đóng, không có compass, và Y không phải lobby:
-        if (this.clicked_axe && !this.bot.currentWindow && !this.isAtSpawn()) {
+        // 6. ⭐ SAU KHI CLICK RÌU (DIAMOND AXE):
+        // GUI đã đóng, không còn compass trong túi đồ.
+        // Kể cả hotbar có item game HOẶC TAY TRỐNG (không có item nào) → ĐỀU TÍNH LÀ ĐÃ VÀO SERVER!
+        const axeClicked = this.clicked_axe || (this._last_axe_click_at && Date.now() - this._last_axe_click_at < 60000);
+        if (axeClicked && (!this.bot.currentWindow || !this._isServerSelectWindow(this.bot.currentWindow))) {
             return true;
         }
 
-        // 6. Nếu đã đánh dấu joined_server và có item game trong hotbar và không ở spawn:
-        if (this.joined_server && this.hasGameItemInHotbar() && !this.isAtSpawn()) {
+        // 7. Nếu hotbar có item game thực sự (kiếm, cuốc, v.v.) và không có compass -> Đã ở trong server game
+        if (this.hasGameItemInHotbar()) {
+            return true;
+        }
+
+        // 8. Nếu hotbar không có bất kỳ item lobby nào (kể cả tay trống) và đã từng phát hiện compass / click rìu
+        if (!this._hotbarHasLobbyItem() && (this._had_compass_state || axeClicked) && (!this.bot.currentWindow || !this._isServerSelectWindow(this.bot.currentWindow))) {
             return true;
         }
 
@@ -6062,12 +6084,12 @@ class BotInstance {
             this.restoreHotbarSlot();
 
             const curY = Number(this.bot.entity.position.y);
-            const clearY = Number(this.storage_clear_lock_y);
-            const depY = Number(this.storage_deposit_lock_y);
+            const clearY = Number(this.storage_clear_lock_y) || 190;
+            const depY = Number(this.storage_deposit_lock_y) || 254;
 
             // BẢO VỆ TUYỆT ĐỐI: Nếu đang ở sảnh lobby (Y = 14 hoặc có compass hoặc GUI mở) -> DỪNG NGAY, KHÔNG GỬI LỆNH
-            if (this.isAtSpawn() || Math.abs(curY - 14.0) <= 2.0 || this.findCompassSlot() !== -1 || (this.bot.currentWindow && this._isServerSelectWindow(this.bot.currentWindow))) {
-                this.log(`⚠️ [KIỂM TRA VỊ TRÍ] (${reason}): Bot đang ở sảnh lobby (Y=${curY.toFixed(2)}/có compass/đang mở GUI), không chạy kiểm tra vị trí.`, '#f5c842');
+            if (this.isAtSpawn() || Math.abs(curY - 14.0) <= 2.5 || Math.abs(curY - 28.06) <= 2.0 || this.findCompassSlot() !== -1 || (this.bot.currentWindow && this._isServerSelectWindow(this.bot.currentWindow))) {
+                this.log(`⚠️ [KIỂM TRA VỊ TRÍ] (${reason}): Bot đang ở sảnh lobby (Y=${curY.toFixed(2)}/có compass/đang mở GUI), chưa vào server chơi. Bỏ qua kiểm tra.`, '#f5c842');
                 return;
             }
 
@@ -6082,15 +6104,34 @@ class BotInstance {
                 }
             }
 
-            this.log(`📍 [KIỂM TRA VỊ TRÍ] (${reason}): Y hiện tại=${curY.toFixed(3)} | Y Khóa Dọn=${Number.isFinite(clearY) && clearY > 0 ? clearY.toFixed(3) : '(chưa đặt)'} | Y Khóa Nhà=${Number.isFinite(depY) && depY > 0 ? depY.toFixed(3) : '(chưa đặt)'}`, '#4a9eff');
+            this.log(`📍 [KIỂM TRA VỊ TRÍ] (${reason}): Y hiện tại=${curY.toFixed(3)} | Y Khóa Dọn=${clearY.toFixed(3)} | Y Khóa Nhà=${depY.toFixed(3)}`, '#4a9eff');
 
-            const wp = this._loadDepositWaypoint();
-            const targetDepY = (Number.isFinite(depY) && depY > 0) ? depY : (wp && Number.isFinite(wp.y) ? wp.y : NaN);
+            const isAtDep = this.isNearDepositY(1.5);
+            const isAtClear = this.isNearClearY(1.5);
 
-            const isAtDep = Number.isFinite(targetDepY) && Math.abs(curY - targetDepY) <= 1.5;
-            const isAtClear = Number.isFinite(clearY) && clearY > 0 && Math.abs(curY - clearY) <= 1.5;
+            // ⭐ CASE 1: ĐANG Ở ĐÚNG Y NHÀ RƯƠNG (Y ≈ 254)
+            // Yêu cầu: nếu Y nhà rương là ngay lập tức bật chuỗi rương dọn lại từ đầu
+            if (isAtDep) {
+                this.log(`🏠 [VÀO SERVER] Bot đang ở đúng Y Nhà Rương (Y=${curY.toFixed(2)})!`, '#2ecc71');
 
-            // Câu lệnh setup trong GUI ("Lệnh về Nhà khi vào lại", ví dụ /home delay 8000 hoặc /home 2 delay 8000):
+                // Kiểm tra balo: nếu còn item thì cất sạch trước
+                const targetCount = this.countTargetItems();
+                if (targetCount > 0) {
+                    this.log(`🎒 [VÀO SERVER] Balô còn ${targetCount} item mục tiêu → Cất sạch vào Nhà Rương trước khi dọn chu trình mới...`, '#4a9eff');
+                    await this.runChestDepositFlow();
+                }
+
+                // Bật chuỗi rương dọn lại từ đầu (clear waypoint cũ, reset hộp 1):
+                this.log(`🚀 [VÀO SERVER] Bắt đầu Chuỗi Rương dọn lại từ đầu (Hộp 1 / GOTO 1)...`, '#2ecc71');
+                this._resume_storage_after_rejoin = false;
+                this.storage_persist = true;
+                this._clearDepositWaypoint('bật chuỗi dọn lại từ đầu ở Nhà Rương');
+                this.startAutoStorage(false);
+                return;
+            }
+
+            // ⭐ CASE 2: KHÔNG PHẢI Ở Y NHÀ RƯƠNG (ví dụ ở Faction spawn hoặc Y dọn phễu khi bị diss)
+            // Yêu cầu: home về nhà rương rồi goto waypoint tới chỗ rương vừa diss gần nhất
             let homeCmd = String(this.storage_reconnect_home_command || '').trim();
             if (!homeCmd || homeCmd === '/home 1 delay 8000' || homeCmd === '/home 1') {
                 if (this.storage_deposit_command && String(this.storage_deposit_command).startsWith('/home')) {
@@ -6100,62 +6141,50 @@ class BotInstance {
                 }
             }
 
-            // ⭐ 1. NẾU KHÔNG Ở NHÀ RƯƠNG VÀ KHÔNG Ở DỌN RƯƠNG (ví dụ ở Faction Spawn Y=28):
-            if (!isAtDep && !isAtClear) {
-                this.log(`🏠 [VÀO SERVER] Y hiện tại=${curY.toFixed(2)} (Spawn/khác) KHÔNG PHẢI Y Nhà Rương (${Number.isFinite(targetDepY) ? targetDepY.toFixed(2) : '254'}) → Chạy "${homeCmd}" để về Nhà Rương an toàn...`, '#4a9eff');
-                const cmds = this.parseStorageCommands(homeCmd);
-                if (cmds.length) {
-                    await this.runCommandSequence(cmds);
+            this.log(`🏠 [VÀO SERVER] Y hiện tại=${curY.toFixed(2)} KHÔNG PHẢI Y Nhà Rương (${depY.toFixed(2)}) → Chạy "${homeCmd}" để về Nhà Rương...`, '#4a9eff');
+            const cmds = this.parseStorageCommands(homeCmd);
+            if (cmds.length) {
+                await this.runCommandSequence(cmds);
 
-                    // Đợi bot teleport và Y cập nhật về Nhà Rương (tối đa 15s)
-                    const waitStart = Date.now();
-                    while (this.running && this.bot && Date.now() - waitStart < 15000) {
-                        await this.sleep(300);
-                        const nowY = this.bot.entity ? Number(this.bot.entity.position.y) : NaN;
-                        if (!Number.isFinite(nowY)) continue;
-
-                        const isAtTarget = Number.isFinite(targetDepY) && Math.abs(nowY - targetDepY) <= 1.5;
-                        const hasMoved = Math.abs(nowY - curY) > 2.0;
-
-                        if (isAtTarget || (hasMoved && Date.now() - waitStart > 800)) {
-                            this.log(`✅ [VỀ NHÀ RƯƠNG] Đã về tới Nhà Rương an toàn (Y=${nowY.toFixed(2)}).`, '#2ecc71');
-                            if (!Number.isFinite(depY) || depY <= 0) {
-                                this.storage_deposit_lock_y = Math.round(nowY * 100) / 100;
-                                this.sendStatus();
-                            }
-                            break;
-                        }
+                // Chờ bot dịch chuyển về tới Nhà Rương (tối đa 15s)
+                const waitStart = Date.now();
+                while (this.running && this.bot && Date.now() - waitStart < 15000) {
+                    await this.sleep(300);
+                    if (this.isNearDepositY(1.5)) {
+                        this.log(`✅ [VỀ NHÀ RƯƠNG] Đã về tới Nhà Rương an toàn (Y=${this.bot.entity.position.y.toFixed(2)}).`, '#2ecc71');
+                        break;
                     }
                 }
-            } else if (isAtDep) {
-                this.log(`✅ [VÀO SERVER] Bot đã đang ở đúng Y Nhà Rương (Y=${curY.toFixed(2)}).`, '#2ecc71');
-            } else {
-                this.log(`✅ [VÀO SERVER] Bot đang ở đúng Y Dọn Phễu (Y=${curY.toFixed(2)}).`, '#2ecc71');
             }
 
-            // ⭐ 2. KHI ĐÃ Ở NHÀ RƯƠNG: KHÓA GÓC NHÌN & GOTO VỀ RƯƠNG CẤT DỞ
+            // Sau khi về tới Nhà Rương:
             if (this.isNearDepositY(1.5)) {
+                // Khóa góc nhìn Nhà Rương
                 this.lock_pitch = this._safeStoragePitch(this.storage_deposit_pitch);
                 this.lock_yaw = this._safeStorageYaw(this.storage_deposit_yaw);
                 this.lock_pitch_yaw = true;
                 this.applyChestPitchYaw(true);
                 this.startPitchYawLockLoop();
 
-                if (wp && wp.hops > 0) {
-                    this.log(`📍 [WAYPOINT RESUME] Đang ở Nhà Rương, GOTO tới rương cất dở (${wp.x}, ${wp.y}, ${wp.z}) (rương #${wp.hops + 1})...`, '#2ecc71');
-                    await this._gotoSavedWaypointAfterHome('sau khi vào server');
+                // Khôi phục rương cất dở gần nhất từ waypoint
+                const wp = this._loadDepositWaypoint();
+                if (wp && Number.isFinite(wp.hops) && wp.hops > 0) {
+                    this.log(`📍 [WAYPOINT RESUME] Đang ở Nhà Rương, GOTO tới rương cất dở gần nhất: (${wp.x}, ${wp.y}, ${wp.z}) (rương #${wp.hops + 1})...`, '#2ecc71');
+                    await this._gotoSavedWaypointAfterHome('sau khi về Nhà Rương');
+                } else {
+                    this.log(`ℹ️ [WAYPOINT RESUME] Chưa có rương cất dở trước đó, sẵn sàng cất từ rương đầu.`, '#4a9eff');
                 }
-            }
 
-            // ⭐ 3. TỰ ĐỘNG TIẾP TỤC CHUỖI RƯƠNG
-            if (!this.auto_storage_running && this.running && this.joined_server) {
+                // Tiếp tục Chuỗi Rương (giữ waypoint để resume)
                 this._resume_storage_after_rejoin = false;
                 this.storage_persist = true;
-                this.log(`▶️ [CHUỖI RƯƠNG] Tiếp tục chạy Chuỗi Rương...`, '#2ecc71');
+                this.log(`▶️ [CHUỖI RƯƠNG] Khôi phục tiếp tục Chuỗi Rương...`, '#2ecc71');
                 this.startAutoStorage(true);
+            } else {
+                this.log(`⚠️ [VÀO SERVER] Bot chưa về tới Y Nhà Rương sau khi chạy "${homeCmd}" (Y hiện tại=${this.bot && this.bot.entity ? this.bot.entity.position.y.toFixed(2) : '?'})`, '#f5c842');
             }
         } catch (e) {
-            this.log(`⚠️ [KIỂM TRA VỊ TRÍ] Lỗi: ${e && e.message ? e.message : e}`, '#f5c842');
+            this.log(`⚠️ [KIỂM TRA VỊ TRÍ] Lỗi: ${e && e.message ? e.message : e}`, '#ff4d6d');
         } finally {
             this._location_check_in_progress = false;
         }
@@ -6200,9 +6229,15 @@ class BotInstance {
         setTimeout(() => this.ensureSwordInHand(), 1200);
         setTimeout(() => this.ensureSwordInHand(), 2500);
 
-        setTimeout(() => {
-            this.checkLocationAndAutoStartStorage('vào server');
-        }, 1000);
+        // ⭐ TỰ ĐỘNG KIỂM TRA VỊ TRÍ Y VÀ KHÔI PHỤC / CHẠY CHUỖI RƯƠNG SAU KHI VÀO LẠI SERVER:
+        if (this.storage_persist || this._resume_storage_after_rejoin) {
+            this.log(`🔍 [CHUỖI RƯƠNG] Nhận diện bot vừa kết nối lại server → Kiểm tra vị trí Y sau 1.5s...`, '#4a9eff');
+            setTimeout(() => {
+                if (this.running && this.joined_server && !this.isAtSpawn()) {
+                    this.checkLocationAndAutoStartStorage('vào server');
+                }
+            }, 1500);
+        }
 
         if (this.afk_persist && !this.anti_afk_running) {
             setTimeout(() => this.startAntiAfk(), 1000);
@@ -6260,6 +6295,7 @@ class BotInstance {
             checkTimeoutInterval: 60000,
             hideErrors: true,
             connectTimeout: 30000,
+            autoRespawn: false, // 🛑 TUYỆT ĐỐI KHÔNG HỒI SINH KHI CHẾT
         };
 
         if (this.session) {
@@ -6326,6 +6362,23 @@ class BotInstance {
                 this.login_reached = true;
                 this.touchActivity();
                 this.log("✅ Login thành công", '#2ecc71');
+
+                const isTransferringToSubserver = this.clicked_axe || (this._last_axe_click_at && Date.now() - this._last_axe_click_at < 30000);
+                if (isTransferringToSubserver) {
+                    this.log("🔄 Đang chuyển kết nối sang server game (subserver)...", '#4a9eff');
+                    this.clicked_axe = true;
+                    this._in_lobby_state = false;
+                    this._stopDnLoop();
+                    setTimeout(() => {
+                        if (!this.running || !this.bot) return;
+                        if (this.findCompassSlot() === -1 && (!this.bot.currentWindow || !this._isServerSelectWindow(this.bot.currentWindow))) {
+                            this.log("🎉 [LOGIN SUBSERVER] Đã chuyển sang server game thành công (không có compass / tay trống)!", '#2ecc71');
+                            this.sendJoined();
+                            this.markJoinedServer();
+                        }
+                    }, 500);
+                    return;
+                }
 
                 this._chest_busy = false;
                 this.lock_pitch_yaw = false;
@@ -6407,39 +6460,28 @@ class BotInstance {
                         }
                     }
 
-                    // ⭐ KHI Ở Y NHÀ RƯƠNG: Tự động lưu tọa độ vừa đứng gần nhất (ngay cả khi macro chưa bật)
-                    if (this.joined_server && !this.isAtSpawn() && this.bot && this.bot.entity) {
-                        const p = this.bot.entity.position;
-                        const depY = Number(this.storage_deposit_lock_y);
-                        const isAtDepY = Number.isFinite(depY) && depY > 0 && Math.abs(p.y - depY) <= 1.5;
-
-                        if (isAtDepY && !this._goto_in_progress) {
-                            const now = Date.now();
-                            if (!this._last_idle_dep_wp_save || now - this._last_idle_dep_wp_save > 1000) {
-                                this._last_idle_dep_wp_save = now;
-                                const wp = this._loadDepositWaypoint();
-                                const currentHops = this._saved_resume_hops || (wp && Math.hypot(p.x - wp.x, p.z - wp.z) < 1.5 ? (wp.hops || 0) : 0);
-                                this._saveDepositWaypoint(p.x, p.y, p.z, currentHops);
-                            }
+                    // ⭐ TỰ ĐỘNG KHÓA GÓC THEO TẦNG Y KHI DI CHUYỂN / TELEPORT:
+                    if (this.joined_server && !this.isAtSpawn() && !this._goto_in_progress && !this._chest_busy) {
+                        const phase = this._storage_chain_phase || '';
+                        const boxIdx = this._storage_box_index || 0;
+                        const activeCfg = this._storage_active_clear_config ? this._storage_active_clear_config.name : '';
+                        const key = `${Math.round(y * 10)}|${phase}|${boxIdx}|${activeCfg}`;
+                        if (key !== this._storage_viewlock_last_key) {
+                            this._storage_viewlock_last_key = key;
+                            this.applyStorageViewLockByY(phase);
                         }
-                    }
-                    if (this._goto_in_progress) return;
-                    const clearHit = this.isNearClearY(1.5);
-                    const depHit = this.isNearDepositY(1.5);
-                    const key = `${Math.round(y*2)/2}|${clearHit?'C':''}${depHit?'D':''}|${this._storage_chain_phase||''}|${this._storage_box_index}|${this._storage_active_clear_config ? this._storage_active_clear_config.name : ''}`;
-                    if (key !== this._storage_viewlock_last_key) {
-                        this._storage_viewlock_last_key = key;
-                        this.applyStorageViewLockByY(this._storage_chain_phase || '');
                     }
                 } catch (e) {}
             });
 
             this.bot.on('spawn', () => {
-                if (this.findCompassSlot() !== -1 || this.isAtSpawn()) {
+                if (this.isJoinedServer()) {
+                    this.log(`🎉 [SPAWN] Phát hiện đã ở trong server game (Y=${this.bot && this.bot.entity ? this.bot.entity.position.y.toFixed(2) : '?'})!`, '#2ecc71');
+                    this.sendJoined();
+                    this.markJoinedServer();
+                } else if (this.findCompassSlot() !== -1 || this.isAtSpawn()) {
                     this.log(`🌍 Đang ở spawn lobby (Y=${this.bot && this.bot.entity ? this.bot.entity.position.y.toFixed(2) : '?'}) → chuyển sang quy trình lobby...`, '#f5c842');
                     this._handleCompassDetected('spawn lobby');
-                } else if (this.isJoinedServer()) {
-                    this.markJoinedServer();
                 }
                 if (this._spawn_logged) {
                     // Spawn lại (đổi world / về lobby / hồi sinh): check hotbar ngay sau khi inventory kịp cập nhật
@@ -6473,6 +6515,16 @@ class BotInstance {
                         if (this.bot && this.bot.inventory && !this._inventory_listener_attached) {
                             this._inventory_listener_attached = true;
                             this.bot.inventory.on('updateSlot', (slot) => {
+                                if (this.isJoinedServer()) {
+                                    if (!this.joined_server) {
+                                        this.log(`🎉 [UPDATE SLOT] Nhận diện đã vào server từ updateSlot!`, '#2ecc71');
+                                        this.sendJoined();
+                                        this.markJoinedServer();
+                                    }
+                                    this.onInventorySlotChanged(slot);
+                                    return;
+                                }
+
                                 if (this.findCompassSlot() !== -1 || this.isAtSpawn()) {
                                     this._handleCompassDetected('updateSlot');
                                     return;
@@ -6490,6 +6542,16 @@ class BotInstance {
                                 const displayLc = s ? (s.displayName || '').toLowerCase() : '';
                                 this.log(`🐞 [DEBUG] Slot 40 (hotbar 4) đổi thành: ${nm}`, '#9b59b6');
 
+                                const axeClicked = this.clicked_axe || (this._last_axe_click_at && Date.now() - this._last_axe_click_at < 60000);
+                                if ((nm === '(trống)' || !s) && axeClicked) {
+                                    if (this.isJoinedServer()) {
+                                        this.log(`🎉 [UPDATE SLOT] Slot 40 thành trống sau khi click axe → Đã vào server!`, '#2ecc71');
+                                        this.sendJoined();
+                                        this.markJoinedServer();
+                                        return;
+                                    }
+                                }
+
                                 const isBook = nameLc.includes('book') || displayLc.includes('sách') || displayLc.includes('sổ');
                                 if (isBook) {
                                     this.closeBookWindowIfAny('slot 40 = sách');
@@ -6504,8 +6566,27 @@ class BotInstance {
                 }
             });
 
+            this.bot.on('death', () => {
+                this.is_dead = true;
+                this._verify_join_running = false;
+                this._in_lobby_state = false;
+                this.joined_server = true;
+                this._stopDnLoop();
+                this.clearGuiOpenTimeout();
+                this.log("💀 [BOT ĐÃ CHẾT] Bot bị tiêu diệt (death). TUYỆT ĐỐI KHÔNG HỒI SINH!", '#ff4d6d');
+                try {
+                    if (this.bot && this.bot.pathfinder) {
+                        this.bot.pathfinder.setGoal(null);
+                    }
+                } catch (e) {}
+                this.stopAntiAfk();
+                this.stopAutoFarm();
+                this.stopPitchYawLockLoop();
+                this.lock_pitch_yaw = false;
+            });
+
             this.bot.on('respawn', () => {
-                setTimeout(() => this.hotbarTick('respawn'), 1500);
+                this.log("⚠️ Nhận sự kiện respawn.", '#f5c842');
             });
 
             this.bot.on('kicked', (reason) => {

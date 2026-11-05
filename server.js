@@ -4,7 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const { v4: uuidv4 } = require('uuid');
 
-const WS_PORT = 54323;
+const WS_PORT = 54325;
 const MC_SERVER_HOST = 'play.toichoi.com';
 const MC_SERVER_PORT = 25565;
 const SESSION_DIR = path.join(process.env.USERPROFILE || process.env.HOME, 'Desktop', 'session_new');
@@ -15,6 +15,7 @@ const CRASH_RETRY_BASE_DELAY = 3000;
 const CRASH_RETRY_MAX_DELAY = 30000;
 
 let currentWs = null;
+const connectedClients = new Set();
 
 const bots = {};
 const botProcesses = {};
@@ -532,10 +533,14 @@ function sendBotCommand(username, command, data) {
 }
 
 function sendToPython(type, ...args) {
-    if (currentWs && currentWs.readyState === WebSocket.OPEN) {
-        try {
-            currentWs.send(JSON.stringify({ type, args }));
-        } catch (e) {}
+    const payload = JSON.stringify({ type, args });
+    for (const ws of connectedClients) {
+        if (ws.readyState === WebSocket.OPEN) {
+            try { ws.send(payload); } catch (e) {}
+        }
+    }
+    if (currentWs && !connectedClients.has(currentWs) && currentWs.readyState === WebSocket.OPEN) {
+        try { currentWs.send(payload); } catch (e) {}
     }
 }
 
@@ -592,6 +597,7 @@ function startWsServer() {
 
     server.on('connection', (ws) => {
         console.log('🔌 Python client connected');
+        connectedClients.add(ws);
         currentWs = ws;
 
         sendToPython('all_status', getAllStatuses());
@@ -892,8 +898,9 @@ function startWsServer() {
 
         ws.on('close', () => {
             console.log('🔌 Python client disconnected');
+            connectedClients.delete(ws);
             if (currentWs === ws) {
-                currentWs = null;
+                currentWs = connectedClients.size > 0 ? Array.from(connectedClients)[0] : null;
             }
         });
     });

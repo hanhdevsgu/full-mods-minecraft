@@ -15,7 +15,7 @@ import re
 import queue
 from collections import deque
 
-WS_URL = "ws://localhost:54323"
+WS_URL = "ws://localhost:54325"
 MC_SERVER_HOST = 'play.toichoi.com'
 MC_SERVER_PORT = 25565
 
@@ -126,6 +126,83 @@ def init_accounts_file():
         return True
     except Exception as e:
         print(f"⚠️ Không thể tạo accounts.json: {e}")
+        return False
+
+def is_port_listening(port):
+    import socket
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.settimeout(0.4)
+    result = sock.connect_ex(('127.0.0.1', port))
+    sock.close()
+    return result == 0
+
+def get_app_dir():
+    if getattr(sys, 'frozen', False):
+        return os.path.dirname(sys.executable)
+    try:
+        return os.path.dirname(os.path.abspath(__file__))
+    except Exception:
+        return os.getcwd()
+
+def ensure_node_server():
+    try:
+        port = int(WS_URL.rsplit(':', 1)[1])
+    except Exception:
+        port = 54325
+
+    if is_port_listening(port):
+        return True
+
+    import shutil
+    node_path = shutil.which('node')
+    if not node_path:
+        for candidate in [
+            r'C:\Program Files\nodejs\node.exe',
+            r'C:\Program Files (x86)\nodejs\node.exe',
+            os.path.expanduser(r'~\AppData\Roaming\nvm\current\node.exe')
+        ]:
+            if os.path.exists(candidate):
+                node_path = candidate
+                break
+
+    if not node_path:
+        return False
+
+    base_dir = get_app_dir()
+    server_path = os.path.join(base_dir, 'server.js')
+    if not os.path.exists(server_path):
+        server_path = os.path.join(os.getcwd(), 'server.js')
+        base_dir = os.getcwd()
+    if not os.path.exists(server_path):
+        alt = r'C:\Users\Lenovo\Desktop\tong hop\FIXBOT\server.js'
+        if os.path.exists(alt):
+            server_path = alt
+            base_dir = os.path.dirname(alt)
+        else:
+            return False
+
+    try:
+        creationflags = 0
+        if sys.platform == 'win32':
+            creationflags = subprocess.CREATE_NO_WINDOW
+
+        log_file_path = os.path.join(base_dir, 'server_debug.log')
+        log_f = open(log_file_path, 'a', encoding='utf-8')
+
+        proc = subprocess.Popen(
+            [node_path, server_path],
+            cwd=base_dir,
+            stdout=log_f,
+            stderr=log_f,
+            creationflags=creationflags
+        )
+
+        for _ in range(25):
+            time.sleep(0.15)
+            if is_port_listening(port):
+                return True
+        return False
+    except Exception as e:
         return False
 
 def kill_node_server_processes():
@@ -406,6 +483,7 @@ class BotManager:
 
     def connect_ws(self):
         try:
+            ensure_node_server()
             self.ws = websocket.WebSocketApp(
                 WS_URL,
                 on_open=self.on_ws_open,
@@ -593,8 +671,12 @@ class BotManager:
 
     def on_ws_close(self, ws, close_status_code, close_msg):
         self.connected = False
-        self.add_chat("🔴 Mất kết nối core server!", '#ef4444')
-        self.root.after(5000, self.connect_ws)
+        self.add_chat("🔴 Mất kết nối core server! Đang kết nối lại...", '#ef4444')
+        try:
+            threading.Thread(target=ensure_node_server, daemon=True).start()
+        except Exception:
+            pass
+        self.root.after(3000, self.connect_ws)
 
     def on_ws_error(self, ws, error):
         print(f"WebSocket error: {error}")
@@ -3747,7 +3829,7 @@ if __name__ == "__main__":
 
     try:
         print("Đang khởi động MC Bot Control...")
-        print("⚠️  Cần chạy node server.js trước!")
+        ensure_node_server()
         app = BotManager()
         app.run()
     except Exception as e:

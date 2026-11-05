@@ -642,6 +642,12 @@ class BotInstance {
         if (this.is_dead) return false;
         if (!this.bot || !this.bot.entity || !this.bot.entity.position) return false;
 
+        const y = Number(this.bot.entity.position.y);
+        // Tọa độ sảnh lobby mặc định: Y ≈ 28.06 (sảnh chính) hoặc Y ≈ 14.0 (sảnh dưới)
+        if (Number.isFinite(y) && (Math.abs(y - 28.06) <= 4.0 || Math.abs(y - 14.0) <= 4.0)) {
+            return true;
+        }
+
         if (this._in_lobby_state) return true;
         if (this.findCompassSlot() !== -1) {
             this._had_compass_state = true;
@@ -873,17 +879,31 @@ class BotInstance {
         }
 
         // ⭐ CHECK Y VÀ COMPASS LIÊN TỤC TRÁNH LAG/KẸT LOBBY:
-        const inLobby = !this.joined_server && !this.isJoinedServer() && (this.findCompassSlot() !== -1 || this.isAtSpawn());
+        const curY = this.bot && this.bot.entity && this.bot.entity.position ? Number(this.bot.entity.position.y) : NaN;
+        const isLobbyY = Number.isFinite(curY) && (Math.abs(curY - 28.06) <= 4.0 || Math.abs(curY - 14.0) <= 4.0);
+        const inLobby = this.findCompassSlot() !== -1 || this.isAtSpawn() || isLobbyY;
         if (inLobby) {
-            const curY = this.bot.entity && this.bot.entity.position ? Number(this.bot.entity.position.y).toFixed(2) : '?';
+            if (this.joined_server) {
+                this.joined_server = false;
+                this.clicked_axe = false;
+            }
+            if (this.auto_storage_running || this._storage_cycle_in_progress) {
+                this.log(`⛔ [LOBBY DETECTED] Phát hiện ở lobby (Y=${Number.isFinite(curY) ? curY.toFixed(2) : '?'}) → DỪNG NGAY CHUỖI RƯƠNG! Chuẩn bị vào lại server...`, '#ff4d6d');
+                this._resume_storage_after_rejoin = true;
+                this.auto_storage_running = false;
+                this._storage_cycle_in_progress = false;
+                this._chest_busy = false;
+                this._storage_cancel_token++;
+            }
+            const yStr = Number.isFinite(curY) ? curY.toFixed(2) : '?';
             if (!this._lobby_stuck_since) {
                 this._lobby_stuck_since = Date.now();
             } else if (Date.now() - this._lobby_stuck_since > 25000) {
-                this.log(`⚠️ Đang ở lobby (Y=${curY}, có compass) quá 25s mà mãi không vào được server → Tự động kill node.exe session này!`, '#ff4d6d');
+                this.log(`⚠️ Đang ở lobby (Y=${yStr}, có compass) quá 25s mà mãi không vào được server → Tự động kill node.exe session này!`, '#ff4d6d');
                 this.showManualRestartHint('Kẹt ở lobby quá 25s');
                 return;
             }
-            this._handleCompassDetected(`${reason} (Y=${curY})`);
+            this._handleCompassDetected(`${reason} (Y=${yStr})`);
             return;
         } else {
             this._lobby_stuck_since = null;
@@ -2293,7 +2313,7 @@ class BotInstance {
 
         const myEpoch = this._conn_epoch;
         const myToken = this._storage_cancel_token;
-        const aborted = () => !this.running || !this.bot || this._conn_epoch !== myEpoch || this._storage_cancel_token !== myToken;
+        const aborted = () => !this.running || !this.bot || this._conn_epoch !== myEpoch || this._storage_cancel_token !== myToken || !this.auto_storage_running || this.findCompassSlot() !== -1 || !this.joined_server || this.isAtSpawn();
 
         try { if (this.bot && this.bot.pathfinder) this.bot.pathfinder.setGoal(null); } catch (e) {}
 
@@ -2692,12 +2712,19 @@ class BotInstance {
 
     restoreHotbarSlot() {
         if (!this.bot || !this.running || !this.joined_server) return;
-        if (this.findCompassSlot() !== -1) return;
+        if (this.findCompassSlot() !== -1 || this.isAtSpawn()) return;
+        const curY = this.bot.entity && this.bot.entity.position ? Number(this.bot.entity.position.y) : NaN;
+        if (Number.isFinite(curY) && (Math.abs(curY - 28.06) <= 4.0 || Math.abs(curY - 14.0) <= 4.0)) return;
+
         const targetSlot = this._loadHotbarSlot();
         try {
             if (this.bot.quickBarSlot !== targetSlot) {
                 this.bot.setQuickBarSlot(targetSlot);
-                this.log(`🗡️ [HOTBAR] Khôi phục vị trí cầm tay về ô số ${targetSlot + 1} (slot ${targetSlot})`, '#2ecc71');
+                const now = Date.now();
+                if (!this._last_hotbar_restore_log || now - this._last_hotbar_restore_log > 5000) {
+                    this._last_hotbar_restore_log = now;
+                    this.log(`🗡️ [HOTBAR] Khôi phục vị trí cầm tay về ô số ${targetSlot + 1} (slot ${targetSlot})`, '#2ecc71');
+                }
             }
             this._hotbar_restored = true;
             this.saved_hotbar_slot = targetSlot;
@@ -3439,7 +3466,7 @@ class BotInstance {
 
         const myEpoch = this._conn_epoch;
         const myToken = this._storage_cancel_token;
-        const aborted = () => !this.running || !this.bot || this._conn_epoch !== myEpoch || this._storage_cancel_token !== myToken || !this.auto_storage_running || this.findCompassSlot() !== -1 || !this.joined_server;
+        const aborted = () => !this.running || !this.bot || this._conn_epoch !== myEpoch || this._storage_cancel_token !== myToken || !this.auto_storage_running || this.findCompassSlot() !== -1 || !this.joined_server || this.isAtSpawn();
         const oldLock = this.lock_pitch_yaw;
         const oldPitch = this.lock_pitch, oldYaw = this.lock_yaw;
         const FAST_OPEN_OPTS = { windowOpenTimeoutMs: 1000, retryDelayMs: 30, noAimRetryDelayMs: 30, maxAttempts: 25, refreshLockBeforeOpen: true };
@@ -3710,7 +3737,7 @@ class BotInstance {
 
         const myEpoch = this._conn_epoch;
         const myToken = this._storage_cancel_token;
-        const aborted = () => !this.running || !this.bot || this._conn_epoch !== myEpoch || this._storage_cancel_token !== myToken;
+        const aborted = () => !this.running || !this.bot || this._conn_epoch !== myEpoch || this._storage_cancel_token !== myToken || !this.auto_storage_running || this.findCompassSlot() !== -1 || !this.joined_server || this.isAtSpawn();
         const oldDx = this.move_delta_x, oldDy = this.move_delta_y, oldDz = this.move_delta_z;
         const oldPitch = this.lock_pitch, oldYaw = this.lock_yaw, oldLock = this.lock_pitch_yaw;
         this._chest_busy = true;
@@ -4467,7 +4494,7 @@ class BotInstance {
 
         const myEpoch = this._conn_epoch;
         const myToken = this._storage_cancel_token;
-        const aborted = () => !this.running || !this.bot || this._conn_epoch !== myEpoch || this._storage_cancel_token !== myToken;
+        const aborted = () => !this.running || !this.bot || this._conn_epoch !== myEpoch || this._storage_cancel_token !== myToken || !this.auto_storage_running || this.findCompassSlot() !== -1 || !this.joined_server || this.isAtSpawn();
 
         const MAX_CHEST_HOPS = 2000;
         const GUI_SETTLE_MS = 20;
@@ -5296,7 +5323,7 @@ class BotInstance {
             // mở được, thay vì chỉ thử activateBlock đúng 1 lần rồi bỏ cuộc.
             const myEpoch = this._conn_epoch;
             const myToken = this._storage_cancel_token;
-            const aborted = () => !this.running || !this.bot || this._conn_epoch !== myEpoch || this._storage_cancel_token !== myToken;
+            const aborted = () => !this.running || !this.bot || this._conn_epoch !== myEpoch || this._storage_cancel_token !== myToken || !this.auto_storage_running || this.findCompassSlot() !== -1 || !this.joined_server || this.isAtSpawn();
 
             try {
                 const chestWindow = await this.openChestAtCursorWithRetry(TAG, aborted, {

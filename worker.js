@@ -2062,13 +2062,9 @@ class BotInstance {
                     return failed;
                 }
             }
-            // Pacing 110ms ± 15ms tự nhiên giữa các click:
-            // - Tốc độ cao: ~9 click/giây, lấy 16 stack chỉ ~1.7s (nhanh gấp 3 lần file cũ)
-            // - Có jitter tự nhiên mô phỏng tay người shift-click thật
-            // - An toàn tuyệt đối 100% trước Anti-cheat (Vulcan, Grim, Matrix) và Packet-flood limiter
+            // Pacing 25ms siêu tốc giữa các click (chuẩn như mod Impact / quick_move delay 0):
             if (i < slotList.length - 1) {
-                const jitter = Math.floor(Math.random() * 31) - 15; // -15ms .. +15ms
-                await this.sleep(110 + jitter);
+                await this.sleep(25);
             }
         }
         return failed;
@@ -2076,8 +2072,7 @@ class BotInstance {
 
     async _depositIntoOpenWindow(chestWindow, TAG, filterFn = null) {
         if (!this.running || !this.bot || this.bot.currentWindow !== chestWindow) return { pushed: 0, stuck: 0, full: false };
-        // Chờ 200ms cho server đồng bộ window và chống FastInventory anti-cheat
-        await this.sleep(200);
+        await this.sleep(80);
         const invStart = this._getChestInventoryStart(chestWindow);
 
         const getPlayerItemsInWindow = () => {
@@ -2243,10 +2238,10 @@ class BotInstance {
         let passes = 0;
         const MAX_PASSES = 6;
 
-        // Chờ 200ms cho server đồng bộ trạng thái window và chống FastInventory anti-cheat
-        await this.sleep(200);
+        // Chờ 80ms cho server đồng bộ trạng thái window
+        await this.sleep(80);
 
-        // Quét lấy sạch item mục tiêu bằng quick-move tốc độ cao có nhịp an toàn 110ms chống diss
+        // Quét lấy sạch item mục tiêu bằng quick-move siêu tốc (nhịp 25ms chuẩn như Impact mod)
         while (this.running && this.bot.currentWindow === chestWindow && passes < MAX_PASSES) {
             if (this.isPlayerInventoryFull36() || this._chestPlayerSectionFull(chestWindow)) {
                 this.log(`🎒 ${TAG} Inventory đã đủ 36/36 ô — dừng lấy item.`, '#f5c842');
@@ -2265,7 +2260,7 @@ class BotInstance {
 
             if (targetSlots.length === 0) break;
 
-            this.log(`⚡ ${TAG} PASS ${passes}: ${targetSlots.length} stack → QUICK-MOVE TỐC ĐỘ CAO (nhịp 110ms mượt, chống diss)...`, '#4a9eff');
+            this.log(`⚡ ${TAG} PASS ${passes}: ${targetSlots.length} stack → QUICK-MOVE SIÊU TỐC (chuẩn như mod Impact)...`, '#4a9eff');
             let movedThisPass = 0;
             let pendingSlots = targetSlots.slice();
 
@@ -2879,31 +2874,24 @@ class BotInstance {
         if (dist > 0.65) {
             this.log(`📍 [WAYPOINT RESUME] (${reason}) Phát hiện vị trí rương vừa đứng tại (${wp.x}, ${wp.y}, ${wp.z}) (rương #${(wp.hops || 0) + 1}) → GOTO tới vị trí này...`, '#4a9eff');
 
-            // 🧭 KHÓA TRƯỚC GÓC NHÌN: Khóa góc nhìn Nhà Rương ngay từ trước khi di chuyển để bot không quay mặt ra sau khi đi tìm waypoint
-            this.lock_pitch = this._safeStoragePitch(this.storage_deposit_pitch);
-            this.lock_yaw = this._safeStorageYaw(this.storage_deposit_yaw);
-            this.lock_pitch_yaw = true;
-            this.applyChestPitchYaw();
-            this.startPitchYawLockLoop();
+            // 🧭 DỪNG KHÓA GÓC TRƯỚC KHI DI CHUYỂN: Di chuyển tự nhiên giống mod Impact / Baritone, chống diss
+            this.stopPitchYawLockLoop();
+            this.lock_pitch_yaw = false;
 
             const abortedFn = () => !this.running || !this.bot || this.findCompassSlot() !== -1;
-            // Thử đi bằng Baritone Traverse trước (rất mượt cho hành lang rương thẳng hàng)
             let reached = false;
             try {
-                reached = await this._baritoneGotoBlock(targetBlockX, targetBlockY, targetBlockZ, abortedFn, 20000);
-                if (!reached && !abortedFn()) {
-                    reached = await this._pathfinderGotoExactXYZ(
-                        targetBlockX, targetBlockY, targetBlockZ,
-                        '📍 [VỀ RƯƠNG VỪA ĐỨNG]',
-                        abortedFn
-                    );
-                }
+                reached = await this._pathfinderGotoExactXYZ(
+                    targetBlockX, targetBlockY, targetBlockZ,
+                    '📍 [VỀ RƯƠNG VỪA ĐỨNG]',
+                    abortedFn
+                );
             } finally {
-                // Khôi phục và khóa chắc chắn góc nhìn Nhà Rương sau khi di chuyển
+                // Khôi phục và khóa chắc chắn góc nhìn Nhà Rương SAU KHI đã tới nơi
                 this.lock_pitch = this._safeStoragePitch(this.storage_deposit_pitch);
                 this.lock_yaw = this._safeStorageYaw(this.storage_deposit_yaw);
                 this.lock_pitch_yaw = true;
-                this.applyChestPitchYaw();
+                this.applyChestPitchYaw(true);
                 this.startPitchYawLockLoop();
             }
 
@@ -3203,53 +3191,13 @@ class BotInstance {
         return true;
     }
 
-    // #goto tới Ô (bx,by,bz) chuẩn Baritone: ưu tiên Traverse (Freelook - không xoay mặt) khi thẳng hàng
+    // #goto tới Ô (bx,by,bz) chuẩn như mod Impact / Baritone: xoay người tự nhiên, mượt mà, không diss
     async _baritoneGotoBlock(bx, by, bz, aborted, pathfinderTimeoutMs = 20000) {
         if (!this.bot || !this.bot.entity) return false;
         let f = this._baritoneFeet();
         if (f.x === bx && f.y === by && f.z === bz) return true;
 
-        // 🧭 FREELOOK TRAVERSE: Nếu cùng Y và thẳng hàng kề nhau (<= 60 ô) -> Đi bằng Traverse để KHÔNG xoay mặt bot!
-        if (f.y === by && (f.x === bx || f.z === bz)) {
-            const sx = Math.sign(bx - f.x), sz = Math.sign(bz - f.z);
-            const steps = Math.abs(bx - f.x) + Math.abs(bz - f.z);
-            if (steps <= 60) {
-                let allOk = true;
-                for (let i = 1; allOk && i <= steps; i++) {
-                    if (aborted && aborted()) return false;
-                    const r = await this._baritoneTraverse(f.x + sx * i, by, f.z + sz * i, aborted);
-                    if (r !== true) { allOk = false; break; }
-                }
-                if (allOk) {
-                    f = this._baritoneFeet();
-                    if (f.x === bx && f.y === by && f.z === bz) return true;
-                }
-            }
-        }
-
-        // Fallback: dùng pathfinder nếu không traverse được (chéo hoặc khác Y)
-        if (!this.bot.pathfinder) return false;
-        try {
-            const goal = new goals.GoalBlock(bx, by, bz);
-            const pr = this.bot.pathfinder.goto(goal);
-            pr.catch(() => {});
-            const to = new Promise((_, rej) => setTimeout(() => rej(new Error(`goto timeout (${Math.round(pathfinderTimeoutMs / 1000)}s)`)), pathfinderTimeoutMs));
-            await Promise.race([pr, to]);
-        } catch (e) {
-            // timeout hoặc hủy
-        } finally {
-            try { this.bot.pathfinder.setGoal(null); } catch (e) {}
-            for (const k of ['forward', 'back', 'left', 'right', 'sprint', 'jump']) {
-                try { this.bot.setControlState(k, false); } catch (e) {}
-            }
-            if (this.lock_pitch_yaw) {
-                this.applyChestPitchYaw();
-            }
-        }
-        f = this._baritoneFeet();
-        const p = this.bot.entity ? this.bot.entity.position : null;
-        const dist = p ? Math.hypot(bx + 0.5 - p.x, bz + 0.5 - p.z) : 999;
-        return (f.x === bx && f.y === by && f.z === bz) || dist <= 0.85;
+        return await this._pathfinderGotoExactXYZ(bx, by, bz, '🧭 [GOTO]', aborted);
     }
 
     async _runConfiguredChestGoto(dx, deltaY, dz, lockY, pitch, yaw, TAG, aborted, settleMs = 50) {
@@ -3272,14 +3220,11 @@ class BotInstance {
             const targetZ = baseZ + DZ;
             const wantCenter = !(DX === 0 && DY === 0 && DZ === 0);
 
-            // 🧭 BARITONE FREELOOK: Áp dụng và KHÓA NGAY Pitch/Yaw của rương đích
-            if (pitch !== undefined && yaw !== undefined && pitch !== null && yaw !== null) {
-                this.lock_pitch = this._safeStoragePitch(pitch);
-                this.lock_yaw = this._safeStorageYaw(yaw);
-                this.lock_pitch_yaw = true;
-                this.applyChestPitchYaw();
-                this.startPitchYawLockLoop();
-            }
+            // 🛑 DỪNG KHÓA PITCH/YAW TRƯỚC KHI DI CHUYỂN
+            // Để bot xoay người tự nhiên theo hướng bước đi y như mod Impact/Baritone trong Minecraft,
+            // tuyệt đối không vừa đi vừa khóa góc nhìn làm anti-cheat kick diss!
+            this.stopPitchYawLockLoop();
+            this.lock_pitch_yaw = false;
 
             const sameBlock = _bf.x === targetX && _bf.y === targetYBlock && _bf.z === targetZ;
 
@@ -3293,7 +3238,7 @@ class BotInstance {
                     this._goto_ideal_pos = { x: targetX + 0.5, y: targetYBlock, z: targetZ + 0.5 };
                     if (!sameBlock) {
                         this.log(`🧭 [Pathfinder] ${TAG} #goto delta (${DX},${DY},${DZ}) -> đích (${targetX}, ${targetYBlock}, ${targetZ})`, '#4a9eff');
-                        const reached = await this._baritoneGotoBlock(targetX, targetYBlock, targetZ, aborted, 20000);
+                        const reached = await this._pathfinderGotoExactXYZ(targetX, targetYBlock, targetZ, TAG, aborted);
                         if (!reached && !aborted()) throw new Error('Chưa tới được ô đích sau goto');
                     } else {
                         this.log(`🧭 ${TAG} đã ở trong ô đích (${targetX}, ${targetYBlock}, ${targetZ}).`, '#4a9eff');
@@ -3335,9 +3280,8 @@ class BotInstance {
             const rawY = Number(this.bot.entity.position.y);
             const hasLockY = lockY !== null && lockY !== undefined && String(lockY).trim() !== '' && Number.isFinite(Number(lockY));
             const lockYNum = hasLockY ? Number(lockY) : NaN;
-            const yDiff = hasLockY ? Math.abs(rawY - lockYNum) : NaN;
 
-            // Rương 1, Rương 2 & Nhà Rương: Luôn áp dụng và khóa đúng Pitch/Yaw đã setup.
+            // ⭐ SAU KHI ĐÃ TỚI NƠI AN TOÀN: Mới khóa Pitch/Yaw rương và ổn định góc
             this.lock_pitch = this._safeStoragePitch(pitch);
             this.lock_yaw = this._safeStorageYaw(yaw);
             this.lock_pitch_yaw = true;

@@ -1004,145 +1004,156 @@ class BotInstance {
     // (hoặc rơi vào đúng lúc dist đang dao động quanh biên farm_radius), tình trạng
     // "đứng yên 1 lúc hoài" xảy ra rõ nhất. Sửa: dùng farm_range để xét điều kiện giữ
     // khoá, và thêm watchdog _lastHadTargetAt bên dưới để tự phá khoá nếu bị kẹt quá lâu.
-    _pickFarmTarget() {
-        if (!this.bot || !this.bot.entity) return null;
+    // ⭐ QUÉT TẤT CẢ QUÁI VẬT TRONG HỌNG CHUTE (Multi-Target Scanner):
+    // Thay vì chỉ bắt 1 tia mỏng 1D (raycast), hàm này quét toàn bộ quái vật đứng trong họng chute
+    // (nón nhìn trước mặt trong tầm đánh maxReach). Nhờ đó bot nhận diện được cả 2-3 stack quái
+    // đứng cạnh nhau (ví dụ: x7 Iron Golem đứng cạnh x8 Iron Golem, hoặc đàn 38 con Blaze).
+    _getMobsInChute(maxReach) {
+        if (!this.bot || !this.bot.entity) return [];
+        try {
+            const eyePos = this.bot.entity.position.offset(0, 1.62, 0);
+            const yaw = this.bot.entity.yaw;
+            const pitch = this.bot.entity.pitch;
+            const dirX = -Math.sin(yaw) * Math.cos(pitch);
+            const dirY = -Math.sin(pitch);
+            const dirZ = -Math.cos(yaw) * Math.cos(pitch);
+            const dir = { x: dirX, y: dirY, z: dirZ };
+
+            const list = [];
+
+            for (const [id, entity] of Object.entries(this.bot.entities)) {
+                if (!entity || entity.type !== 'mob') continue;
+                if (entity._isDead) continue;
+                if (entity.health !== undefined && entity.health <= 0) continue;
+                if (!entity.position) continue;
+
+                const box = this._getEntityHitbox(entity);
+                const dist = this._getHitboxDistance(eyePos, box);
+                if (dist > maxReach) continue;
+
+                // 1. Kiểm tra trực diện qua tia ngắm raycast
+                const t = this._rayIntersectsAABB(eyePos, dir, box);
+                let inChute = false;
+                let score = 0;
+
+                if (t !== null && t <= maxReach) {
+                    inChute = true;
+                    score = 100 - t; // Quái ngay tâm ngắm ưu tiên cao nhất
+                } else {
+                    // 2. Kiểm tra góc nhìn trước mặt (nón mở rộng 120 độ bao trọn toàn bộ họng chute)
+                    const targetHeight = (entity.height && entity.height > 0) ? entity.height * 0.5 : 0.5;
+                    const targetPos = entity.position.offset(0, targetHeight, 0);
+                    const dx = targetPos.x - eyePos.x;
+                    const dy = targetPos.y - eyePos.y;
+                    const dz = targetPos.z - eyePos.z;
+                    const centerDist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+                    if (centerDist > 0) {
+                        const dot = (dirX * dx + dirY * dy + dirZ * dz) / centerDist;
+                        if (dot >= 0.25) { // Góc nhìn rộng trước mặt
+                            inChute = true;
+                            score = dot * 50 - dist;
+                        }
+                    }
+                }
+
+                if (inChute) {
+                    list.push({ id, entity, dist, score });
+                }
+            }
+
+            // Sắp xếp ưu tiên: quái giữa tâm ngắm đứng trước, quái cạnh bên đứng sau
+            list.sort((a, b) => b.score - a.score);
+            return list;
+        } catch (e) {
+            return [];
+        }
+    }
+
+    _pickFarmTargets() {
+        if (!this.bot || !this.bot.entity) return [];
         const now = Date.now();
-        const eyePos = this.bot.entity.position.offset(0, 1.62, 0);
         const maxReach = Math.min(this.farm_range, 2.95);
 
-        // ⭐ CHẾ ĐỘ CANH GÓC SẴN (Tắt LookAt / Aim):
-        // Giữ nguyên 100% góc nhìn của người chơi, chỉ chém những con mob đang nằm trong tia ngắm (crosshair)
-        // hoặc ngay trước mặt (chute / ô hở), tuyệt đối không xoay đầu và không đánh quái phía sau.
-        // ⭐ FIX "CHÉM 1 CON": Triển khai Round-Robin Target Cycling qua tất cả quái trong chute/tia ngắm.
-        if (!this.farm_lookat && !this.farm_smart_aim) {
-            let candidates = this._pickRaycastMobTargets(maxReach);
-            if (candidates.length === 0) {
-                candidates = this.scanForwardMobs(maxReach);
-            }
-
-            if (candidates.length > 0) {
-                // Sắp xếp ưu tiên:
-                // 1. Quái đã hết 500ms invulnerability window (sẵn sàng nhận full damage)
-                // 2. Trong nhóm sẵn sàng, ưu tiên con lâu chưa bị chém nhất (xoay vòng đều qua cả bầy mob)
-                // 3. Nếu tất cả đều vừa bị chém, chọn con gần hết thời gian bất tử nhất
-                candidates.sort((a, b) => {
-                    const lastA = this._lastAttackSentAt.get(a.id) || 0;
-                    const lastB = this._lastAttackSentAt.get(b.id) || 0;
-                    const readyA = (now - lastA) >= this._invulnWindowMs;
-                    const readyB = (now - lastB) >= this._invulnWindowMs;
-
-                    if (readyA && !readyB) return -1;
-                    if (!readyA && readyB) return 1;
-
-                    return lastA - lastB;
-                });
-
-                const picked = candidates[0];
-                this._lockedTargetId = picked.id;
-                this._lockedTargetExpiresAt = now + this._lockDurationMs;
-                this._lastHadTargetAt = now;
-                return picked;
-            }
-
-            this._lockedTargetId = null;
-            return null;
+        // 1. Quét toàn bộ quái vật trong họng chute / nón nhìn trước mặt
+        const chuteMobs = this._getMobsInChute(maxReach);
+        if (chuteMobs.length > 0) {
+            this._lockedTargetId = chuteMobs[0].id;
+            this._lockedTargetExpiresAt = now + this._lockDurationMs;
+            this._lastHadTargetAt = now;
+            return chuteMobs;
         }
 
-        if (this._lockedTargetId !== null) {
-            const locked = this.bot.entities[this._lockedTargetId];
-            const lockedAlive = locked && !locked._isDead && !(locked.health !== undefined && locked.health <= 0);
-
-            if (lockedAlive) {
-                const box = this._getEntityHitbox(locked);
-                const dist = this._getHitboxDistance(eyePos, box);
-                const maxReach = Math.min(this.farm_range, 2.95);
-                if (dist <= maxReach) {
-                    this._lockedTargetExpiresAt = now + this._lockDurationMs;
-                    this._lastHadTargetAt = now;
-                    return { id: this._lockedTargetId, entity: locked, dist };
-                }
-            } else if (this._lockedTargetId !== null && this.farm_debug) {
-                // Mục tiêu biến mất khỏi bot.entities (chết / despawn / bị xoá / unload chunk)
-                this.log(`🔍 [debug] Mục tiêu khoá (id=${this._lockedTargetId}) đã biến mất hoặc chết - huỷ khoá, quét lại.`, '#8b949e');
-            }
-            // Mục tiêu khoá không còn hợp lệ (ngoài tầm đánh / chết / biến mất) -> bỏ khoá
-            this._lockedTargetId = null;
-        }
-
+        // 2. Fallback nếu không có con nào trước mặt (ví dụ bot đang quay lưng hoặc ngoài bãi trống):
+        // Quét con gần nhất trong tầm
         const nearest = this.scanNearestMob();
         if (nearest) {
             this._lockedTargetId = nearest.id;
             this._lockedTargetExpiresAt = now + this._lockDurationMs;
             this._lastHadTargetAt = now;
-        } else {
-            this._lockedTargetId = null;
-
-            // ⭐ WATCHDOG: nếu farm đang bật mà quá lâu (mặc định 2000ms) không hề có
-            // 1 mục tiêu hợp lệ nào trong tầm đánh (kể cả sau khi quét lại), rất có thể
-            // do dữ liệu entity bị "kẹt"/không đồng bộ (mob vừa despawn nhưng client
-            // chưa xử lý event kịp, hoặc bug lạ khác). Log cảnh báo để bạn biết bot đang
-            // chờ mob xuất hiện lại chứ không phải bị treo, farm_radius/backoff mob mới
-            // sẽ tự chạy lại ngay khi có mob vào tầm - không cần tắt/bật farm thủ công.
-            if (this.farm_debug && now - this._lastHadTargetAt > this._stuckTimeoutMs) {
-                this.log(`⏳ [debug] Không có mục tiêu nào trong tầm đánh (${this.farm_range} ô) suốt ${Math.round((now - this._lastHadTargetAt) / 1000)}s - đang chờ mob...`, '#f5c842');
-                this._lastHadTargetAt = now; // tránh spam log liên tục
-            }
+            return [nearest];
         }
-        return nearest;
+
+        this._lockedTargetId = null;
+        if (this.farm_debug && now - this._lastHadTargetAt > this._stuckTimeoutMs) {
+            this.log(`⏳ [debug] Không có mục tiêu nào trong tầm đánh (${this.farm_range} ô) suốt ${Math.round((now - this._lastHadTargetAt) / 1000)}s - đang chờ mob...`, '#f5c842');
+            this._lastHadTargetAt = now;
+        }
+        return [];
     }
 
-    // ⭐ ANTI-CHEAT SAFE ATTACK: cơ chế chém chuẩn Vanilla Client để vượt qua GrimAC / Vulcan / Matrix:
-    // 1. Tầm đánh (Reach): Giới hạn cứng tối đa 2.95m (Survival chuẩn 3.0m). Tuyệt đối không chém xa quá 3.0m.
-    // 2. Góc nhìn (Angle/Raycast): Cập nhật góc nhìn đồng bộ qua bot.lookAt(targetCenterPos, true) và
-    //    đợi physics tick (waitForTicks) để Mineflayer tự gửi packet look chính thức. Tuyệt đối không
-    //    gửi packet look thô vì sẽ bị physics loop của Mineflayer gửi đè góc cũ gây lệch tâm (Killaura snap).
-    // 3. Thứ tự packet (Attack Order / NoSwing): Client chuẩn luôn gửi arm_animation (swing) TRƯỚC khi gửi use_entity.
-    async _attemptAttack(candidateId) {
+    _pickFarmTarget() {
+        const targets = this._pickFarmTargets();
+        return targets.length > 0 ? targets[0] : null;
+    }
+
+    // ⭐ MULTI-TARGET SAFE ATTACK: Chém đồng loạt TẤT CẢ quái vật trong chute
+    // 1. Luôn vung tay chuẩn Vanilla (arm_animation).
+    // 2. Chém lần lượt từng con trong bọc (cách nhau 20ms nếu > 1 con) để mọi stack quái
+    //    (x7 Golem và x8 Golem, hoặc 38 Blaze) đều nhận sát thương đồng thời!
+    async _attemptAttackBatch(targets) {
         if (this._attack_in_progress) return;
-        if (!this.bot || !this.running) return;
+        if (!this.bot || !this.running || !targets || targets.length === 0) return;
         this._attack_in_progress = true;
 
         try {
-            const target = this.bot.entities[candidateId];
-            if (!target || target._isDead || (target.health !== undefined && target.health <= 0)) return;
-
-            const latency = this._getLatencySec();
-            const predictedPos = target.velocity
-                ? target.position.plus(target.velocity.scaled(latency))
-                : target.position;
-            const margin = Math.min(latency * 2, 0.05) + this._adaptiveReachMargin;
-
-            const eyePos = this.bot.entity.position.offset(0, 1.62, 0);
-            
-            // ⭐ TÍNH TẦM ĐÁNH TỚI BỀ MẶT HITBOX GẦN NHẤT (AABB Closest Distance):
-            // Minecraft Reach tính từ mắt tới bề mặt AABB gần nhất của mob (hitbox),
-            // KHÔNG đo tới tâm giữa thân quái vì Blaze (1.8m) hay Golem (2.7m) sẽ bị đội dist lên > 2.95m.
-            const box = this._getEntityHitbox(target);
-            const dist = this._getHitboxDistance(eyePos, box);
-
-            // Giới hạn cứng tầm đánh survival để không bao giờ vi phạm Reach check của Anti-Cheat
             const MAX_SURVIVAL_REACH = 2.95;
+            const latency = this._getLatencySec();
+            const margin = Math.min(latency * 2, 0.05) + this._adaptiveReachMargin;
             const maxAllowedReach = Math.min(this.ATTACK_REACH + margin, MAX_SURVIVAL_REACH);
+            const eyePos = this.bot.entity.position.offset(0, 1.62, 0);
 
-            if (dist > maxAllowedReach) {
-                if (this.farm_debug) {
-                    this.log("🔍 [debug] Bỏ qua (ngoài tầm an toàn " + maxAllowedReach.toFixed(2) + "m): " + (target.name || "?") + " dist=" + dist.toFixed(2), "#8b949e");
+            // 1. Lọc danh sách quái còn sống & nằm trong tầm chém thực tế
+            const validTargets = [];
+            for (const t of targets) {
+                const entity = this.bot.entities[t.id];
+                if (!entity || entity._isDead || (entity.health !== undefined && entity.health <= 0)) continue;
+                const box = this._getEntityHitbox(entity);
+                const dist = this._getHitboxDistance(eyePos, box);
+                if (dist <= maxAllowedReach) {
+                    validTargets.push({ id: t.id, entity, dist });
                 }
-                // Giảm tần suất gọi khi mục tiêu ngoài tầm, tránh spam loop 66 lần/s
+                if (validTargets.length >= 8) break; // Giới hạn an toàn tối đa 8 con / cycle
+            }
+
+            if (validTargets.length === 0) {
                 this.last_attack_time = (Date.now() / 1000) - this.next_attack_delay + 0.15;
                 return;
             }
 
+            // Nếu bật LookAt / SmartAim thì xoay đầu đồng bộ nhìn con chính
             if (this.farm_lookat || this.farm_smart_aim) {
-                const targetLookHeight = (target.height && target.height > 0) ? target.height * 0.5 : 0.5;
+                const primary = validTargets[0];
+                const isNewTarget = primary.id !== this._lastAttackTargetId;
+                const targetLookHeight = (primary.entity.height && primary.entity.height > 0) ? primary.entity.height * 0.5 : 0.5;
+                const predictedPos = primary.entity.velocity
+                    ? primary.entity.position.plus(primary.entity.velocity.scaled(latency))
+                    : primary.entity.position;
                 const targetCenterPos = predictedPos.offset(0, targetLookHeight, 0);
-                const isNewTarget = candidateId !== this._lastAttackTargetId;
+
                 try {
-                    // Đồng bộ góc nhìn qua lookAt của Mineflayer (cập nhật chính xác lastSentYaw/Pitch nội bộ)
                     await this.bot.lookAt(targetCenterPos, true);
                 } catch (e) {}
 
-                // Đợi 1-2 tick physics để Mineflayer gửi packet look chuẩn và server ghi nhận góc nhìn của player
                 const waitTicks = isNewTarget ? 2 : 1;
                 try {
                     await this.bot.waitForTicks(waitTicks);
@@ -1152,68 +1163,51 @@ class BotInstance {
             }
 
             if (!this.bot || !this.running) return;
-            // Re-check còn sống + còn trong tầm sau khi chờ
-            const stillTarget = this.bot.entities[candidateId];
-            if (!stillTarget || stillTarget._isDead || (stillTarget.health !== undefined && stillTarget.health <= 0)) return;
 
-            const finalLatency = this._getLatencySec();
-            const finalMargin = Math.min(finalLatency * 2, 0.05) + this._adaptiveReachMargin;
-            const finalBox = this._getEntityHitbox(stillTarget);
-            const finalDist = this._getHitboxDistance(this.bot.entity.position.offset(0, 1.62, 0), finalBox);
-
-            const finalAllowedReach = Math.min(this.ATTACK_REACH + finalMargin, MAX_SURVIVAL_REACH);
-            if (finalDist > finalAllowedReach) {
-                if (this.farm_debug) {
-                    this.log("🔍 [debug] Bỏ qua lúc chém (ngoài tầm an toàn " + finalAllowedReach.toFixed(2) + "m sau settle): " + (stillTarget.name || "?") + " dist=" + finalDist.toFixed(2), "#8b949e");
-                }
-                this.last_attack_time = (Date.now() / 1000) - this.next_attack_delay + 0.15;
-                return;
-            }
-
-            let attackTarget = stillTarget;
-            let retargeted = false;
-            if (this.farm_use_raycast) {
-                const raycastPick = this._pickRaycastMobTarget(finalAllowedReach);
-                if (raycastPick && raycastPick.entity) {
-                    attackTarget = raycastPick.entity;
-                    retargeted = attackTarget.id !== stillTarget.id;
-                }
-            }
-            const attackTargetId = attackTarget.id;
-
-            const prevSentAt = this._lastAttackSentAt.get(attackTargetId) || 0;
-            const sentNow = Date.now();
-            const expectConfirm = (sentNow - prevSentAt) >= this._invulnWindowMs;
-            this._lastAttackSentAt.set(attackTargetId, sentNow);
-
-            // ⭐ FIX NOSWING / ATTACK ORDER:
-            // 1. Luôn vung tay trước (arm_animation) chuẩn Vanilla client
+            // 2. Luôn vung tay trước (arm_animation)
             try {
                 this.bot.swingArm("right");
             } catch (e) {}
 
-            // 2. Tấn công qua bot.attack chuẩn của Mineflayer (gửi use_entity với đầy đủ metadata)
-            try {
-                this.bot.attack(attackTarget);
-            } catch (e) {
-                if (this.bot._client) {
-                    this.bot._client.write("use_entity", {
-                        target: attackTargetId,
-                        mouse: 1
-                    });
+            const sentNow = Date.now();
+
+            // 3. Tấn công TẤT CẢ các con quái trong chute
+            // Cách nhau 20ms giữa mỗi con để packet tự nhiên và server ghi nhận đủ sát thương cho từng con
+            for (let i = 0; i < validTargets.length; i++) {
+                const targetItem = validTargets[i];
+                const attackTargetId = targetItem.id;
+
+                if (i > 0) {
+                    await this.sleep(20);
+                    if (!this.bot || !this.running) return;
                 }
+
+                const prevSentAt = this._lastAttackSentAt.get(attackTargetId) || 0;
+                const expectConfirm = (sentNow - prevSentAt) >= this._invulnWindowMs;
+                this._lastAttackSentAt.set(attackTargetId, sentNow);
+
+                try {
+                    this.bot.attack(targetItem.entity);
+                } catch (e) {
+                    if (this.bot._client) {
+                        this.bot._client.write("use_entity", {
+                            target: attackTargetId,
+                            mouse: 1
+                        });
+                    }
+                }
+
+                this._pendingAttacks.set(attackTargetId, { sentAt: sentNow, expectConfirm });
             }
 
-            this._lastAttackTargetId = attackTargetId;
-            this._pendingAttacks.set(attackTargetId, { sentAt: sentNow, expectConfirm });
+            this._lastAttackTargetId = validTargets[0].id;
             this.last_attack_time = Date.now() / 1000;
             this.next_attack_delay = this.farm_min_delay + Math.random() * (this.farm_max_delay - this.farm_min_delay);
             this._missCount = 0;
 
             if (this.farm_debug) {
-                const retargetMsg = retargeted ? (" (đổi mục tiêu qua raycast, ban đầu chọn id=" + stillTarget.id + ")") : "";
-                const confirmMsg = expectConfirm ? "" : " (invuln, không kỳ vọng confirm)";
-                this.log("⚔️ [debug] Chém: " + (attackTarget.name || "?") + " (id=" + attackTargetId + ") dist=" + finalDist.toFixed(2) + " ping=" + (finalLatency * 1000).toFixed(0) + "ms adaptiveMargin=" + this._adaptiveReachMargin.toFixed(2) + confirmMsg + retargetMsg, "#58a6ff");
+                const names = validTargets.map(v => `${v.entity.name || '?'}(id=${v.id})`).join(', ');
+                this.log(`⚔️ [debug] Chém đồng loạt ${validTargets.length} quái: ${names}`, '#58a6ff');
             }
         } catch (e) {
             if (this.farm_debug) {
@@ -1222,6 +1216,10 @@ class BotInstance {
         } finally {
             this._attack_in_progress = false;
         }
+    }
+
+    async _attemptAttack(candidateId) {
+        return this._attemptAttackBatch([{ id: candidateId }]);
     }
 
     startAutoFarm() {
@@ -1291,28 +1289,20 @@ class BotInstance {
                     }
                 }
 
-                const nearest = this._pickFarmTarget();
+                const targets = this._pickFarmTargets();
                 const now = Date.now() / 1000;
 
-                if (!nearest || nearest.dist > this.farm_range) {
+                if (!targets || targets.length === 0) {
                     this.farm_target_id = null;
                     this.auto_farm_timer = setTimeout(farmLoop, 50);
                     return;
                 }
 
-                this.farm_target_id = nearest.id;
-
-                const target = this.bot.entities[nearest.id];
-                if (!target || (target.health !== undefined && target.health <= 0)) {
-                    this._lockedTargetId = null;
-                    this.auto_farm_timer = setTimeout(farmLoop, 50);
-                    return;
-                }
+                this.farm_target_id = targets[0].id;
 
                 if (!this._attack_in_progress && now - this.last_attack_time >= this.next_attack_delay) {
-                    // Fire-and-forget: không await để farmLoop tiếp tục theo dõi pending/miss timeout,
-                    // cờ _attack_in_progress đảm bảo không có 2 lệnh chém chồng nhau cùng lúc.
-                    this._attemptAttack(nearest.id).catch(() => {});
+                    // Fire-and-forget: chém đồng loạt tất cả quái trong chute
+                    this._attemptAttackBatch(targets).catch(() => {});
                 }
 
                 this.auto_farm_timer = setTimeout(farmLoop, 15);

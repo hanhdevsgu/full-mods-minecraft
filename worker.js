@@ -1013,21 +1013,35 @@ class BotInstance {
         // ⭐ CHẾ ĐỘ CANH GÓC SẴN (Tắt LookAt / Aim):
         // Giữ nguyên 100% góc nhìn của người chơi, chỉ chém những con mob đang nằm trong tia ngắm (crosshair)
         // hoặc ngay trước mặt (chute / ô hở), tuyệt đối không xoay đầu và không đánh quái phía sau.
+        // ⭐ FIX "CHÉM 1 CON": Triển khai Round-Robin Target Cycling qua tất cả quái trong chute/tia ngắm.
         if (!this.farm_lookat && !this.farm_smart_aim) {
-            const rayPick = this._pickRaycastMobTarget(maxReach);
-            if (rayPick) {
-                this._lockedTargetId = rayPick.id;
-                this._lockedTargetExpiresAt = now + this._lockDurationMs;
-                this._lastHadTargetAt = now;
-                return rayPick;
+            let candidates = this._pickRaycastMobTargets(maxReach);
+            if (candidates.length === 0) {
+                candidates = this.scanForwardMobs(maxReach);
             }
 
-            const forwardMob = this.scanForwardMob(maxReach);
-            if (forwardMob) {
-                this._lockedTargetId = forwardMob.id;
+            if (candidates.length > 0) {
+                // Sắp xếp ưu tiên:
+                // 1. Quái đã hết 500ms invulnerability window (sẵn sàng nhận full damage)
+                // 2. Trong nhóm sẵn sàng, ưu tiên con lâu chưa bị chém nhất (xoay vòng đều qua cả bầy mob)
+                // 3. Nếu tất cả đều vừa bị chém, chọn con gần hết thời gian bất tử nhất
+                candidates.sort((a, b) => {
+                    const lastA = this._lastAttackSentAt.get(a.id) || 0;
+                    const lastB = this._lastAttackSentAt.get(b.id) || 0;
+                    const readyA = (now - lastA) >= this._invulnWindowMs;
+                    const readyB = (now - lastB) >= this._invulnWindowMs;
+
+                    if (readyA && !readyB) return -1;
+                    if (!readyA && readyB) return 1;
+
+                    return lastA - lastB;
+                });
+
+                const picked = candidates[0];
+                this._lockedTargetId = picked.id;
                 this._lockedTargetExpiresAt = now + this._lockDurationMs;
                 this._lastHadTargetAt = now;
-                return forwardMob;
+                return picked;
             }
 
             this._lockedTargetId = null;
@@ -1036,11 +1050,11 @@ class BotInstance {
 
         if (this._lockedTargetId !== null) {
             const locked = this.bot.entities[this._lockedTargetId];
-            const lockedAlive = locked && !(locked.health !== undefined && locked.health <= 0);
+            const lockedAlive = locked && !locked._isDead && !(locked.health !== undefined && locked.health <= 0);
 
             if (lockedAlive) {
-                const targetHeight = (locked.height && locked.height > 0) ? locked.height * 0.5 : 0.5;
-                const dist = eyePos.distanceTo(locked.position.offset(0, targetHeight, 0));
+                const box = this._getEntityHitbox(locked);
+                const dist = this._getHitboxDistance(eyePos, box);
                 const maxReach = Math.min(this.farm_range, 2.95);
                 if (dist <= maxReach) {
                     this._lockedTargetExpiresAt = now + this._lockDurationMs;
@@ -1090,7 +1104,7 @@ class BotInstance {
 
         try {
             const target = this.bot.entities[candidateId];
-            if (!target || (target.health !== undefined && target.health <= 0)) return;
+            if (!target || target._isDead || (target.health !== undefined && target.health <= 0)) return;
 
             const latency = this._getLatencySec();
             const predictedPos = target.velocity
@@ -1099,9 +1113,12 @@ class BotInstance {
             const margin = Math.min(latency * 2, 0.05) + this._adaptiveReachMargin;
 
             const eyePos = this.bot.entity.position.offset(0, 1.62, 0);
-            const targetLookHeight = (target.height && target.height > 0) ? target.height * 0.5 : 0.5;
-            const targetCenterPos = predictedPos.offset(0, targetLookHeight, 0);
-            const dist = eyePos.distanceTo(targetCenterPos);
+            
+            // ⭐ TÍNH TẦM ĐÁNH TỚI BỀ MẶT HITBOX GẦN NHẤT (AABB Closest Distance):
+            // Minecraft Reach tính từ mắt tới bề mặt AABB gần nhất của mob (hitbox),
+            // KHÔNG đo tới tâm giữa thân quái vì Blaze (1.8m) hay Golem (2.7m) sẽ bị đội dist lên > 2.95m.
+            const box = this._getEntityHitbox(target);
+            const dist = this._getHitboxDistance(eyePos, box);
 
             // Giới hạn cứng tầm đánh survival để không bao giờ vi phạm Reach check của Anti-Cheat
             const MAX_SURVIVAL_REACH = 2.95;
@@ -1117,6 +1134,8 @@ class BotInstance {
             }
 
             if (this.farm_lookat || this.farm_smart_aim) {
+                const targetLookHeight = (target.height && target.height > 0) ? target.height * 0.5 : 0.5;
+                const targetCenterPos = predictedPos.offset(0, targetLookHeight, 0);
                 const isNewTarget = candidateId !== this._lastAttackTargetId;
                 try {
                     // Đồng bộ góc nhìn qua lookAt của Mineflayer (cập nhật chính xác lastSentYaw/Pitch nội bộ)
@@ -1135,17 +1154,12 @@ class BotInstance {
             if (!this.bot || !this.running) return;
             // Re-check còn sống + còn trong tầm sau khi chờ
             const stillTarget = this.bot.entities[candidateId];
-            if (!stillTarget || (stillTarget.health !== undefined && stillTarget.health <= 0)) return;
+            if (!stillTarget || stillTarget._isDead || (stillTarget.health !== undefined && stillTarget.health <= 0)) return;
 
             const finalLatency = this._getLatencySec();
-            const finalPredictedPos = stillTarget.velocity
-                ? stillTarget.position.plus(stillTarget.velocity.scaled(finalLatency))
-                : stillTarget.position;
             const finalMargin = Math.min(finalLatency * 2, 0.05) + this._adaptiveReachMargin;
-            const finalCenterPos = finalPredictedPos.offset(0, targetLookHeight, 0);
-            const finalDist = this.bot.entity.position
-                .offset(0, 1.62, 0)
-                .distanceTo(finalCenterPos);
+            const finalBox = this._getEntityHitbox(stillTarget);
+            const finalDist = this._getHitboxDistance(this.bot.entity.position.offset(0, 1.62, 0), finalBox);
 
             const finalAllowedReach = Math.min(this.ATTACK_REACH + finalMargin, MAX_SURVIVAL_REACH);
             if (finalDist > finalAllowedReach) {
@@ -1351,14 +1365,14 @@ class BotInstance {
             try {
                 if (!entity) continue;
                 if (entity.type !== 'mob') continue;
-                if (entity.health && entity.health <= 0) continue;
+                if (entity._isDead) continue;
+                if (entity.health !== undefined && entity.health <= 0) continue;
 
                 const pos = entity.position;
                 if (!pos) continue;
 
-                const targetHeight = (entity.height && entity.height > 0) ? entity.height * 0.5 : 0.5;
-                const targetPos = pos.offset(0, targetHeight, 0);
-                const dist = eyePos.distanceTo(targetPos);
+                const box = this._getEntityHitbox(entity);
+                const dist = this._getHitboxDistance(eyePos, box);
                 const maxScanReach = Math.min(this.farm_range, 2.95);
 
                 if (dist < nearestDist && dist <= maxScanReach) {
@@ -1386,8 +1400,18 @@ class BotInstance {
         };
     }
 
-    scanForwardMob(maxReach) {
-        if (!this.bot || !this.bot.entity) return null;
+    // ⭐ KHOẢNG CÁCH TỚI HITBOX (AABB Closest Point Distance):
+    // Đo khoảng cách chuẩn xác từ mắt bot tới điểm gần nhất trên bề mặt hitbox của mob,
+    // đúng chuẩn thuật toán Reach Check của Vanilla Minecraft và Anti-Cheat.
+    _getHitboxDistance(pos, box) {
+        const dx = Math.max(box.minX - pos.x, 0, pos.x - box.maxX);
+        const dy = Math.max(box.minY - pos.y, 0, pos.y - box.maxY);
+        const dz = Math.max(box.minZ - pos.z, 0, pos.z - box.maxZ);
+        return Math.sqrt(dx * dx + dy * dy + dz * dz);
+    }
+
+    scanForwardMobs(maxReach) {
+        if (!this.bot || !this.bot.entity) return [];
         try {
             const eyePos = this.bot.entity.position.offset(0, 1.62, 0);
             const yaw = this.bot.entity.yaw;
@@ -1396,32 +1420,47 @@ class BotInstance {
             const dirY = -Math.sin(pitch);
             const dirZ = -Math.cos(yaw) * Math.cos(pitch);
 
-            let best = null;
-            let bestScore = -1;
+            const candidates = [];
 
             for (const [id, entity] of Object.entries(this.bot.entities)) {
                 if (!entity || entity.type !== 'mob') continue;
+                if (entity._isDead) continue;
                 if (entity.health !== undefined && entity.health <= 0) continue;
                 if (!entity.position) continue;
+
+                const box = this._getEntityHitbox(entity);
+                const dist = this._getHitboxDistance(eyePos, box);
+                if (dist > maxReach) continue;
 
                 const targetHeight = (entity.height && entity.height > 0) ? entity.height * 0.5 : 0.5;
                 const targetPos = entity.position.offset(0, targetHeight, 0);
                 const dx = targetPos.x - eyePos.x;
                 const dy = targetPos.y - eyePos.y;
                 const dz = targetPos.z - eyePos.z;
-                const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
-                if (dist <= 0 || dist > maxReach) continue;
+                const centerDist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+                if (centerDist <= 0) continue;
 
-                const dot = (dirX * dx + dirY * dy + dirZ * dz) / dist;
-                if (dot >= 0.65 && dot > bestScore) {
-                    bestScore = dot;
-                    best = { id, entity, dist };
+                const dot = (dirX * dx + dirY * dy + dirZ * dz) / centerDist;
+                if (dot >= 0.55) {
+                    candidates.push({ id, entity, dist, dot });
                 }
             }
-            return best;
+            return candidates;
         } catch (e) {
-            return null;
+            return [];
         }
+    }
+
+    scanForwardMob(maxReach) {
+        const candidates = this.scanForwardMobs(maxReach);
+        if (candidates.length === 0) return null;
+        let best = candidates[0];
+        for (let i = 1; i < candidates.length; i++) {
+            if (candidates[i].dot > best.dot) {
+                best = candidates[i];
+            }
+        }
+        return best;
     }
 
     _rayIntersectsAABB(origin, dir, box) {
@@ -1447,8 +1486,8 @@ class BotInstance {
         return tmin >= 0 ? tmin : tmax;
     }
 
-    _pickRaycastMobTarget(maxDistance) {
-        if (!this.bot || !this.bot.entity) return null;
+    _pickRaycastMobTargets(maxDistance) {
+        if (!this.bot || !this.bot.entity) return [];
         try {
             const eyePos = this.bot.entity.position.offset(0, 1.62, 0);
             const yaw = this.bot.entity.yaw;
@@ -1459,26 +1498,37 @@ class BotInstance {
                 z: -Math.cos(yaw) * Math.cos(pitch),
             };
 
-            let best = null;
-            let bestT = Infinity;
+            const candidates = [];
 
             for (const [id, entity] of Object.entries(this.bot.entities)) {
                 if (!entity || entity.type !== 'mob') continue;
+                if (entity._isDead) continue;
                 if (entity.health !== undefined && entity.health <= 0) continue;
                 if (!entity.position) continue;
 
                 const box = this._getEntityHitbox(entity);
                 const t = this._rayIntersectsAABB(eyePos, dir, box);
-                if (t !== null && t <= maxDistance && t < bestT) {
-                    bestT = t;
-                    best = { id, entity, dist: t };
+                if (t !== null && t <= maxDistance) {
+                    candidates.push({ id, entity, dist: t });
                 }
             }
 
-            return best;
+            return candidates;
         } catch (e) {
-            return null;
+            return [];
         }
+    }
+
+    _pickRaycastMobTarget(maxDistance) {
+        const candidates = this._pickRaycastMobTargets(maxDistance);
+        if (candidates.length === 0) return null;
+        let best = candidates[0];
+        for (let i = 1; i < candidates.length; i++) {
+            if (candidates[i].dist < best.dist) {
+                best = candidates[i];
+            }
+        }
+        return best;
     }
 
     startAutoStorage() {
@@ -2871,7 +2921,20 @@ class BotInstance {
                 }
             };
             this.bot.on('entityHurt', confirmHit);
-            this.bot.on('entityDead', confirmHit);
+            this.bot.on('entityDead', (entity) => {
+                if (!entity) return;
+                entity._isDead = true;
+                confirmHit(entity);
+                if (this._lockedTargetId !== null && String(this._lockedTargetId) === String(entity.id)) {
+                    if (this.farm_debug) {
+                        this.log(`💀 [debug] Mục tiêu (id=${entity.id}, ${entity.name || '?'}) đã chết - huỷ khoá ngay để chuyển sang quái mới.`, '#8b949e');
+                    }
+                    this._lockedTargetId = null;
+                    this._lockedTargetExpiresAt = 0;
+                }
+                this._pendingAttacks.delete(entity.id);
+                this._lastAttackSentAt.delete(entity.id);
+            });
 
             // ⭐ FIX MOB-DESPAWN STUCK: chủ động lắng nghe sự kiện entity bị gỡ khỏi thế
             // giới (chết, despawn, đi ra khỏi tầm nhìn/unload chunk...). Nếu đúng là mục
@@ -2879,6 +2942,7 @@ class BotInstance {
             // tiếp mới phát hiện dist/health không hợp lệ - tránh mọi độ trễ dù nhỏ.
             this.bot.on('entityGone', (entity) => {
                 if (!entity) return;
+                entity._isDead = true;
                 if (this._lockedTargetId !== null && String(this._lockedTargetId) === String(entity.id)) {
                     if (this.farm_debug) {
                         this.log(`🔍 [debug] Mục tiêu khoá (id=${entity.id}, ${entity.name || '?'}) vừa bị gỡ khỏi thế giới (despawn/chết/ra khỏi tầm nhìn) - huỷ khoá ngay.`, '#8b949e');
@@ -2889,6 +2953,7 @@ class BotInstance {
                 if (this._pendingAttacks.has(entity.id)) {
                     this._pendingAttacks.delete(entity.id);
                 }
+                this._lastAttackSentAt.delete(entity.id);
             });
 
             this.bot.on('spawn', () => {
